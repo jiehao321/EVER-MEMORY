@@ -582,6 +582,18 @@ Run full validation (environment + type-check + tests):
 npm run validate
 ```
 
+Run release quality gate (doctor + check + build + unit tests):
+
+```bash
+npm run quality:gate
+```
+
+Run release quality gate with real OpenClaw smoke:
+
+```bash
+npm run quality:gate:openclaw
+```
+
 Run real OpenClaw smoke test (plugin loaded + store/recall + DB evidence):
 
 ```bash

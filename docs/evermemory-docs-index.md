@@ -35,17 +35,20 @@
 17. `evermemory-phase5-task-breakdown.md`
 18. `evermemory-phase6-technical-plan.md`
 19. `evermemory-phase6-task-breakdown.md`
-20. `evermemory-codex-execution-guide.md`
-21. `evermemory-codex-prompt-templates.md`
-22. `evermemory-acceptance-handbook.md`
-23. `evermemory-operator-runbook.md`
-24. `evermemory-troubleshooting.md`
-25. `evermemory-quality-audit-report.md`
-26. `evermemory-quality-remediation-task-list.md`
-27. `evermemory-code-review-report-2026-03-12.md`
-28. `evermemory-code-fix-report-2026-03-12.md`
-29. `evermemory-final-planning-summary.md`
-30. `evermemory-final-acceptance-report-2026-03-12.md`
+20. `evermemory-phase7-technical-plan.md`
+21. `evermemory-phase7-task-breakdown.md`
+22. `evermemory-codex-execution-guide.md`
+23. `evermemory-codex-prompt-templates.md`
+24. `evermemory-acceptance-handbook.md`
+25. `evermemory-operator-runbook.md`
+26. `evermemory-troubleshooting.md`
+27. `evermemory-quality-audit-report.md`
+28. `evermemory-quality-remediation-task-list.md`
+29. `evermemory-code-review-report-2026-03-12.md`
+30. `evermemory-code-fix-report-2026-03-12.md`
+31. `evermemory-openclaw-e2e-report-2026-03-12-phase2.md`
+32. `evermemory-final-planning-summary.md`
+33. `evermemory-final-acceptance-report-2026-03-12.md`
 
 ---
 
@@ -191,6 +194,14 @@
 作用：
 - Phase 6 细粒度任务拆分
 
+#### `evermemory-phase7-technical-plan.md`
+作用：
+- Phase 7 发布质量与运行硬化技术方案
+
+#### `evermemory-phase7-task-breakdown.md`
+作用：
+- Phase 7 任务拆分与验收口径
+
 ---
 
 ### 质量审查与整改类
@@ -219,6 +230,11 @@
 作用：
 - 最终阶段验收结论文档
 - 汇总质量门禁与阶段完成状态
+
+#### `evermemory-openclaw-e2e-report-2026-03-12-phase2.md`
+作用：
+- OpenClaw 真实运行态实测证据报告
+- store/recall/status 与 DB 落盘验证记录
 
 ---
 

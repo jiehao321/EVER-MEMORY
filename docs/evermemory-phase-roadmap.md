@@ -20,6 +20,7 @@
 | Phase 4 | Behavior Evolution | 已完成 | 把 candidate rules 提升为 active behavior rules |
 | Phase 5 | Retrieval & Lifecycle Optimization | 已完成 | 提升 recall 质量与 lifecycle 治理 |
 | Phase 6 | Extended Operations | 已完成 | explainability/operator/import-export/review/restore/docs 收口 |
+| Phase 7 | Release Quality & Operational Hardening | 进行中 | 一键质量门禁、OpenClaw 实测门禁、发布流程与安全收口 |
 
 ---
 
@@ -191,6 +192,12 @@ reflection 只能产出候选规则，真正激活行为规则必须更后置、
 ---
 
 ## 10. 每个阶段的完成定义
+
+### Phase 7 完成定义
+- 存在一键质量门禁命令（发布前可重复执行）
+- OpenClaw 真实运行态 smoke gate 可自动化执行
+- CI 与本地门禁边界清楚，文档同步
+- 阶段交付可直接给 operator 复现并生成证据
 
 ### Phase 2 完成定义
 - 能生成稳定 intent record
