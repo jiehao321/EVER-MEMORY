@@ -1,0 +1,38 @@
+import type { IntentAnalyzeInput } from '../../types.js';
+
+export function buildIntentEnrichPrompt(
+  input: IntentAnalyzeInput,
+  heuristic: {
+    intentType: string;
+    confidence: number;
+    memoryNeed: string;
+  },
+): string {
+  return [
+    'You classify user intent for an agent memory system.',
+    'Return ONLY a JSON object. No markdown, no prose.',
+    'JSON schema:',
+    '{',
+    '  "intentType": "question|instruction|correction|preference|planning|status_update|other",',
+    '  "subtype": "optional string",',
+    '  "confidence": 0..1,',
+    '  "signals": {',
+    '    "urgency": "low|medium|high",',
+    '    "emotionalTone": "neutral|positive|negative|frustrated|excited",',
+    '    "actionNeed": "none|analysis|answer|execution|confirmation",',
+    '    "memoryNeed": "none|light|targeted|deep",',
+    '    "preferenceRelevance": 0..1,',
+    '    "correctionSignal": 0..1',
+    '  },',
+    '  "retrievalHints": {',
+    '    "preferredTypes": ["identity|fact|preference|decision|commitment|relationship|task|project|style|summary|constraint"],',
+    '    "preferredScopes": ["session|user|project|global"],',
+    '    "preferredTimeBias": "recent|balanced|durable"',
+    '  },',
+    '  "entities": [{"type": "string", "value": "string", "confidence": 0..1}]',
+    '}',
+    '',
+    `Input text: ${JSON.stringify(input.text)}`,
+    `Heuristic baseline: ${JSON.stringify(heuristic)}`,
+  ].join('\n');
+}

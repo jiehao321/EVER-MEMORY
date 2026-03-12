@@ -1,0 +1,565 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { initializeEverMemory } from '../src/index.js';
+import type { EverMemoryRecallToolInput, IntentRecord, MemoryItem } from '../src/types.js';
+import { createTempDbPath } from './helpers.js';
+
+function createMemory(input: {
+  content: string;
+  scope: MemoryItem['scope'];
+  updatedAt: string;
+  tags?: string[];
+  type?: MemoryItem['type'];
+  lifecycle?: MemoryItem['lifecycle'];
+  importance?: number;
+  confidence?: number;
+  explicitness?: number;
+}): MemoryItem {
+  return {
+    id: randomUUID(),
+    content: input.content,
+    type: input.type ?? 'fact',
+    lifecycle: input.lifecycle ?? 'semantic',
+    source: {
+      kind: 'manual',
+      actor: 'system',
+    },
+    scope: input.scope,
+    scores: {
+      confidence: input.confidence ?? 0.8,
+      importance: input.importance ?? 0.7,
+      explicitness: input.explicitness ?? 0.9,
+    },
+    timestamps: {
+      createdAt: input.updatedAt,
+      updatedAt: input.updatedAt,
+    },
+    state: {
+      active: true,
+      archived: false,
+    },
+    evidence: {
+      references: [],
+    },
+    tags: input.tags ?? [],
+    relatedEntities: [],
+    stats: {
+      accessCount: 0,
+      retrievalCount: 0,
+    },
+  };
+}
+
+test('retrieval respects scope and returns empty results without throwing', () => {
+  const databasePath = createTempDbPath('retrieval');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({ content: '我偏好中文输出。', scope: { userId: 'u1' } });
+  app.evermemoryStore({ content: '我偏好英文输出。', scope: { userId: 'u2' } });
+
+  const scoped = app.evermemoryRecall({ query: '中文', scope: { userId: 'u1' } });
+  assert.equal(scoped.total, 1);
+  assert.equal(scoped.items[0]?.scope.userId, 'u1');
+
+  const empty = app.evermemoryRecall({ query: '不存在的记忆', scope: { userId: 'u1' } });
+  assert.equal(empty.total, 0);
+  assert.deepEqual(empty.items, []);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('retrieval scope isolation keeps project/user/global records separated', () => {
+  const databasePath = createTempDbPath('retrieval-scope-isolation');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '项目A：发布窗口在周五。',
+    type: 'project',
+    scope: { userId: 'u-scope-1', project: 'project-a' },
+  });
+  app.evermemoryStore({
+    content: '项目B：发布窗口在周一。',
+    type: 'project',
+    scope: { userId: 'u-scope-1', project: 'project-b' },
+  });
+  app.evermemoryStore({
+    content: '全局规则：高风险动作先确认。',
+    type: 'constraint',
+    scope: { global: true },
+  });
+
+  const projectA = app.evermemoryRecall({
+    query: '发布窗口',
+    scope: { userId: 'u-scope-1', project: 'project-a' },
+    mode: 'keyword',
+    limit: 10,
+  });
+  assert.equal(projectA.total, 1);
+  assert.equal(projectA.items[0]?.scope.project, 'project-a');
+
+  const projectB = app.evermemoryRecall({
+    query: '发布窗口',
+    scope: { userId: 'u-scope-1', project: 'project-b' },
+    mode: 'keyword',
+    limit: 10,
+  });
+  assert.equal(projectB.total, 1);
+  assert.equal(projectB.items[0]?.scope.project, 'project-b');
+
+  const global = app.evermemoryRecall({
+    query: '高风险动作',
+    scope: { global: true },
+    mode: 'keyword',
+    limit: 10,
+  });
+  assert.equal(global.total, 1);
+  assert.equal(global.items[0]?.scope.global, true);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('retrieval enforces configured maxRecall across direct recall and intent recall', () => {
+  const databasePath = createTempDbPath('retrieval-max-recall');
+  const app = initializeEverMemory({
+    databasePath,
+    maxRecall: 2,
+  });
+
+  app.evermemoryStore({
+    content: '发布计划一：先检查回滚路径。',
+    scope: { userId: 'u-max-recall', project: 'evermemory' },
+    type: 'project',
+  });
+  app.evermemoryStore({
+    content: '发布计划二：更新里程碑后再执行。',
+    scope: { userId: 'u-max-recall', project: 'evermemory' },
+    type: 'project',
+  });
+  app.evermemoryStore({
+    content: '发布计划三：先做质量门禁。',
+    scope: { userId: 'u-max-recall', project: 'evermemory' },
+    type: 'project',
+  });
+
+  const direct = app.evermemoryRecall({
+    query: '发布计划',
+    scope: { userId: 'u-max-recall', project: 'evermemory' },
+    mode: 'keyword',
+    limit: 10,
+  });
+  assert.equal(direct.limit, 2);
+  assert.equal(direct.total, 2);
+
+  const deepIntent: IntentRecord = {
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    sessionId: 's-max-recall',
+    rawText: '结合之前发布计划继续推进下一步。',
+    intent: {
+      type: 'planning',
+      confidence: 0.9,
+    },
+    signals: {
+      urgency: 'medium',
+      emotionalTone: 'neutral',
+      actionNeed: 'analysis',
+      memoryNeed: 'deep',
+      preferenceRelevance: 0.2,
+      correctionSignal: 0,
+    },
+    entities: [],
+    retrievalHints: {
+      preferredTypes: ['project', 'task'],
+      preferredScopes: ['project', 'user'],
+      preferredTimeBias: 'durable',
+    },
+  };
+
+  const fromIntent = app.retrievalService.recallForIntent({
+    query: '',
+    scope: { userId: 'u-max-recall', project: 'evermemory' },
+    intent: deepIntent,
+    limit: 12,
+  });
+  assert.equal(fromIntent.limit, 2);
+  assert.equal(fromIntent.total, 2);
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.equal(event?.payload.maxRecall, 2);
+  assert.equal(event?.payload.limit, 2);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('retrieval ranking prefers broader keyword coverage and stronger quality signals', () => {
+  const databasePath = createTempDbPath('retrieval-ranking');
+  const app = initializeEverMemory({ databasePath });
+
+  const now = new Date();
+  const recentIso = now.toISOString();
+  const oldIso = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000).toISOString();
+
+  const highCoverage = createMemory({
+    content: '检索 排序策略：先按关键词覆盖，再看重要性与时效。',
+    scope: { userId: 'u-rank-1' },
+    updatedAt: recentIso,
+    tags: ['retrieval', 'ranking'],
+    importance: 0.95,
+    confidence: 0.95,
+    explicitness: 1,
+    type: 'project',
+  });
+  const partialCoverage = createMemory({
+    content: '检索 排序策略历史记录。',
+    scope: { userId: 'u-rank-1' },
+    updatedAt: recentIso,
+    tags: ['排序'],
+    importance: 0.7,
+    confidence: 0.7,
+    explicitness: 0.7,
+    type: 'project',
+  });
+  const staleCoverage = createMemory({
+    content: '检索 排序策略（旧版本）。',
+    scope: { userId: 'u-rank-1' },
+    updatedAt: oldIso,
+    tags: ['retrieval'],
+    importance: 0.6,
+    confidence: 0.6,
+    explicitness: 0.6,
+    type: 'project',
+  });
+
+  app.memoryRepo.insert(partialCoverage);
+  app.memoryRepo.insert(staleCoverage);
+  app.memoryRepo.insert(highCoverage);
+
+  const result = app.evermemoryRecall({
+    query: '检索 排序',
+    scope: { userId: 'u-rank-1' },
+    limit: 5,
+  });
+
+  assert.equal(result.total, 3);
+  assert.equal(result.items[0]?.id, highCoverage.id);
+  assert.equal(result.items[2]?.id, staleCoverage.id);
+
+  const retrievalEvents = app.debugRepo.listRecent('retrieval_executed', 5);
+  assert.ok(retrievalEvents.length >= 1);
+  assert.ok(Array.isArray((retrievalEvents[0]?.payload.topScores ?? null) as unknown));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('retrieval ranking respects type priority order when request defines types', () => {
+  const databasePath = createTempDbPath('retrieval-type-priority');
+  const app = initializeEverMemory({ databasePath });
+  const timestamp = new Date().toISOString();
+
+  const constraintMemory = createMemory({
+    content: '执行关键动作前先确认。',
+    scope: { userId: 'u-rank-2' },
+    updatedAt: timestamp,
+    tags: ['确认'],
+    type: 'constraint',
+    importance: 0.75,
+    confidence: 0.8,
+  });
+  const projectMemory = createMemory({
+    content: '项目执行关键动作前先确认。',
+    scope: { userId: 'u-rank-2' },
+    updatedAt: timestamp,
+    tags: ['确认'],
+    type: 'project',
+    importance: 0.75,
+    confidence: 0.8,
+  });
+
+  app.memoryRepo.insert(projectMemory);
+  app.memoryRepo.insert(constraintMemory);
+
+  const result = app.retrievalService.recall({
+    query: '确认',
+    scope: { userId: 'u-rank-2' },
+    types: ['constraint', 'project'],
+    limit: 5,
+  });
+
+  assert.equal(result.total, 2);
+  assert.equal(result.items[0]?.type, 'constraint');
+  assert.equal(result.items[1]?.type, 'project');
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('retrieval keyword ranking weights are configurable via config', () => {
+  const defaultDbPath = createTempDbPath('retrieval-weight-default');
+  const weightedDbPath = createTempDbPath('retrieval-weight-custom');
+  const defaultApp = initializeEverMemory({ databasePath: defaultDbPath });
+  const weightedApp = initializeEverMemory({
+    databasePath: weightedDbPath,
+    retrieval: {
+      keywordWeights: {
+        keyword: 0,
+        recency: 0,
+        importance: 0,
+        confidence: 0,
+        explicitness: 0,
+        scopeMatch: 0,
+        typePriority: 1,
+        lifecyclePriority: 0,
+      },
+    },
+  });
+
+  const recentIso = new Date().toISOString();
+  const oldIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const defaultConstraint = createMemory({
+    content: '执行关键动作前先确认。',
+    scope: { userId: 'u-rank-weight' },
+    updatedAt: oldIso,
+    type: 'constraint',
+  });
+  const defaultProject = createMemory({
+    content: '项目执行关键动作前先确认。',
+    scope: { userId: 'u-rank-weight' },
+    updatedAt: recentIso,
+    type: 'project',
+  });
+
+  defaultApp.memoryRepo.insert(defaultConstraint);
+  defaultApp.memoryRepo.insert(defaultProject);
+  weightedApp.memoryRepo.insert({
+    ...defaultConstraint,
+    id: randomUUID(),
+  });
+  weightedApp.memoryRepo.insert({
+    ...defaultProject,
+    id: randomUUID(),
+  });
+
+  const request: EverMemoryRecallToolInput = {
+    query: '确认',
+    scope: { userId: 'u-rank-weight' },
+    types: ['constraint', 'project'],
+    limit: 5,
+  };
+
+  const defaultResult = defaultApp.evermemoryRecall(request);
+  const weightedResult = weightedApp.evermemoryRecall(request);
+
+  assert.equal(defaultResult.items[0]?.type, 'project');
+  assert.equal(weightedResult.items[0]?.type, 'constraint');
+
+  defaultApp.database.connection.close();
+  rmSync(defaultDbPath, { force: true });
+  weightedApp.database.connection.close();
+  rmSync(weightedDbPath, { force: true });
+});
+
+test('structured mode ignores keyword query and returns filter-matched memories', () => {
+  const databasePath = createTempDbPath('retrieval-structured-mode');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '发布窗口在周五下午。',
+    scope: { userId: 'u-rank-3' },
+    type: 'project',
+  });
+  app.evermemoryStore({
+    content: '部署前先确认回滚方案。',
+    scope: { userId: 'u-rank-3' },
+    type: 'constraint',
+  });
+
+  const keyword = app.evermemoryRecall({
+    query: '完全不存在的关键词',
+    scope: { userId: 'u-rank-3' },
+    mode: 'keyword',
+    limit: 10,
+  });
+  assert.equal(keyword.total, 0);
+
+  const structured = app.evermemoryRecall({
+    query: '完全不存在的关键词',
+    scope: { userId: 'u-rank-3' },
+    mode: 'structured',
+    limit: 10,
+  });
+  assert.equal(structured.total, 2);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('hybrid mode falls back to keyword when semantic sidecar is disabled', () => {
+  const databasePath = createTempDbPath('retrieval-hybrid-fallback');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '部署前先确认回滚方案。',
+    scope: { userId: 'u-rank-4' },
+    type: 'constraint',
+  });
+
+  const result = app.evermemoryRecall({
+    query: '确认',
+    scope: { userId: 'u-rank-4' },
+    mode: 'hybrid',
+    limit: 5,
+  });
+  assert.equal(result.total, 1);
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.equal(event?.payload.requestedMode, 'hybrid');
+  assert.equal(event?.payload.mode, 'keyword');
+  assert.equal(event?.payload.fallback, true);
+  assert.equal(event?.payload.semanticEnabled, false);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('hybrid mode uses semantic sidecar hits when enabled', () => {
+  const databasePath = createTempDbPath('retrieval-hybrid-enabled');
+  const app = initializeEverMemory({
+    databasePath,
+    semantic: {
+      enabled: true,
+      maxCandidates: 100,
+      minScore: 0.05,
+    },
+  });
+
+  app.evermemoryStore({
+    content: '部署前先确认回滚方案，并检查发布窗口。',
+    scope: { userId: 'u-rank-5', project: 'evermemory' },
+    type: 'constraint',
+  });
+  app.evermemoryStore({
+    content: '输出保持简洁。',
+    scope: { userId: 'u-rank-5', project: 'evermemory' },
+    type: 'style',
+  });
+
+  const result = app.evermemoryRecall({
+    query: '回滚 发布',
+    scope: { userId: 'u-rank-5', project: 'evermemory' },
+    mode: 'hybrid',
+    limit: 5,
+  });
+  assert.ok(result.total >= 1);
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.equal(event?.payload.requestedMode, 'hybrid');
+  assert.equal(event?.payload.mode, 'hybrid');
+  assert.equal(event?.payload.fallback, false);
+  assert.equal(event?.payload.semanticEnabled, true);
+  assert.ok(typeof event?.payload.semanticHits === 'number');
+  assert.ok((event?.payload.semanticHits as number) >= 1);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('hybrid retrieval weights are normalized and emitted in debug payload', () => {
+  const databasePath = createTempDbPath('retrieval-hybrid-weights');
+  const app = initializeEverMemory({
+    databasePath,
+    semantic: {
+      enabled: true,
+      maxCandidates: 100,
+      minScore: 0.05,
+    },
+    retrieval: {
+      hybridWeights: {
+        keyword: 0,
+        semantic: 2,
+        base: 0,
+      },
+    },
+  });
+
+  app.evermemoryStore({
+    content: '部署前先确认回滚方案。',
+    scope: { userId: 'u-rank-hybrid-weights', project: 'evermemory' },
+    type: 'constraint',
+  });
+
+  const result = app.evermemoryRecall({
+    query: '部署 回滚',
+    scope: { userId: 'u-rank-hybrid-weights', project: 'evermemory' },
+    mode: 'hybrid',
+    limit: 5,
+  });
+  assert.ok(result.total >= 1);
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.equal(event?.payload.mode, 'hybrid');
+  const weights = (event?.payload as { weights?: { hybrid?: { keyword?: number; semantic?: number; base?: number } } }).weights;
+  assert.equal(weights?.hybrid?.keyword, 0);
+  assert.equal(weights?.hybrid?.semantic, 1);
+  assert.equal(weights?.hybrid?.base, 0);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('recallForIntent deep mode derives non-empty focused query', () => {
+  const databasePath = createTempDbPath('retrieval-deep-query');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '项目里程碑计划：Phase 2 完成后进入 Phase 3，优先风险控制与质量门禁。',
+    scope: { userId: 'u-rank-6', project: 'evermemory' },
+    type: 'project',
+  });
+
+  const deepIntent: IntentRecord = {
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    sessionId: 's-deep-query',
+    rawText: '结合之前的项目计划与里程碑安排，继续推进下一步，并保持风险控制与质量门禁。',
+    intent: {
+      type: 'planning',
+      confidence: 0.9,
+    },
+    signals: {
+      urgency: 'medium',
+      emotionalTone: 'neutral',
+      actionNeed: 'analysis',
+      memoryNeed: 'deep',
+      preferenceRelevance: 0.2,
+      correctionSignal: 0,
+    },
+    entities: [],
+    retrievalHints: {
+      preferredTypes: ['project', 'task'],
+      preferredScopes: ['project', 'user'],
+      preferredTimeBias: 'durable',
+    },
+  };
+
+  const result = app.retrievalService.recallForIntent({
+    query: '',
+    scope: { userId: 'u-rank-6', project: 'evermemory' },
+    intent: deepIntent,
+    limit: 8,
+  });
+  assert.ok(result.total >= 1);
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.equal(typeof event?.payload.query, 'string');
+  assert.ok((event?.payload.query as string).trim().length > 0);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
