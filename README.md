@@ -582,6 +582,16 @@ Run full validation (environment + type-check + tests):
 npm run validate
 ```
 
+Run real OpenClaw smoke test (plugin loaded + store/recall + DB evidence):
+
+```bash
+npm run test:openclaw:smoke
+```
+
+Notes:
+- Requires local OpenClaw gateway running and `evermemory` plugin loaded.
+- Uses default DB path `/root/.openclaw/memory/evermemory/store/evermemory.db` unless `EVERMEMORY_DB_PATH` is set.
+
 ## OpenClaw integration (real host wiring)
 
 This repository now provides native OpenClaw plugin assets:
