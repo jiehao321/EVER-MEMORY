@@ -7,6 +7,7 @@
 - 质量审查问题整改状态核对
 - 文档包一致性与可执行性核对
 - 工程门禁（check/build/test/validate）核对
+- OpenClaw 真实运行态实测（store/recall/status + DB evidence）核对
 
 ---
 
@@ -31,6 +32,8 @@
 4. reflection 缺失 experience 可观测性补强
 5. 文档滞后修复（roadmap、docs-index、phase1 summary 状态说明）
 6. operator/troubleshooting 文档收口
+7. OpenClaw 真实链路实测收口（见 `docs/evermemory-openclaw-e2e-report-2026-03-12-phase2.md`）
+8. 新增自动化门禁命令 `npm run test:openclaw:smoke`（插件加载 + store/recall + DB 证据）
 
 ### 仍可持续优化（非阻塞）
 
@@ -44,11 +47,12 @@
 ```bash
 ✅ npm run check
 ✅ npm run build
-✅ npm run test
+✅ npm run test:unit
 ✅ npm run validate
+✅ npm run test:openclaw:smoke
 ```
 
-测试通过数：40/40
+单元测试通过数：53/53
 
 ---
 
@@ -59,5 +63,6 @@ EverMemory 当前版本已满足：
 - 质量整改主项闭环
 - 文档可交接性
 - 工程门禁可重复通过
+- OpenClaw 真实运行态可用性已验证
 
 结论：**通过验收，可进入下一轮规划与演进阶段。**
