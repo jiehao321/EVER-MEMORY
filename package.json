@@ -27,6 +27,7 @@
     "build:test": "rm -rf dist-test && tsc -p tsconfig.test.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "doctor": "node ./scripts/doctor.mjs",
+    "openclaw:harden": "node ./scripts/openclaw-host-hardening.mjs",
     "quality:gate": "node ./scripts/quality-gate.mjs",
     "quality:gate:openclaw": "node ./scripts/quality-gate.mjs --with-openclaw --with-security",
     "test:openclaw:smoke": "node ./scripts/openclaw-smoke.mjs",

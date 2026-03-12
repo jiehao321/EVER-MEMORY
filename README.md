@@ -600,6 +600,15 @@ Run OpenClaw security regression gate (baseline controlled):
 npm run test:openclaw:security
 ```
 
+Apply host hardening defaults for OpenClaw config (`~/.openclaw/openclaw.json`):
+
+```bash
+npm run openclaw:harden
+```
+
+Notes:
+- The hardening script is environment-aware: if Docker is unavailable, sandbox mode falls back to `off` to avoid breaking runtime.
+
 Run real OpenClaw smoke test (plugin loaded + store/recall + DB evidence):
 
 ```bash

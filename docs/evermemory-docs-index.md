@@ -48,8 +48,9 @@
 30. `evermemory-code-review-report-2026-03-12.md`
 31. `evermemory-code-fix-report-2026-03-12.md`
 32. `evermemory-openclaw-e2e-report-2026-03-12-phase2.md`
-33. `evermemory-final-planning-summary.md`
-34. `evermemory-final-acceptance-report-2026-03-12.md`
+33. `evermemory-openclaw-hardening-report-2026-03-12.md`
+34. `evermemory-final-planning-summary.md`
+35. `evermemory-final-acceptance-report-2026-03-12.md`
 
 ---
 
@@ -241,6 +242,11 @@
 作用：
 - OpenClaw 真实运行态实测证据报告
 - store/recall/status 与 DB 落盘验证记录
+
+#### `evermemory-openclaw-hardening-report-2026-03-12.md`
+作用：
+- OpenClaw 主机安全硬化结果报告
+- 安全审计前后对比与遗留风险记录
 
 ---
 

@@ -1,12 +1,9 @@
 {
   "maxSummary": {
-    "critical": 2,
-    "warn": 6
+    "critical": 0,
+    "warn": 5
   },
-  "allowedCriticalCheckIds": [
-    "security.exposure.open_groups_with_elevated",
-    "security.exposure.open_groups_with_runtime_or_fs"
-  ],
+  "allowedCriticalCheckIds": [],
   "notes": [
     "This baseline tracks host-level OpenClaw security posture for regression control.",
     "Lower thresholds as upstream host configuration is hardened."
