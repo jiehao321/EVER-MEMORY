@@ -581,3 +581,51 @@ Run full validation (environment + type-check + tests):
 ```bash
 npm run validate
 ```
+
+## OpenClaw integration (real host wiring)
+
+This repository now provides native OpenClaw plugin assets:
+
+- `openclaw.plugin.json`
+- root `index.js` (exports `dist/openclaw/plugin.js`)
+- package manifest `openclaw.extensions`
+
+### Minimal OpenClaw config
+
+Use an absolute path for stable loading:
+
+```json
+{
+  "plugins": {
+    "load": {
+      "paths": [
+        "/root/.openclaw/workspace/projects/evermemory"
+      ]
+    },
+    "entries": {
+      "evermemory": {
+        "enabled": true,
+        "config": {
+          "databasePath": "/root/.openclaw/memory/evermemory/store/evermemory.db",
+          "maxRecall": 8,
+          "debugEnabled": true
+        }
+      }
+    },
+    "slots": {
+      "memory": "evermemory"
+    }
+  }
+}
+```
+
+Then restart gateway:
+
+```bash
+openclaw gateway restart
+```
+
+Compatibility aliases provided:
+
+- `memory_store` -> `evermemory_store`
+- `memory_recall` -> `evermemory_recall`

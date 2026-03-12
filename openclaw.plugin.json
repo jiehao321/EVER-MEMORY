@@ -1,0 +1,147 @@
+{
+  "id": "evermemory",
+  "name": "EverMemory",
+  "description": "Deterministic memory plugin for OpenClaw with governed write/recall behavior.",
+  "version": "0.1.0",
+  "kind": "memory",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "databasePath": {
+        "type": "string"
+      },
+      "bootTokenBudget": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "maxRecall": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "debugEnabled": {
+        "type": "boolean"
+      },
+      "semantic": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "maxCandidates": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "intent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "useLLM": {
+            "type": "boolean"
+          },
+          "fallbackHeuristics": {
+            "type": "boolean"
+          }
+        }
+      },
+      "retrieval": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "keywordWeights": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "keyword": {
+                "type": "number",
+                "minimum": 0
+              },
+              "recency": {
+                "type": "number",
+                "minimum": 0
+              },
+              "importance": {
+                "type": "number",
+                "minimum": 0
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0
+              },
+              "explicitness": {
+                "type": "number",
+                "minimum": 0
+              },
+              "scopeMatch": {
+                "type": "number",
+                "minimum": 0
+              },
+              "typePriority": {
+                "type": "number",
+                "minimum": 0
+              },
+              "lifecyclePriority": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "hybridWeights": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "keyword": {
+                "type": "number",
+                "minimum": 0
+              },
+              "semantic": {
+                "type": "number",
+                "minimum": 0
+              },
+              "base": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "uiHints": {
+    "databasePath": {
+      "label": "Database Path",
+      "help": "SQLite storage path for EverMemory",
+      "advanced": true
+    },
+    "maxRecall": {
+      "label": "Max Recall",
+      "help": "Maximum recall items for each query"
+    },
+    "debugEnabled": {
+      "label": "Debug Events",
+      "help": "Enable debug event logging for explainability"
+    },
+    "semantic.enabled": {
+      "label": "Semantic Sidecar",
+      "help": "Enable semantic sidecar index (disabled by default)",
+      "advanced": true
+    },
+    "intent.useLLM": {
+      "label": "Intent LLM Enrichment",
+      "help": "Enable optional LLM intent enrichment",
+      "advanced": true
+    }
+  }
+}

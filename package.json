@@ -11,9 +11,16 @@
   },
   "files": [
     "dist",
+    "index.ts",
+    "openclaw.plugin.json",
     "plugin.json",
     "README.md"
   ],
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
   "scripts": {
     "clean": "rm -rf dist dist-test",
     "build": "npm run clean && tsc -p tsconfig.build.json",
@@ -29,6 +36,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@sinclair/typebox": "^0.34.48",
     "better-sqlite3": "^12.2.0"
   }
 }
