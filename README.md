@@ -591,6 +591,7 @@ npm run test:openclaw:smoke
 Notes:
 - Requires local OpenClaw gateway running and `evermemory` plugin loaded.
 - Uses default DB path `/root/.openclaw/memory/evermemory/store/evermemory.db` unless `EVERMEMORY_DB_PATH` is set.
+- GitHub Actions CI (`.github/workflows/ci.yml`) runs `doctor + check + build + test:unit` on push/PR.
 
 ## OpenClaw integration (real host wiring)
 
