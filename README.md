@@ -594,6 +594,12 @@ Run release quality gate with real OpenClaw smoke:
 npm run quality:gate:openclaw
 ```
 
+Run OpenClaw security regression gate (baseline controlled):
+
+```bash
+npm run test:openclaw:security
+```
+
 Run real OpenClaw smoke test (plugin loaded + store/recall + DB evidence):
 
 ```bash
@@ -603,6 +609,7 @@ npm run test:openclaw:smoke
 Notes:
 - Requires local OpenClaw gateway running and `evermemory` plugin loaded.
 - Uses default DB path `/root/.openclaw/memory/evermemory/store/evermemory.db` unless `EVERMEMORY_DB_PATH` is set.
+- Security gate baseline file: `config/openclaw-security-baseline.json`.
 - GitHub Actions CI (`.github/workflows/ci.yml`) runs `doctor + check + build + test:unit` on push/PR.
 
 ## OpenClaw integration (real host wiring)

@@ -42,13 +42,14 @@
 24. `evermemory-acceptance-handbook.md`
 25. `evermemory-operator-runbook.md`
 26. `evermemory-troubleshooting.md`
-27. `evermemory-quality-audit-report.md`
-28. `evermemory-quality-remediation-task-list.md`
-29. `evermemory-code-review-report-2026-03-12.md`
-30. `evermemory-code-fix-report-2026-03-12.md`
-31. `evermemory-openclaw-e2e-report-2026-03-12-phase2.md`
-32. `evermemory-final-planning-summary.md`
-33. `evermemory-final-acceptance-report-2026-03-12.md`
+27. `evermemory-release-quality-checklist.md`
+28. `evermemory-quality-audit-report.md`
+29. `evermemory-quality-remediation-task-list.md`
+30. `evermemory-code-review-report-2026-03-12.md`
+31. `evermemory-code-fix-report-2026-03-12.md`
+32. `evermemory-openclaw-e2e-report-2026-03-12-phase2.md`
+33. `evermemory-final-planning-summary.md`
+34. `evermemory-final-acceptance-report-2026-03-12.md`
 
 ---
 
@@ -122,6 +123,11 @@
 作用：
 - 常见故障排查与恢复手册
 - 覆盖环境、测试链路、导入恢复闸门等问题
+
+#### `evermemory-release-quality-checklist.md`
+作用：
+- 发布前质量检查清单
+- 统一 `quality:gate` / `quality:gate:openclaw` 执行口径
 
 ---
 

@@ -28,8 +28,9 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "doctor": "node ./scripts/doctor.mjs",
     "quality:gate": "node ./scripts/quality-gate.mjs",
-    "quality:gate:openclaw": "node ./scripts/quality-gate.mjs --with-openclaw",
+    "quality:gate:openclaw": "node ./scripts/quality-gate.mjs --with-openclaw --with-security",
     "test:openclaw:smoke": "node ./scripts/openclaw-smoke.mjs",
+    "test:openclaw:security": "node ./scripts/openclaw-security-gate.mjs",
     "test:unit": "npm run build:test && node --test dist-test/test/*.test.js",
     "test": "npm run test:unit",
     "validate": "npm run doctor && npm run check && npm run test:unit"

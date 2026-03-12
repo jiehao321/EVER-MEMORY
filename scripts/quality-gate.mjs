@@ -11,12 +11,17 @@ function fail(message) {
 
 function parseArgs(argv) {
   let withOpenClaw = false;
+  let withSecurity = false;
   let reportPath;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--with-openclaw') {
       withOpenClaw = true;
+      continue;
+    }
+    if (arg === '--with-security') {
+      withSecurity = true;
       continue;
     }
     if (arg === '--report') {
@@ -31,7 +36,7 @@ function parseArgs(argv) {
     fail(`unsupported argument: ${arg}`);
   }
 
-  return { withOpenClaw, reportPath };
+  return { withOpenClaw, withSecurity, reportPath };
 }
 
 function resolveDefaultReportPath() {
@@ -79,6 +84,9 @@ const steps = [
 if (parsed.withOpenClaw) {
   steps.push({ name: 'test:openclaw:smoke', command: 'npm', args: ['run', 'test:openclaw:smoke'] });
 }
+if (parsed.withSecurity) {
+  steps.push({ name: 'test:openclaw:security', command: 'npm', args: ['run', 'test:openclaw:security'] });
+}
 
 const summarySteps = [];
 let ok = true;
@@ -95,6 +103,7 @@ for (const step of steps) {
 const report = {
   generatedAt: new Date().toISOString(),
   withOpenClaw: parsed.withOpenClaw,
+  withSecurity: parsed.withSecurity,
   ok,
   nodeVersion: process.version,
   cwd: process.cwd(),

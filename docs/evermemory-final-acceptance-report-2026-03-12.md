@@ -34,6 +34,7 @@
 6. operator/troubleshooting 文档收口
 7. OpenClaw 真实链路实测收口（见 `docs/evermemory-openclaw-e2e-report-2026-03-12-phase2.md`）
 8. 新增自动化门禁命令 `npm run test:openclaw:smoke`（插件加载 + store/recall + DB 证据）
+9. 新增 OpenClaw 安全回归门禁 `npm run test:openclaw:security`（基线文件：`config/openclaw-security-baseline.json`）
 
 ### 仍可持续优化（非阻塞）
 
@@ -50,6 +51,8 @@
 ✅ npm run test:unit
 ✅ npm run validate
 ✅ npm run test:openclaw:smoke
+✅ npm run test:openclaw:security
+✅ npm run quality:gate:openclaw
 ```
 
 单元测试通过数：53/53

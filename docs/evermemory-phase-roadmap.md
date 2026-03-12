@@ -20,7 +20,7 @@
 | Phase 4 | Behavior Evolution | 已完成 | 把 candidate rules 提升为 active behavior rules |
 | Phase 5 | Retrieval & Lifecycle Optimization | 已完成 | 提升 recall 质量与 lifecycle 治理 |
 | Phase 6 | Extended Operations | 已完成 | explainability/operator/import-export/review/restore/docs 收口 |
-| Phase 7 | Release Quality & Operational Hardening | 进行中 | 一键质量门禁、OpenClaw 实测门禁、发布流程与安全收口 |
+| Phase 7 | Release Quality & Operational Hardening | 已完成 | 一键质量门禁、OpenClaw 实测门禁、发布流程与安全收口 |
 
 ---
 
