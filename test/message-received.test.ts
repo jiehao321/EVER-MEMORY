@@ -30,11 +30,22 @@ test('messageReceived performs intent-guided recall and updates interaction runt
   assert.ok(result.intent.signals.memoryNeed === 'deep' || result.intent.signals.memoryNeed === 'targeted');
   assert.ok(result.recall.total >= 1);
 
+  const statusResult = app.messageReceived({
+    sessionId: 'session-message-1',
+    messageId: 'msg-1-status',
+    text: '现在项目进展到哪了？请给我当前阶段状态。',
+    scope: { userId: 'u-message-1', project: 'evermemory' },
+  });
+  assert.equal(statusResult.intent.intent.type, 'status_update');
+  assert.equal(statusResult.intent.signals.memoryNeed, 'deep');
+  assert.ok(statusResult.recall.total >= 1);
+  assert.ok(statusResult.recall.items.some((item) => item.type === 'project' || item.type === 'constraint'));
+
   const interaction = app.getRuntimeInteractionContext('session-message-1');
   assert.ok(interaction);
-  assert.equal(interaction?.messageId, 'msg-1');
-  assert.equal(interaction?.intent.id, result.intent.id);
-  assert.equal(interaction?.recalledItems.length, result.recall.total);
+  assert.equal(interaction?.messageId, 'msg-1-status');
+  assert.equal(interaction?.intent.id, statusResult.intent.id);
+  assert.equal(interaction?.recalledItems.length, statusResult.recall.total);
 
   const processedEvents = app.debugRepo.listRecent('interaction_processed', 20);
   assert.ok(processedEvents.length >= 1);

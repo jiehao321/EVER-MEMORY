@@ -29,6 +29,17 @@ test('intent service writes deterministic intent records and debug events', () =
   assert.equal(planning.signals.actionNeed, 'analysis');
   assert.ok(planning.retrievalHints.preferredTypes.includes('project'));
   assert.ok(planning.retrievalHints.preferredScopes.includes('project'));
+  assert.equal(planning.signals.memoryNeed, 'targeted');
+
+  const status = app.analyzeIntent({
+    text: '现在项目进展到哪了？请给我当前阶段汇报。',
+    sessionId: 'session-1',
+    scope: { userId: 'user-1', project: 'evermemory' },
+  });
+  assert.equal(status.intent.type, 'status_update');
+  assert.equal(status.signals.memoryNeed, 'deep');
+  assert.equal(status.signals.actionNeed, 'analysis');
+  assert.ok(status.retrievalHints.preferredTypes.includes('project'));
 
   const persisted = app.intentRepo.findById(correction.id);
   assert.ok(persisted);

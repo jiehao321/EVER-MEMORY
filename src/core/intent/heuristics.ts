@@ -40,6 +40,11 @@ const PLANNING_PATTERNS = [
   /(计划|路线图|里程碑|阶段|拆分|推进)/,
 ];
 
+const STATUS_PATTERNS = [
+  /\b(progress|status|where are we|current phase|latest)\b/i,
+  /(进展|状态|到哪了|到哪里了|当前阶段|最近情况|最新情况|汇报)/,
+];
+
 const EXECUTION_PATTERNS = [
   /\b(implement|execute|fix|build)\b/i,
   /(实现|执行|修复|落地|开发|开始做)/,
@@ -81,6 +86,9 @@ function inferIntentType(text: string): { type: IntentType; subtype?: string; co
   if (containsAny(text, PREFERENCE_PATTERNS)) {
     return { type: 'preference', confidence: 0.92 };
   }
+  if (containsAny(text, STATUS_PATTERNS)) {
+    return { type: 'status_update', confidence: 0.9 };
+  }
   if (containsAny(text, PLANNING_PATTERNS)) {
     return { type: 'planning', confidence: 0.88 };
   }
@@ -117,6 +125,9 @@ function inferActionNeed(intentType: IntentType): IntentActionNeed {
   if (intentType === 'instruction') {
     return 'execution';
   }
+  if (intentType === 'status_update') {
+    return 'analysis';
+  }
   if (intentType === 'question') {
     return 'answer';
   }
@@ -136,6 +147,12 @@ function inferMemoryNeed(text: string, intentType: IntentType): IntentMemoryNeed
   if (intentType === 'planning' && containsAny(text, MEMORY_CUE_PATTERNS)) {
     return 'deep';
   }
+  if (intentType === 'planning') {
+    return 'targeted';
+  }
+  if (intentType === 'status_update') {
+    return 'deep';
+  }
   if (containsAny(text, MEMORY_CUE_PATTERNS) || intentType === 'preference') {
     return 'targeted';
   }
@@ -150,7 +167,9 @@ function inferPreferredTypes(intentType: IntentType): MemoryType[] {
     case 'preference':
       return ['preference', 'style', 'constraint'];
     case 'planning':
-      return ['project', 'task', 'decision'];
+      return ['project', 'task', 'decision', 'constraint'];
+    case 'status_update':
+      return ['project', 'decision', 'task', 'summary', 'constraint'];
     case 'correction':
       return ['decision', 'constraint', 'fact'];
     case 'instruction':
@@ -168,6 +187,9 @@ function inferPreferredTimeBias(intentType: IntentType): RetrievalTimeBias {
   }
   if (intentType === 'planning') {
     return 'balanced';
+  }
+  if (intentType === 'status_update') {
+    return 'recent';
   }
   if (intentType === 'correction') {
     return 'recent';

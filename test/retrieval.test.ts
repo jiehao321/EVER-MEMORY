@@ -595,3 +595,55 @@ test('recallForIntent deep mode derives non-empty focused query', () => {
   app.database.connection.close();
   rmSync(databasePath, { force: true });
 });
+
+test('recallForIntent deep mode ignores timestamp prefix numeric noise and keeps semantic token', () => {
+  const databasePath = createTempDbPath('retrieval-deep-query-timestamp');
+  const app = initializeEverMemory({ databasePath });
+  const tag = 'RDLPROG-TST-20260313';
+
+  app.evermemoryStore({
+    content: `项目状态：${tag} 已完成记忆保存修复，下一步是记忆衰减策略。`,
+    scope: { userId: 'u-rank-7', project: 'evermemory' },
+    type: 'project',
+  });
+
+  const deepIntent: IntentRecord = {
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    sessionId: 's-deep-query-timestamp',
+    rawText: `[Fri 2026-03-13 10:54 GMT+8] ${tag} 的当前进展和下一步是什么？`,
+    intent: {
+      type: 'status_update',
+      confidence: 0.9,
+    },
+    signals: {
+      urgency: 'medium',
+      emotionalTone: 'neutral',
+      actionNeed: 'analysis',
+      memoryNeed: 'deep',
+      preferenceRelevance: 0.1,
+      correctionSignal: 0,
+    },
+    entities: [],
+    retrievalHints: {
+      preferredTypes: ['project', 'summary'],
+      preferredScopes: ['project', 'user'],
+      preferredTimeBias: 'recent',
+    },
+  };
+
+  const result = app.retrievalService.recallForIntent({
+    query: '',
+    scope: { userId: 'u-rank-7', project: 'evermemory' },
+    intent: deepIntent,
+    limit: 8,
+  });
+  assert.ok(result.total >= 1);
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.notEqual((event?.payload.query as string), '2026');
+  assert.ok((event?.payload.query as string).includes('rdlprog') || (event?.payload.query as string).includes('RDLPROG'));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});

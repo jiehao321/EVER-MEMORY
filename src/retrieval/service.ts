@@ -47,8 +47,30 @@ const DEEP_QUERY_PRIORITY_TERMS = [
   'project', 'plan', 'milestone', 'phase', 'task', 'constraint', 'decision', 'risk', 'quality', 'rollback',
 ] as const;
 
+function sanitizeInputText(rawText: string): string {
+  return rawText
+    .replace(/^\[[^\]]+\]\s*/u, '')
+    .trim();
+}
+
+function isNoisyNumericToken(token: string): boolean {
+  if (!token) {
+    return true;
+  }
+  if (/^\d+$/.test(token)) {
+    return true;
+  }
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(token)) {
+    return true;
+  }
+  if (/^\d{1,2}:\d{2}$/.test(token)) {
+    return true;
+  }
+  return false;
+}
+
 function buildDeepQuery(rawText: string): string {
-  const normalized = rawText
+  const normalized = sanitizeInputText(rawText)
     .toLowerCase()
     .replace(/[^a-z0-9_\u4e00-\u9fff]+/g, ' ')
     .trim();
@@ -65,6 +87,10 @@ function buildDeepQuery(rawText: string): string {
   const rawTerms = normalized.split(/\s+/g).filter((term) => term.length > 0);
   const terms: string[] = [];
   for (const rawTerm of rawTerms) {
+    if (isNoisyNumericToken(rawTerm)) {
+      continue;
+    }
+
     if (DEEP_QUERY_STOPWORDS.has(rawTerm)) {
       continue;
     }
@@ -98,14 +124,14 @@ function buildDeepQuery(rawText: string): string {
   }
 
   if (uniqueTerms.length === 0) {
-    return rawText.trim().slice(0, 48);
+    return sanitizeInputText(rawText).slice(0, 48);
   }
 
-  return uniqueTerms.sort((left, right) => right.length - left.length)[0] ?? rawText.trim().slice(0, 48);
+  return uniqueTerms.sort((left, right) => right.length - left.length)[0] ?? sanitizeInputText(rawText).slice(0, 48);
 }
 
 function pickIntentQuery(rawText: string, memoryNeed: RecallForIntentRequest['intent']['signals']['memoryNeed']): string {
-  const trimmed = rawText.trim();
+  const trimmed = sanitizeInputText(rawText);
   if (!trimmed) {
     return '';
   }
