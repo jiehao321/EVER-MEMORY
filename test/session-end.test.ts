@@ -202,3 +202,40 @@ test('project continuity recall stays stable across sessions for progress/stage/
   app.database.connection.close();
   rmSync(databasePath, { force: true });
 });
+
+test('sessionEnd does not over-generate decision or project summary from weak generic signals', () => {
+  const databasePath = createTempDbPath('session-end-boundary');
+  const app = initializeEverMemory({ databasePath });
+
+  app.messageReceived({
+    sessionId: 'session-boundary-1',
+    messageId: 'msg-boundary-0',
+    text: '我们继续处理这个项目。',
+    scope: { userId: 'u-boundary-1', project: 'boundary-project' },
+  });
+
+  const result = app.sessionEnd({
+    sessionId: 'session-boundary-1',
+    messageId: 'msg-boundary-1',
+    scope: { userId: 'u-boundary-1', project: 'boundary-project' },
+    inputText: '继续推进当前任务。',
+    actionSummary: '继续处理当前事项。',
+    outcomeSummary: 'run_success',
+    evidenceRefs: ['msg-boundary-1'],
+  });
+
+  const autoMemories = app.memoryRepo.search({
+    scope: { userId: 'u-boundary-1', project: 'boundary-project' },
+    archived: false,
+    activeOnly: true,
+    limit: 20,
+  });
+
+  assert.ok((result.autoMemory?.generatedByKind?.decision ?? 0) === 0);
+  assert.ok((result.autoMemory?.generatedByKind?.project_summary ?? 0) === 0);
+  assert.ok(autoMemories.every((item) => item.type !== 'decision'));
+  assert.ok(autoMemories.every((item) => !(item.type === 'summary' && item.tags.includes('active_project_summary'))));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});

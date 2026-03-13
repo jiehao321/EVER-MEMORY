@@ -21,6 +21,11 @@ const PROJECT_PATTERNS = [
   /(项目|阶段|里程碑|路线图|计划|推进|下一步)/,
 ];
 
+const PROJECT_COMPACT_PATTERNS = [
+  /\b(project|phase|milestone|roadmap|status|progress)\b/i,
+  /(项目状态|项目进展|阶段|里程碑|路线图|状态|进展|当前阶段|项目代号)/,
+];
+
 const CORRECTION_PATTERNS = [
   /\b(i mean|correction|to be clear)\b/i,
   /(不是|更正|纠正|准确来说|修正一下)/,
@@ -28,7 +33,7 @@ const CORRECTION_PATTERNS = [
 
 const DECISION_PATTERNS = [
   /\b(decide|decided|choose|selected|final)\b/i,
-  /(决定|定为|采用|改为|最终方案)/,
+  /(决定|定为|采用|改为|最终方案|最近决策|决策：)/,
 ];
 
 const PREFERENCE_PATTERNS = [
@@ -44,6 +49,17 @@ const CONSTRAINT_PATTERNS = [
 const NEXT_STEP_PATTERNS = [
   /\b(next step|follow up|todo|to do|then)\b/i,
   /(下一步|接下来|后续|待办|跟进)/,
+];
+
+const PROJECT_STATUS_PATTERNS = [
+  /\b(status|progress|phase|stage|milestone|roadmap)\b/i,
+  /(状态|进展|阶段|里程碑|路线图|批次|当前阶段)/,
+];
+
+const GENERIC_OUTCOME_PATTERNS = [
+  /^run_(success|failed)$/i,
+  /^(success|failed|done|completed)$/i,
+  /^(成功|失败|完成)$/u,
 ];
 
 const TEST_NOISE_PATTERNS = [
@@ -159,6 +175,11 @@ function deriveNextStep(
     return fromAction;
   }
 
+  const fromOutcome = clip(input.outcomeSummary, 120);
+  if (fromOutcome && containsAny(fromOutcome, NEXT_STEP_PATTERNS)) {
+    return fromOutcome;
+  }
+
   if (containsAny(sourceText, NEXT_STEP_PATTERNS)) {
     return clip(sourceText, 120);
   }
@@ -173,6 +194,14 @@ function countByKind(
     acc[kind] = (acc[kind] ?? 0) + 1;
     return acc;
   }, {} as Partial<Record<AutoMemoryCandidateKind, number>>);
+}
+
+function isGenericOutcome(value: string): boolean {
+  return GENERIC_OUTCOME_PATTERNS.some((pattern) => pattern.test(value.trim()));
+}
+
+function hasProjectStatusSignal(value: string): boolean {
+  return containsAny(value, PROJECT_STATUS_PATTERNS);
 }
 
 function buildAutoMemoryCandidates(
@@ -240,8 +269,8 @@ function buildAutoMemoryCandidates(
     || containsAny(combined, CONSTRAINT_PATTERNS)
     || Boolean(reflection?.analysis.nextTimeRecommendation);
   const decisionHint = containsAny(combined, DECISION_PATTERNS)
-    || intent?.intent.type === 'planning'
-    || intent?.intent.type === 'status_update';
+    || containsAny(actionSummary, DECISION_PATTERNS)
+    || containsAny(inputText, DECISION_PATTERNS);
   const preferenceHint = (intent?.intent.type === 'preference')
     || (intent?.signals.preferenceRelevance ?? 0) >= 0.75
     || containsAny(combined, PREFERENCE_PATTERNS);
@@ -252,8 +281,21 @@ function buildAutoMemoryCandidates(
       || (constraintHint ? '先复述修正点并确认，再继续执行。' : ''),
     120,
   );
-  const recentDecision = clip(actionSummary || inputText, 120);
-  const projectStatus = clip(outcomeSummary || actionSummary || inputText, 120);
+  const recentDecision = decisionHint ? clip(actionSummary || inputText, 120) : '';
+  const projectStatusSource = [
+    inputText && hasProjectStatusSignal(inputText) ? inputText : '',
+    actionSummary && hasProjectStatusSignal(actionSummary) ? actionSummary : '',
+    inputText && containsAny(inputText, PROJECT_COMPACT_PATTERNS) ? inputText : '',
+    actionSummary && containsAny(actionSummary, PROJECT_COMPACT_PATTERNS) ? actionSummary : '',
+    outcomeSummary && !isGenericOutcome(outcomeSummary) ? outcomeSummary : '',
+  ].find((value) => Boolean(value)) ?? '';
+  const projectStatus = clip(projectStatusSource, 120);
+  const summarySignalCount = [
+    Boolean(projectStatus),
+    Boolean(keyConstraint),
+    Boolean(recentDecision),
+    Boolean(nextStep),
+  ].filter(Boolean).length;
 
   if (isProjectLike) {
     const parts = [
@@ -341,7 +383,17 @@ function buildAutoMemoryCandidates(
     });
   }
 
-  if (isProjectLike && projectStatus) {
+  const hasCompactProjectSignal = Boolean(projectName)
+    && Boolean(inputText)
+    && Boolean(actionSummary)
+    && (
+      containsAny(inputText, PROJECT_COMPACT_PATTERNS)
+      || containsAny(actionSummary, PROJECT_COMPACT_PATTERNS)
+      || hasProjectStatusSignal(inputText)
+      || hasProjectStatusSignal(actionSummary)
+    );
+
+  if (isProjectLike && projectStatus && (summarySignalCount >= 2 || hasCompactProjectSignal)) {
     candidates.push({
       kind: 'project_summary',
       memory: {

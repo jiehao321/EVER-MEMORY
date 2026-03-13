@@ -44,7 +44,9 @@
 8. `evermemory-director-global-plan-2026-03-13.md`
 9. `evermemory-director-executable-task-pack-2026-03-13.md`
 10. `evermemory-director-program-plan-2026-03-14.md`
-11. 各 `phase*-technical-plan.md` 与 `phase*-task-breakdown.md`
+11. `evermemory-director-overall-analysis-and-plan-2026-03-14.md`
+12. `evermemory-agent-teams-dev-board-2026-03-14.md`
+13. 各 `phase*-technical-plan.md` 与 `phase*-task-breakdown.md`
 
 ---
 
@@ -69,6 +71,8 @@
 5. `evermemory-troubleshooting.md`
 6. `evermemory-capability-matrix.md`
 7. `evermemory-v1-boundary.md`
+8. `evermemory-director-overall-analysis-and-plan-2026-03-14.md`
+9. `evermemory-agent-teams-dev-board-2026-03-14.md`
 
 ---
 
