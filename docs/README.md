@@ -1,5 +1,9 @@
 # EverMemory Docs README
 
+Language:
+- 中文：本文件
+- English: `docs/README.en.md`
+
 ## 1. 文档目标
 
 本目录已收敛为 `0.0.1` 发布与后续运维的统一文档入口，避免历史文档分散导致执行口径不一致。

@@ -218,6 +218,96 @@
       "requireNoTestNoise": true
     },
     {
+      "id": "next-06",
+      "category": "next_step",
+      "query": "接下来做什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-07",
+      "category": "next_step",
+      "query": "next action 是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-08",
+      "category": "next_step",
+      "query": "后续计划是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-09",
+      "category": "next_step",
+      "query": "下一阶段做什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-10",
+      "category": "next_step",
+      "query": "what's next?",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-11",
+      "category": "next_step",
+      "query": "下一项任务是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "task", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-12",
+      "category": "next_step",
+      "query": "接下来怎么办？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-13",
+      "category": "next_step",
+      "query": "next milestone 是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-14",
+      "category": "next_step",
+      "query": "后续动作有哪些？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "task", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-15",
+      "category": "next_step",
+      "query": "follow up 计划是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
       "id": "decision-01",
       "category": "last_decision",
       "query": "上次最后决策是什么？",

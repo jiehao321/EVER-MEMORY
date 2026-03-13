@@ -1,7 +1,7 @@
 {
   "name": "evermemory",
   "version": "0.0.1",
-  "private": true,
+  "private": false,
   "description": "EverMemory deterministic memory plugin for OpenClaw with intent and reflection baseline.",
   "license": "UNLICENSED",
   "type": "module",

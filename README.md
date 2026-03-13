@@ -2,6 +2,21 @@
 
 EverMemory is an OpenClaw memory plugin package focused on deterministic, inspectable persistence and continuity.
 
+## Language
+
+- English: this file (`README.md`)
+- 中文文档: [`README.zh-CN.md`](README.zh-CN.md)
+
+## GitHub Quick Links
+
+- Installation guide: `docs/evermemory-installation-guide.md`
+- Operator runbook: `docs/evermemory-operator-runbook.md`
+- Release checklist: `docs/evermemory-release-checklist.md`
+- Rollback procedure: `docs/evermemory-rollback-procedure.md`
+- Capability matrix: `docs/evermemory-capability-matrix.md`
+- v1 boundary: `docs/evermemory-v1-boundary.md`
+- OpenClaw install/publish skill: `skills/openclaw-evermemory-installer/SKILL.md`
+
 ## Current status
 
 This README describes the repository as it exists today, not the full roadmap.
@@ -20,10 +35,56 @@ See also:
 - `docs/evermemory-release-quality-checklist.md`
 - `docs/evermemory-release-0.0.1.md`
 
+**Operator procedures:**
+
+- Release checklist: `docs/evermemory-release-checklist.md`
+- Rollback procedure: `docs/evermemory-rollback-procedure.md`
+- Operator runbook: `docs/evermemory-operator-runbook.md`
+- Troubleshooting guide: `docs/evermemory-troubleshooting.md`
+
 Current operator focus (2026-03-13):
 - continuity quality and real project-memory usefulness are below target
 - automatic interaction-to-memory capture is not yet a stable default production flow
 - memory decay/lifecycle exists as a baseline, but requires further productization for true long-horizon continuity
+
+Latest quality gate snapshot (2026-03-13):
+- `teams:status` PASS
+- `teams:dev` PASS
+- `teams:release` PASS
+- recall benchmark: `30 samples / 29 pass / accuracy 0.9667`
+- OpenClaw security gate: `critical=0`
+
+## Quick Start (English)
+
+1. Build and validate:
+
+```bash
+npm run check
+npm run test:unit
+npm run teams:dev
+```
+
+2. Install plugin to OpenClaw:
+
+```bash
+openclaw plugins install /path/to/evermemory --link
+openclaw plugins enable evermemory
+openclaw config set plugins.slots.memory evermemory
+openclaw gateway restart
+openclaw plugins info evermemory
+```
+
+3. Verify release-level quality:
+
+```bash
+npm run teams:release
+```
+
+4. Optional: use the bundled skill workflow:
+
+```bash
+bash skills/openclaw-evermemory-installer/scripts/install_plugin.sh --source local --link --bind-slot --restart-gateway
+```
 
 The project now includes:
 
@@ -916,11 +977,27 @@ Compatibility aliases provided:
 
 ### Rollback
 
-If EverMemory causes issues after enablement:
+If EverMemory causes issues after enablement, follow the rollback procedure:
 
-1. Remove or change `plugins.slots.memory`
-2. Set `plugins.entries.evermemory.enabled` to `false`
-3. Remove the EverMemory root from `plugins.load.paths`
-4. Restart gateway
+See `docs/evermemory-rollback-procedure.md` for detailed step-by-step rollback commands.
+
+Quick rollback (2 minutes):
+
+1. Unbind memory slot or switch to previous provider in `~/.openclaw/openclaw.json`
+2. Restart gateway: `openclaw gateway restart`
+3. Verify: `openclaw gateway status`
+
+If issues persist:
+
+1. Disable plugin entry: set `plugins.entries.evermemory.enabled` to `false`
+2. Restart gateway: `openclaw gateway restart`
+3. Verify: `openclaw plugins info evermemory`
+
+For complete removal:
+
+1. Remove EverMemory path from `plugins.load.paths`
+2. Restart gateway: `openclaw gateway restart`
+
+Always preserve the database during rollback for evidence and potential re-enablement.
 
 See `docs/evermemory-installation-guide.md` for the full install / verify / rollback procedure.

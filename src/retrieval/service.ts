@@ -207,6 +207,18 @@ function sanitizeInputText(rawText: string): string {
     .trim();
 }
 
+function looksLikeNextStepQuery(text: string): boolean {
+  const normalized = sanitizeInputText(text).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  if (/(下一步|接下来|后续|下一阶段|下一项|下一项任务)/.test(normalized)) {
+    return true;
+  }
+  return /\b(next\s*(step|action|milestone)|what'?s?\s+next|follow\s*up)\b/i.test(normalized);
+}
+
 function isNoisyNumericToken(token: string): boolean {
   if (!token) {
     return true;
@@ -318,6 +330,15 @@ function buildCandidateSeedQuery(rawQuery: string): string | undefined {
   }
   const firstToken = normalized.split(/\s+/g).find((part) => part.length >= 2);
   if (firstToken) {
+    if (
+      looksLikeNextStepQuery(firstToken)
+      || (
+        looksLikeNextStepQuery(normalized)
+        && (/^(what|whats|next|follow)$/i.test(firstToken))
+      )
+    ) {
+      return '下一步';
+    }
     if (firstToken.includes('下一步')) {
       return '下一步';
     }
@@ -927,13 +948,18 @@ export class RetrievalService {
     };
   }
 
-  private loadCandidates(request: RecallRequest, limit: number, queryEnabled: boolean): MemoryItem[] {
+  private loadCandidates(
+    request: RecallRequest,
+    limit: number,
+    queryEnabled: boolean,
+    meta: RecallExecutionMeta,
+  ): MemoryItem[] {
     const candidateLimit = queryEnabled
       ? Math.max(limit * 5, limit)
       : Math.max(limit * 8, this.semanticCandidateLimit);
     const seededQuery = queryEnabled ? buildCandidateSeedQuery(request.query) : undefined;
 
-    return this.memoryRepo.search({
+    const primary = this.memoryRepo.search({
       query: seededQuery,
       scope: request.scope,
       types: request.types,
@@ -941,6 +967,27 @@ export class RetrievalService {
       activeOnly: true,
       archived: false,
       limit: candidateLimit,
+    });
+
+    if (!queryEnabled || primary.length > 0) {
+      return primary;
+    }
+
+    // In project-oriented routed recall, a strict seed token can occasionally miss all
+    // candidates (for example mixed-language "next action" phrasing). Fall back to
+    // scoped candidates so ranking/policy can still select high-value project memory.
+    if (!meta.projectOriented && !meta.routeApplied) {
+      return primary;
+    }
+
+    return this.memoryRepo.search({
+      query: undefined,
+      scope: request.scope,
+      types: request.types,
+      lifecycles: request.lifecycles,
+      activeOnly: true,
+      archived: false,
+      limit: Math.max(limit * 8, this.semanticCandidateLimit),
     });
   }
 
@@ -951,7 +998,7 @@ export class RetrievalService {
     meta: RecallExecutionMeta,
   ): { ranked: ScoredRecallItem[]; candidates: MemoryItem[]; semanticHitCount: number; candidatePolicy: CandidatePolicyStats } {
     if (mode === 'structured') {
-      const loaded = this.loadCandidates(request, limit, false);
+      const loaded = this.loadCandidates(request, limit, false, meta);
       const candidateResult = this.applyCandidatePolicy(loaded, limit, meta);
       const candidates = candidateResult.candidates;
       const ranked = rankKeywordRecall(
@@ -981,7 +1028,7 @@ export class RetrievalService {
     }
 
     if (mode === 'keyword') {
-      const loaded = this.loadCandidates(request, limit, true);
+      const loaded = this.loadCandidates(request, limit, true, meta);
       const candidateResult = this.applyCandidatePolicy(loaded, limit, meta);
       const candidates = candidateResult.candidates;
       const ranked = rankKeywordRecall(candidates, request, { weights: this.keywordWeights }).map((entry) => {
@@ -1014,7 +1061,7 @@ export class RetrievalService {
     limit: number,
     meta: RecallExecutionMeta,
   ): { ranked: ScoredRecallItem[]; candidates: MemoryItem[]; semanticHitCount: number; candidatePolicy: CandidatePolicyStats } {
-    const loaded = this.loadCandidates(request, limit, false);
+    const loaded = this.loadCandidates(request, limit, false, meta);
     const candidateResult = this.applyCandidatePolicy(loaded, limit, meta);
     const candidates = candidateResult.candidates;
     const candidateMap = new Map(candidates.map((item) => [item.id, item]));

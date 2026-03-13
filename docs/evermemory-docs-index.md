@@ -11,8 +11,9 @@
 1. `evermemory-branch-and-release-governance.md`
 2. `evermemory-release-quality-checklist.md`
 3. `evermemory-release-0.0.1.md`
-4. `../README.md`
-5. `../package.json`
+4. `evermemory-release-freeze-signoff-2026-03-13.md`
+5. `../README.md`
+6. `../package.json`
 
 使用规则：
 
@@ -27,6 +28,7 @@
 2. `evermemory-troubleshooting.md`
 3. `evermemory-installation-guide.md`
 4. `evermemory-acceptance-handbook.md`
+5. `README.en.md`（英文入口）
 
 ---
 
@@ -39,7 +41,9 @@
 5. `evermemory-v2-implementation-plan.md`
 6. `evermemory-capability-matrix.md`
 7. `evermemory-v1-boundary.md`
-8. 各 `phase*-technical-plan.md` 与 `phase*-task-breakdown.md`
+8. `evermemory-director-global-plan-2026-03-13.md`
+9. `evermemory-director-executable-task-pack-2026-03-13.md`
+10. 各 `phase*-technical-plan.md` 与 `phase*-task-breakdown.md`
 
 ---
 
