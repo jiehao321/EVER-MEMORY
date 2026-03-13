@@ -209,6 +209,7 @@ function buildAutoMemoryCandidates(
     actor: 'system' as const,
     sessionId: input.sessionId,
     messageId: input.messageId,
+    channel: input.channel,
   };
   const sourceRuntimeProject: MemoryStoreInput['source'] = {
     ...sourceBase,
@@ -467,6 +468,10 @@ export function handleSessionEnd(
 
   debugRepo?.log('session_end_processed', input.sessionId, {
     sessionId: input.sessionId,
+    scopeUserId: input.scope?.userId,
+    scopeChatId: input.scope?.chatId,
+    scopeProject: input.scope?.project,
+    channel: input.channel,
     experienceId: experience.id,
     reflectionId: reviewedReflection?.id,
     reflected: Boolean(reviewedReflection),

@@ -59,6 +59,7 @@ export interface SessionEndInput {
   sessionId: string;
   messageId?: string;
   scope?: MemoryScope;
+  channel?: string;
   inputText?: string;
   actionSummary?: string;
   outcomeSummary?: string;
