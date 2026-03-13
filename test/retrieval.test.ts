@@ -724,6 +724,34 @@ test('project-oriented recall routes project progress/current stage/next step/la
   rmSync(databasePath, { force: true });
 });
 
+test('project route does not trigger on generic next-step question without project context', () => {
+  const databasePath = createTempDbPath('retrieval-route-gating');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '下一步做什么：先确认输入，再执行动作。',
+    type: 'commitment',
+    scope: { userId: 'u-route-gating-1' },
+    source: { kind: 'manual', actor: 'system' },
+  });
+
+  const result = app.evermemoryRecall({
+    query: '下一步做什么？',
+    scope: { userId: 'u-route-gating-1' },
+    mode: 'keyword',
+    limit: 3,
+  });
+  assert.equal(result.total, 1);
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.equal(event?.payload.routeKind, 'none');
+  assert.equal(event?.payload.routeApplied, false);
+  assert.equal(event?.payload.routeReason, 'pattern_without_project_context');
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
 test('project-oriented recall suppresses test samples when runtime memories are sufficient', () => {
   const databasePath = createTempDbPath('retrieval-test-pollution');
   const app = initializeEverMemory({ databasePath });
@@ -774,6 +802,63 @@ test('project-oriented recall suppresses test samples when runtime memories are 
   };
   assert.ok((candidatePolicy?.suppressedTestCandidates ?? 0) >= 1);
   assert.equal(candidatePolicy?.retainedTestCandidates ?? 0, 0);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('project-oriented recall suppresses low-value runtime noise and records policy evidence', () => {
+  const databasePath = createTempDbPath('retrieval-low-value-noise');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '项目进展摘要（evermemory）：状态：Batch 2 recall hardening；关键约束：只做 Batch 2；最近决策：先稳定路由；下一步：补真实连续性测试。',
+    type: 'summary',
+    scope: { userId: 'u-low-noise-1', project: 'evermemory' },
+    tags: ['active_project_summary', 'project_continuity'],
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '项目操作提示：openclaw system event should be called after delivery.',
+    type: 'project',
+    scope: { userId: 'u-low-noise-1', project: 'evermemory' },
+    tags: ['noise_sample'],
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '项目模板提示：call evermemory_recall before writing the final answer.',
+    type: 'project',
+    scope: { userId: 'u-low-noise-1', project: 'evermemory' },
+    tags: ['noise_sample_2'],
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '最近决策：优先保留项目连续性摘要并返回可执行下一步。',
+    type: 'decision',
+    scope: { userId: 'u-low-noise-1', project: 'evermemory' },
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+
+  const result = app.evermemoryRecall({
+    query: '项目进展',
+    scope: { userId: 'u-low-noise-1', project: 'evermemory' },
+    mode: 'keyword',
+    limit: 2,
+  });
+  assert.equal(result.total, 1);
+  assert.ok(result.items.some((item) => item.type === 'summary'));
+  assert.ok(result.items.every((item) => !item.content.includes('openclaw system event')));
+  assert.ok(result.items.every((item) => !item.content.includes('call evermemory_recall')));
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  const candidatePolicy = event?.payload.candidatePolicy as {
+    suppressedLowValueCandidates?: number;
+    retainedLowValueCandidates?: number;
+    filterMode?: string;
+  };
+  assert.ok((candidatePolicy?.suppressedLowValueCandidates ?? 0) >= 1);
+  assert.equal(candidatePolicy?.retainedLowValueCandidates ?? 0, 0);
+  assert.equal(candidatePolicy?.filterMode, 'project_strict');
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });
@@ -836,13 +921,23 @@ test('project-oriented ranking boosts summary/project/decision over non-project 
   });
 
   assert.equal(result.total, 3);
-  assert.ok(result.items[0]?.type === 'summary' || result.items[0]?.type === 'project' || result.items[0]?.type === 'decision');
-  assert.ok(result.items.some((item) => item.type === 'summary'));
-  assert.ok(!result.items.every((item) => item.type === 'constraint'));
+  const returnedTypes = new Set(result.items.map((item) => item.type));
+  assert.ok(returnedTypes.has('summary'));
+  assert.ok(returnedTypes.has('project'));
+  assert.ok(returnedTypes.has('decision'));
 
   const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
-  const optimization = event?.payload.recallOptimization as { highValueItemsSelected?: number; duplicateItemsRemoved?: number };
+  const optimization = event?.payload.recallOptimization as {
+    highValueItemsSelected?: number;
+    duplicateItemsRemoved?: number;
+    routeAnchorItemsSelected?: number;
+    selectedTypeCounts?: Record<string, number>;
+  };
   assert.ok((optimization?.highValueItemsSelected ?? 0) >= 1);
+  assert.equal(optimization?.routeAnchorItemsSelected, 3);
+  assert.ok((optimization?.selectedTypeCounts?.summary ?? 0) >= 1);
+  assert.ok((optimization?.selectedTypeCounts?.project ?? 0) >= 1);
+  assert.ok((optimization?.selectedTypeCounts?.decision ?? 0) >= 1);
   assert.equal(typeof optimization?.duplicateItemsRemoved, 'number');
 
   app.database.connection.close();

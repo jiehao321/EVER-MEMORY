@@ -40,6 +40,11 @@ interface RecallExecutionMeta {
   routeKind: ProjectRecallRouteKind;
   routeApplied: boolean;
   projectOriented: boolean;
+  routeReason: 'none' | 'project_signal' | 'scope_project' | 'intent_project' | 'pattern_without_project_context';
+  routeScore: number;
+  routeProjectSignal: boolean;
+  hasProjectScope: boolean;
+  intentProjectOriented: boolean;
 }
 
 interface CandidatePolicyStats {
@@ -47,12 +52,25 @@ interface CandidatePolicyStats {
   filteredCandidates: number;
   suppressedTestCandidates: number;
   retainedTestCandidates: number;
+  suppressedLowValueCandidates: number;
+  retainedLowValueCandidates: number;
+  filterMode: 'default' | 'project_strict';
   dataClassCounts: Record<MemoryDataClass, number>;
 }
 
 interface RecallSelectionStats {
   duplicateItemsRemoved: number;
   highValueItemsSelected: number;
+  routeAnchorItemsSelected: number;
+  selectedTypeCounts: Partial<Record<MemoryType, number>>;
+}
+
+interface ProjectRouteDetection {
+  routeKind: ProjectRecallRouteKind;
+  routeApplied: boolean;
+  routeScore: number;
+  routeReason: RecallExecutionMeta['routeReason'];
+  projectSignal: boolean;
 }
 
 interface ScoredRecallItem {
@@ -80,30 +98,44 @@ const DEEP_QUERY_PRIORITY_TERMS = [
 ] as const;
 
 const PROJECT_PROGRESS_PATTERNS = [
-  /\b(project progress|progress update|status update|where are we|how far)/i,
-  /(项目进展|当前进展|最近进展|进度|到哪了|到哪里了|刚才说到哪了|汇报)/,
+  /\b(project progress|latest progress|progress update|status update|where are we|how far)\b/i,
+  /(项目进展|项目进度|当前进展|最近进展|进度|目前进展|到哪了|到哪里了|现在到哪一步了|刚才说到哪了|汇报)/,
 ];
 
 const CURRENT_STAGE_PATTERNS = [
-  /\b(current stage|current phase|which phase|stage now)\b/i,
-  /(当前阶段|现在阶段|第几阶段|阶段状态|phase\s*\d+|phase)/i,
+  /\b(current stage|current phase|which phase|what stage|stage now|phase now)\b/i,
+  /(当前阶段|现在阶段|当前处于哪个阶段|现在到哪个阶段|第几阶段|阶段状态|phase\s*\d+|phase)/i,
 ];
 
 const NEXT_STEP_PATTERNS = [
   /\b(next step|what next|next action|follow\s*up|next milestone)\b/i,
-  /(下一步|接下来|后续动作|后续计划|下一阶段|下一项)/,
+  /(下一步|下一步计划|下一步安排|接下来|接下来做什么|后续动作|后续计划|下一阶段|下一项)/,
 ];
 
 const LAST_DECISION_PATTERNS = [
   /\b(last decision|latest decision|what did we decide|why did we decide)\b/i,
-  /(最近决策|最后决策|上次决定|最终决定|为什么这样决定|为什么这么决定)/,
+  /(最近决策|最近决定|最后决策|上次决定|上次决策|最终决定|为什么这样决定|为什么这么决定|为什么这么做)/,
 ];
 
 const PROJECT_ORIENTED_INTENTS = new Set(['planning', 'status_update']);
 const PROJECT_ORIENTED_QUERY_PATTERNS = [
-  /(\bproject\b|\bphase\b|\bmilestone\b|\bdecision\b|\bnext step\b|\bprogress\b|\bstage\b)/i,
-  /(项目|阶段|里程碑|决策|下一步|进展|状态)/,
+  /(\bproject\b|\bphase\b|\bmilestone\b|\broadmap\b|\bbatch\b|\bprogress\b|\bstage\b|\bstatus\b)/i,
+  /(项目|阶段|里程碑|路线图|批次|进展|状态)/,
 ];
+
+const PROJECT_ROUTE_KIND_PRIORITY: Record<Exclude<ProjectRecallRouteKind, 'none'>, number> = {
+  last_decision: 4,
+  next_step: 3,
+  current_stage: 2,
+  project_progress: 1,
+};
+
+const PROJECT_ROUTE_PATTERNS: Record<Exclude<ProjectRecallRouteKind, 'none'>, RegExp[]> = {
+  project_progress: PROJECT_PROGRESS_PATTERNS,
+  current_stage: CURRENT_STAGE_PATTERNS,
+  next_step: NEXT_STEP_PATTERNS,
+  last_decision: LAST_DECISION_PATTERNS,
+};
 
 const PROJECT_ROUTE_TYPE_PRIORITY: Record<Exclude<ProjectRecallRouteKind, 'none'>, MemoryType[]> = {
   project_progress: ['summary', 'project', 'decision', 'commitment', 'constraint', 'task'],
@@ -112,18 +144,25 @@ const PROJECT_ROUTE_TYPE_PRIORITY: Record<Exclude<ProjectRecallRouteKind, 'none'
   last_decision: ['decision', 'summary', 'project', 'constraint', 'commitment'],
 };
 
+const PROJECT_ROUTE_ANCHOR_PRIORITY: Record<Exclude<ProjectRecallRouteKind, 'none'>, MemoryType[]> = {
+  project_progress: ['summary', 'project', 'decision'],
+  current_stage: ['summary', 'project', 'decision'],
+  next_step: ['commitment', 'decision', 'summary'],
+  last_decision: ['decision', 'summary', 'project'],
+};
+
 const PROJECT_ROUTE_QUERY: Record<Exclude<ProjectRecallRouteKind, 'none'>, string> = {
-  project_progress: '项目连续性摘要 项目状态 progress stage',
-  current_stage: '当前阶段 项目状态 phase stage',
-  next_step: '下一步 next step follow up commitment',
-  last_decision: '最近决策 decision',
+  project_progress: '项目进展 项目连续性摘要 项目状态 最近决策 下一步',
+  current_stage: '当前阶段 阶段状态 项目状态 最近决策',
+  next_step: '下一步 后续动作 commitment 最近决策',
+  last_decision: '最近决策 最终决定 decision 原因',
 };
 
 const PROJECT_ROUTE_MAX_LIMIT: Record<Exclude<ProjectRecallRouteKind, 'none'>, number> = {
-  project_progress: 6,
-  current_stage: 6,
-  next_step: 4,
-  last_decision: 4,
+  project_progress: 4,
+  current_stage: 4,
+  next_step: 3,
+  last_decision: 3,
 };
 
 const TEST_TAG_PATTERNS = [
@@ -136,6 +175,19 @@ const TEST_CONTENT_PATTERNS = [
   /AGENTS\.md instructions/i,
   /skills store policy \(operator configured\)/i,
   /\b(smoke\s*test|test\s*sample|fixture\s*data|shared-scope\s*test)\b/i,
+];
+
+const LOW_VALUE_CONTENT_PATTERNS = [
+  /skills store policy \(operator configured\)/i,
+  /AGENTS\.md instructions/i,
+  /do not claim exclusivity/i,
+  /\b(call|调用)\s*(evermemory_store|evermemory_recall|evermemory_status)\b/i,
+  /openclaw system event/i,
+  /\[\[reply_to_current\]\]/i,
+];
+
+const LOW_VALUE_TAG_PATTERNS = [
+  /(^|[-_])(sample|fixture|noise|boilerplate)([-_]|$)/i,
 ];
 
 const RUNTIME_SOURCE_KINDS = new Set([
@@ -301,30 +353,84 @@ function normalizeDedupKey(content: string): string {
     .trim();
 }
 
-function routeMatches(text: string, patterns: RegExp[]): boolean {
-  return patterns.some((pattern) => pattern.test(text));
+function routeScore(text: string, patterns: RegExp[]): number {
+  let score = 0;
+  for (const pattern of patterns) {
+    if (pattern.test(text)) {
+      score += 1;
+    }
+  }
+  return score;
 }
 
-function detectProjectRouteKind(text: string): ProjectRecallRouteKind {
+function hasProjectSignal(text: string): boolean {
+  return PROJECT_ORIENTED_QUERY_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function detectProjectRoute(
+  text: string,
+  options: { hasProjectScope?: boolean; intentProjectOriented?: boolean } = {},
+): ProjectRouteDetection {
   const normalized = sanitizeInputText(text);
   if (!normalized) {
-    return 'none';
+    return {
+      routeKind: 'none',
+      routeApplied: false,
+      routeScore: 0,
+      routeReason: 'none',
+      projectSignal: false,
+    };
   }
 
-  if (routeMatches(normalized, LAST_DECISION_PATTERNS)) {
-    return 'last_decision';
-  }
-  if (routeMatches(normalized, NEXT_STEP_PATTERNS)) {
-    return 'next_step';
-  }
-  if (routeMatches(normalized, CURRENT_STAGE_PATTERNS)) {
-    return 'current_stage';
-  }
-  if (routeMatches(normalized, PROJECT_PROGRESS_PATTERNS)) {
-    return 'project_progress';
+  const scored = Object.entries(PROJECT_ROUTE_PATTERNS)
+    .map(([kind, patterns]) => ({
+      kind: kind as Exclude<ProjectRecallRouteKind, 'none'>,
+      score: routeScore(normalized, patterns),
+      priority: PROJECT_ROUTE_KIND_PRIORITY[kind as Exclude<ProjectRecallRouteKind, 'none'>],
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return right.priority - left.priority;
+    });
+
+  if (scored.length === 0) {
+    return {
+      routeKind: 'none',
+      routeApplied: false,
+      routeScore: 0,
+      routeReason: 'none',
+      projectSignal: hasProjectSignal(normalized),
+    };
   }
 
-  return 'none';
+  const top = scored[0];
+  const projectSignal = hasProjectSignal(normalized);
+  const hasProjectScope = options.hasProjectScope === true;
+  const intentProjectOriented = options.intentProjectOriented === true;
+  if (!projectSignal && !hasProjectScope && !intentProjectOriented) {
+    return {
+      routeKind: 'none',
+      routeApplied: false,
+      routeScore: top.score,
+      routeReason: 'pattern_without_project_context',
+      projectSignal,
+    };
+  }
+
+  return {
+    routeKind: top.kind,
+    routeApplied: true,
+    routeScore: top.score,
+    routeReason: projectSignal
+      ? 'project_signal'
+      : hasProjectScope
+        ? 'scope_project'
+        : 'intent_project',
+    projectSignal,
+  };
 }
 
 function mergeOrderedTypes(primary: MemoryType[], secondary: MemoryType[]): MemoryType[] {
@@ -453,6 +559,11 @@ export class RetrievalService {
       routeKind: executionMeta.routeKind,
       routeApplied: executionMeta.routeApplied,
       projectOriented: executionMeta.projectOriented,
+      routeReason: executionMeta.routeReason,
+      routeScore: executionMeta.routeScore,
+      routeProjectSignal: executionMeta.routeProjectSignal,
+      hasProjectScope: executionMeta.hasProjectScope,
+      intentProjectOriented: executionMeta.intentProjectOriented,
       candidates: candidates.length,
       candidatePolicy,
       recallOptimization: selectionStats,
@@ -486,10 +597,14 @@ export class RetrievalService {
     }
 
     const rawText = request.query?.trim() || request.intent.rawText;
-    const routeKind = detectProjectRouteKind(rawText);
     const intentProjectOriented = PROJECT_ORIENTED_INTENTS.has(request.intent.intent.type);
-    const routeApplied = routeKind !== 'none';
-    const projectOriented = routeApplied || intentProjectOriented;
+    const route = detectProjectRoute(rawText, {
+      hasProjectScope: Boolean(request.scope?.project),
+      intentProjectOriented,
+    });
+    const routeKind = route.routeKind;
+    const routeApplied = route.routeApplied;
+    const projectOriented = routeApplied || intentProjectOriented || route.projectSignal;
 
     const hintedTypes = request.intent.retrievalHints.preferredTypes;
     const routeTypes = routeApplied ? PROJECT_ROUTE_TYPE_PRIORITY[routeKind as Exclude<ProjectRecallRouteKind, 'none'>] : [];
@@ -543,19 +658,32 @@ export class RetrievalService {
       routeKind,
       routeApplied,
       projectOriented,
+      routeReason: route.routeReason,
+      routeScore: route.routeScore,
+      routeProjectSignal: route.projectSignal,
+      hasProjectScope: Boolean(request.scope?.project),
+      intentProjectOriented,
     });
   }
 
   private deriveExecutionMeta(request: RecallRequest): RecallExecutionMeta {
-    const routeKind = detectProjectRouteKind(request.query);
-    const routeApplied = routeKind !== 'none';
-    const projectOriented = routeApplied
-      || PROJECT_ORIENTED_QUERY_PATTERNS.some((pattern) => pattern.test(request.query));
+    const route = detectProjectRoute(request.query, {
+      hasProjectScope: Boolean(request.scope?.project),
+      intentProjectOriented: false,
+    });
+    const routeKind = route.routeKind;
+    const routeApplied = route.routeApplied;
+    const projectOriented = routeApplied || route.projectSignal;
 
     return {
       routeKind,
       routeApplied,
       projectOriented,
+      routeReason: route.routeReason,
+      routeScore: route.routeScore,
+      routeProjectSignal: route.projectSignal,
+      hasProjectScope: Boolean(request.scope?.project),
+      intentProjectOriented: false,
     };
   }
 
@@ -591,6 +719,18 @@ export class RetrievalService {
     return 'unknown';
   }
 
+  private isLowValueNoise(memory: MemoryItem): boolean {
+    const lowerContent = memory.content.toLowerCase();
+    const lowerTags = memory.tags.map((tag) => tag.toLowerCase());
+    if (LOW_VALUE_CONTENT_PATTERNS.some((pattern) => pattern.test(lowerContent))) {
+      return true;
+    }
+    if (lowerTags.some((tag) => LOW_VALUE_TAG_PATTERNS.some((pattern) => pattern.test(tag)))) {
+      return true;
+    }
+    return false;
+  }
+
   private projectPriority(memory: MemoryItem): number {
     if (memory.type === 'summary' && (memory.tags.includes('active_project_summary') || memory.tags.includes('project_continuity'))) {
       return 1;
@@ -616,10 +756,16 @@ export class RetrievalService {
   private dataQuality(memory: MemoryItem): { dataClass: MemoryDataClass; quality: number } {
     const dataClass = this.classifyMemoryData(memory);
     if (dataClass === 'runtime') {
+      if (this.isLowValueNoise(memory)) {
+        return { dataClass, quality: 0.48 };
+      }
       return { dataClass, quality: 1 };
     }
     if (dataClass === 'test') {
       return { dataClass, quality: 0.2 };
+    }
+    if (this.isLowValueNoise(memory)) {
+      return { dataClass, quality: 0.4 };
     }
     return { dataClass, quality: 0.72 };
   }
@@ -652,6 +798,7 @@ export class RetrievalService {
   private applyCandidatePolicy(
     candidates: MemoryItem[],
     limit: number,
+    meta: RecallExecutionMeta,
   ): { candidates: MemoryItem[]; stats: CandidatePolicyStats } {
     const classCounts: Record<MemoryDataClass, number> = {
       runtime: 0,
@@ -659,25 +806,35 @@ export class RetrievalService {
       unknown: 0,
     };
 
-    const runtimeAndUnknown: MemoryItem[] = [];
+    const primaryCandidates: MemoryItem[] = [];
     const tests: MemoryItem[] = [];
+    const lowValue: MemoryItem[] = [];
 
     for (const candidate of candidates) {
       const dataClass = this.classifyMemoryData(candidate);
       classCounts[dataClass] += 1;
       if (dataClass === 'test') {
         tests.push(candidate);
+      } else if (this.isLowValueNoise(candidate)) {
+        lowValue.push(candidate);
       } else {
-        runtimeAndUnknown.push(candidate);
+        primaryCandidates.push(candidate);
       }
     }
 
-    const maxTestCandidates = runtimeAndUnknown.length >= limit
-      ? 0
-      : Math.max(1, Math.floor(limit / 2));
+    const strictProjectMode = meta.projectOriented || meta.routeApplied;
+    const maxLowValueCandidates = strictProjectMode
+      ? (primaryCandidates.length >= Math.max(2, limit - 1) ? 0 : 1)
+      : (primaryCandidates.length >= limit ? 0 : 1);
+    const maxTestCandidates = strictProjectMode
+      ? (primaryCandidates.length > 0 ? 0 : 1)
+      : primaryCandidates.length >= limit
+        ? 0
+        : Math.max(1, Math.floor(limit / 2));
 
+    const retainedLowValue = maxLowValueCandidates > 0 ? lowValue.slice(0, maxLowValueCandidates) : [];
     const retainedTests = maxTestCandidates > 0 ? tests.slice(0, maxTestCandidates) : [];
-    const filteredCandidates = [...runtimeAndUnknown, ...retainedTests];
+    const filteredCandidates = [...primaryCandidates, ...retainedLowValue, ...retainedTests];
 
     return {
       candidates: filteredCandidates,
@@ -686,6 +843,9 @@ export class RetrievalService {
         filteredCandidates: filteredCandidates.length,
         suppressedTestCandidates: tests.length - retainedTests.length,
         retainedTestCandidates: retainedTests.length,
+        suppressedLowValueCandidates: lowValue.length - retainedLowValue.length,
+        retainedLowValueCandidates: retainedLowValue.length,
+        filterMode: strictProjectMode ? 'project_strict' : 'default',
         dataClassCounts: classCounts,
       },
     };
@@ -706,29 +866,63 @@ export class RetrievalService {
     const ordered = meta.projectOriented ? [...highValue, ...fallback] : ranked;
 
     const selected: ScoredRecallItem[] = [];
+    const selectedIds = new Set<string>();
     const seenKeys = new Set<string>();
     let duplicateItemsRemoved = 0;
+    let routeAnchorItemsSelected = 0;
 
-    for (const entry of ordered) {
+    const trySelect = (entry: ScoredRecallItem): boolean => {
+      if (selected.length >= limit || selectedIds.has(entry.memory.id)) {
+        return false;
+      }
       const key = normalizeDedupKey(entry.memory.content);
       if (key.length > 0 && seenKeys.has(key)) {
         duplicateItemsRemoved += 1;
-        continue;
+        return false;
       }
       if (key.length > 0) {
         seenKeys.add(key);
       }
       selected.push(entry);
+      selectedIds.add(entry.memory.id);
+      return true;
+    };
+
+    if (meta.routeApplied && meta.routeKind !== 'none') {
+      const anchorTypes = PROJECT_ROUTE_ANCHOR_PRIORITY[meta.routeKind as Exclude<ProjectRecallRouteKind, 'none'>];
+      for (const type of anchorTypes) {
+        const candidate = ordered.find((entry) => entry.memory.type === type && !selectedIds.has(entry.memory.id));
+        if (!candidate) {
+          continue;
+        }
+        if (trySelect(candidate)) {
+          routeAnchorItemsSelected += 1;
+        }
+        if (selected.length >= limit) {
+          break;
+        }
+      }
+    }
+
+    for (const entry of ordered) {
+      trySelect(entry);
       if (selected.length >= limit) {
         break;
       }
     }
+
+    const selectedTypeCounts = selected.reduce((acc, entry) => {
+      acc[entry.memory.type] = (acc[entry.memory.type] ?? 0) + 1;
+      return acc;
+    }, {} as Partial<Record<MemoryType, number>>);
 
     return {
       top: selected,
       selectionStats: {
         duplicateItemsRemoved,
         highValueItemsSelected: selected.filter((entry) => entry.projectPriority >= 0.84).length,
+        routeAnchorItemsSelected,
+        selectedTypeCounts,
       },
     };
   }
@@ -758,7 +952,7 @@ export class RetrievalService {
   ): { ranked: ScoredRecallItem[]; candidates: MemoryItem[]; semanticHitCount: number; candidatePolicy: CandidatePolicyStats } {
     if (mode === 'structured') {
       const loaded = this.loadCandidates(request, limit, false);
-      const candidateResult = this.applyCandidatePolicy(loaded, limit);
+      const candidateResult = this.applyCandidatePolicy(loaded, limit, meta);
       const candidates = candidateResult.candidates;
       const ranked = rankKeywordRecall(
         candidates,
@@ -788,7 +982,7 @@ export class RetrievalService {
 
     if (mode === 'keyword') {
       const loaded = this.loadCandidates(request, limit, true);
-      const candidateResult = this.applyCandidatePolicy(loaded, limit);
+      const candidateResult = this.applyCandidatePolicy(loaded, limit, meta);
       const candidates = candidateResult.candidates;
       const ranked = rankKeywordRecall(candidates, request, { weights: this.keywordWeights }).map((entry) => {
         const policyScore = this.applyRecallPolicyScore(entry.memory, entry.score, meta);
@@ -821,7 +1015,7 @@ export class RetrievalService {
     meta: RecallExecutionMeta,
   ): { ranked: ScoredRecallItem[]; candidates: MemoryItem[]; semanticHitCount: number; candidatePolicy: CandidatePolicyStats } {
     const loaded = this.loadCandidates(request, limit, false);
-    const candidateResult = this.applyCandidatePolicy(loaded, limit);
+    const candidateResult = this.applyCandidatePolicy(loaded, limit, meta);
     const candidates = candidateResult.candidates;
     const candidateMap = new Map(candidates.map((item) => [item.id, item]));
 
