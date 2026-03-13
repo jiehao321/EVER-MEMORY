@@ -30,22 +30,26 @@ npm run release:0.0.1:pack
 
 ## 4. 发布门禁结果（本次执行后填写）
 
-- `release evaluate`: 待执行
-- `release pack`: 待执行
-- `git worktree clean`: 待执行
+- `release evaluate`: `GO`（2026-03-13）
+- `release pack`: `PASS`（2026-03-13）
+- `git worktree clean`: `PASS`
+- `openclaw plugins info evermemory`: `Version: 0.0.1`
 
 ---
 
 ## 5. 产物与证据（本次执行后填写）
 
-- evaluate report: 待补充
-- pack report: 待补充
-- package file: 待补充
+- evaluate report: `/tmp/evermemory-release-evaluate-v0.0.1-2026-03-13T10-51-54.085Z.json`
+- pack report: `/tmp/evermemory-release-pack-v0.0.1-2026-03-13T10-52-03.201Z.json`
+- package file: `/tmp/evermemory-release/evermemory-0.0.1.tgz`
+- recall benchmark: `/tmp/evermemory-recall-benchmark-2026-03-13T10-51-53.706Z.json`（19/20，95%）
+- soak report: `/tmp/evermemory-openclaw-soak-2026-03-13T10-51-48.105Z.json`（7/7）
+- quality gate openclaw: `/tmp/evermemory-quality-gate-2026-03-13T10-48-39.782Z.json`
 
 ---
 
 ## 6. 发布后核对
 
 1. `npm run repo:guard` 通过
-2. `npm run openclaw:cleanup:test-data` 再次执行并通过
+2. `npm run openclaw:cleanup:test-data` 再次执行并通过（`totalDeleted=0`）
 3. 无遗留未提交改动（`git status --short` 为空）
