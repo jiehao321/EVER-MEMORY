@@ -1,6 +1,21 @@
-# EverMemory (Phase 5 Complete + Phase 6A/6B/6C/6D/6E Landed)
+# EverMemory (Release 0.0.1 Baseline)
 
 EverMemory is an OpenClaw memory plugin package focused on deterministic, inspectable persistence and continuity.
+
+## Language
+
+- English: this file (`README.md`)
+- 中文文档: [`README.zh-CN.md`](README.zh-CN.md)
+
+## GitHub Quick Links
+
+- Installation guide: `docs/evermemory-installation-guide.md`
+- Operator runbook: `docs/evermemory-operator-runbook.md`
+- Release checklist: `docs/evermemory-release-checklist.md`
+- Rollback procedure: `docs/evermemory-rollback-procedure.md`
+- Capability matrix: `docs/evermemory-capability-matrix.md`
+- v1 boundary: `docs/evermemory-v1-boundary.md`
+- OpenClaw install/publish skill: `skills/openclaw-evermemory-installer/SKILL.md`
 
 ## Current status
 
@@ -16,11 +31,60 @@ See also:
 - `docs/evermemory-v1-boundary.md`
 - `docs/evermemory-capability-matrix.md`
 - `docs/evermemory-continuity-decay-remediation-plan.md`
+- `docs/evermemory-branch-and-release-governance.md`
+- `docs/evermemory-release-quality-checklist.md`
+- `docs/evermemory-release-0.0.1.md`
+
+**Operator procedures:**
+
+- Release checklist: `docs/evermemory-release-checklist.md`
+- Rollback procedure: `docs/evermemory-rollback-procedure.md`
+- Operator runbook: `docs/evermemory-operator-runbook.md`
+- Troubleshooting guide: `docs/evermemory-troubleshooting.md`
 
 Current operator focus (2026-03-13):
 - continuity quality and real project-memory usefulness are below target
 - automatic interaction-to-memory capture is not yet a stable default production flow
 - memory decay/lifecycle exists as a baseline, but requires further productization for true long-horizon continuity
+
+Latest quality gate snapshot (2026-03-13):
+- `teams:status` PASS
+- `teams:dev` PASS
+- `teams:release` PASS
+- recall benchmark: `30 samples / 29 pass / accuracy 0.9667`
+- OpenClaw security gate: `critical=0`
+
+## Quick Start (English)
+
+1. Build and validate:
+
+```bash
+npm run check
+npm run test:unit
+npm run teams:dev
+```
+
+2. Install plugin to OpenClaw:
+
+```bash
+openclaw plugins install /path/to/evermemory --link
+openclaw plugins enable evermemory
+openclaw config set plugins.slots.memory evermemory
+openclaw gateway restart
+openclaw plugins info evermemory
+```
+
+3. Verify release-level quality:
+
+```bash
+npm run teams:release
+```
+
+4. Optional: use the bundled skill workflow:
+
+```bash
+bash skills/openclaw-evermemory-installer/scripts/install_plugin.sh --source local --link --bind-slot --restart-gateway
+```
 
 The project now includes:
 
@@ -133,7 +197,7 @@ Current support level is best described as:
 
 Practical implication:
 
-- version `0.1.0` is suitable for cautious operator use
+- version `0.0.1` is suitable for cautious operator use
 - it should not yet be described as fully mature across every OpenClaw deployment shape
 - docs should distinguish **implemented in code** from **registered as plugin tool** and from **widely production-proven**
 
@@ -705,6 +769,18 @@ Apply host hardening defaults for OpenClaw config (`~/.openclaw/openclaw.json`):
 npm run openclaw:harden
 ```
 
+Run security drift recovery workflow (detect -> harden if needed -> re-test -> release gate):
+
+```bash
+npm run openclaw:security:recover
+```
+
+Run forced drift drill (always harden -> re-test -> release gate):
+
+```bash
+npm run openclaw:security:drill
+```
+
 Notes:
 - The hardening script is environment-aware: if Docker is unavailable, sandbox mode falls back to `off` to avoid breaking runtime.
 
@@ -714,11 +790,17 @@ Run real OpenClaw smoke test (plugin loaded + store/recall + DB evidence):
 npm run test:openclaw:smoke
 ```
 
+Note:
+- Smoke script now auto-cleans test artifacts from DB in `finally` (memory/debug/intent/experience rows tagged by this run).
+
 Run standardized Feishu qgent dialogue E2E (multi-turn natural dialogue + DB/debug evidence):
 
 ```bash
 npm run test:openclaw:feishu-qgent
 ```
+
+Note:
+- Feishu qgent script now auto-cleans this run's test artifacts from DB in `finally`.
 
 Optional environment overrides for Feishu qgent E2E:
 - `EVERMEMORY_FEISHU_SESSION_ID`: force one Feishu direct session id
@@ -731,10 +813,81 @@ Run release gate with OpenClaw smoke + Feishu qgent dialogue + security:
 npm run quality:gate:feishu-qgent
 ```
 
+Run Agent Teams status/dashboard check (project director view):
+
+```bash
+npm run teams:status
+```
+
+Run Agent Teams daily dev gate:
+
+```bash
+npm run teams:dev
+```
+
+Run Agent Teams release gate:
+
+```bash
+npm run teams:release
+```
+
+Run recall quality benchmark (20+ standardized prompts with scored accuracy):
+
+```bash
+npm run test:recall:benchmark
+```
+
+Update recall benchmark baseline after approved result:
+
+```bash
+npm run test:recall:benchmark:baseline
+```
+
+View latest archived quality evidence records:
+
+```bash
+npm run evidence:latest
+```
+
+Run high-volume real OpenClaw soak validation (smoke loop + periodic security checks):
+
+```bash
+npm run test:openclaw:soak
+```
+
+Run real continuity E2E (automatic memory capture + recall evidence chain):
+
+```bash
+npm run test:openclaw:continuity
+```
+
+Note:
+- Continuity script now auto-cleans this run's test artifacts from DB in `finally`.
+
+Optional soak with Feishu qgent dialogue on each iteration:
+
+```bash
+npm run test:openclaw:soak:feishu
+```
+
+Purge historical test artifacts (one-time or periodic maintenance):
+
+```bash
+npm run openclaw:cleanup:test-data
+```
+
+Preview purge impact without deleting:
+
+```bash
+npm run openclaw:cleanup:test-data:dry
+```
+
 Notes:
 - Requires local OpenClaw gateway running and `evermemory` plugin loaded.
 - Uses default DB path `/root/.openclaw/memory/evermemory/store/evermemory.db` unless `EVERMEMORY_DB_PATH` is set.
 - Security gate baseline file: `config/openclaw-security-baseline.json`.
+- Recall benchmark sample set: `config/recall-benchmark-samples.json`.
+- Recall benchmark baseline file: `.openclaw/reports/recall-benchmark-baseline.json`.
 - GitHub Actions CI (`.github/workflows/ci.yml`) runs `doctor + check + build + test:unit` on push/PR.
 
 ## OpenClaw integration (real host wiring)
@@ -824,11 +977,27 @@ Compatibility aliases provided:
 
 ### Rollback
 
-If EverMemory causes issues after enablement:
+If EverMemory causes issues after enablement, follow the rollback procedure:
 
-1. Remove or change `plugins.slots.memory`
-2. Set `plugins.entries.evermemory.enabled` to `false`
-3. Remove the EverMemory root from `plugins.load.paths`
-4. Restart gateway
+See `docs/evermemory-rollback-procedure.md` for detailed step-by-step rollback commands.
+
+Quick rollback (2 minutes):
+
+1. Unbind memory slot or switch to previous provider in `~/.openclaw/openclaw.json`
+2. Restart gateway: `openclaw gateway restart`
+3. Verify: `openclaw gateway status`
+
+If issues persist:
+
+1. Disable plugin entry: set `plugins.entries.evermemory.enabled` to `false`
+2. Restart gateway: `openclaw gateway restart`
+3. Verify: `openclaw plugins info evermemory`
+
+For complete removal:
+
+1. Remove EverMemory path from `plugins.load.paths`
+2. Restart gateway: `openclaw gateway restart`
+
+Always preserve the database during rollback for evidence and potential re-enablement.
 
 See `docs/evermemory-installation-guide.md` for the full install / verify / rollback procedure.

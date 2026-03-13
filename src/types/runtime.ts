@@ -59,6 +59,7 @@ export interface SessionEndInput {
   sessionId: string;
   messageId?: string;
   scope?: MemoryScope;
+  channel?: string;
   inputText?: string;
   actionSummary?: string;
   outcomeSummary?: string;
@@ -77,6 +78,8 @@ export interface SessionEndResult {
     rejected: number;
     storedIds: string[];
     rejectedReasons: string[];
+    generatedByKind?: Partial<Record<string, number>>;
+    acceptedByKind?: Partial<Record<string, number>>;
   };
   rejectedRules?: Array<{
     statement: string;

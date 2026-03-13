@@ -47,6 +47,21 @@ export function handleSessionStart(
     chatId: input.chatId,
     briefingId: briefing.id,
     activeRules: behaviorRules.length,
+    sectionCounts: {
+      identity: briefing.sections.identity.length,
+      constraints: briefing.sections.constraints.length,
+      recentContinuity: briefing.sections.recentContinuity.length,
+      activeProjects: briefing.sections.activeProjects.length,
+    },
+    projectSummaryCount: briefing.sections.activeProjects.filter((item) => item.includes('项目连续性摘要')).length,
+    briefingOptimization: {
+      duplicateBlocksRemoved: briefing.optimization?.duplicateBlocksRemoved ?? 0,
+      tokenPrunedBlocks: briefing.optimization?.tokenPrunedBlocks ?? 0,
+      highValueBlocksKept: briefing.optimization?.highValueBlocksKept
+        ?? (briefing.sections.activeProjects.length + briefing.sections.constraints.length),
+      tokenTarget: briefing.tokenTarget,
+      actualApproxTokens: briefing.actualApproxTokens,
+    },
   });
 
   return {

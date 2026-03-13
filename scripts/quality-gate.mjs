@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
+import { recordEvidence } from './report-evidence.mjs';
 
 function fail(message) {
   console.error(`[evermemory:quality-gate] ${message}`);
@@ -123,6 +124,17 @@ const report = {
 const reportPath = resolve(parsed.reportPath ?? resolveDefaultReportPath());
 mkdirSync(dirname(reportPath), { recursive: true });
 writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+
+recordEvidence({
+  runner: 'quality-gate',
+  ok,
+  reportPath,
+  mode: parsed.withOpenClaw ? (parsed.withFeishuQgent ? 'openclaw-feishu' : 'openclaw') : 'core',
+  withOpenClaw: parsed.withOpenClaw,
+  withSecurity: parsed.withSecurity,
+  withFeishuQgent: parsed.withFeishuQgent,
+  stepCount: summarySteps.length,
+});
 
 if (!ok) {
   console.error(`[evermemory:quality-gate] FAIL report=${reportPath}`);

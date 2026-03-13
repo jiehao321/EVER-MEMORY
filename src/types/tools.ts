@@ -328,6 +328,32 @@ export interface EverMemoryStatusToolResult {
     kind: DebugEventKind;
     entityId?: string;
   }>;
+  continuityKpis?: {
+    sampleWindow: {
+      sessionEndEvents: number;
+      retrievalEvents: number;
+    };
+    autoMemory: {
+      generated: number;
+      accepted: number;
+      rejected: number;
+      acceptRate?: number;
+      generatedByKind?: Record<string, number>;
+      acceptedByKind?: Record<string, number>;
+    };
+    projectSummary: {
+      generated: number;
+      accepted: number;
+      acceptRate?: number;
+    };
+    retrievalPolicy: {
+      suppressedTestCandidates: number;
+      retainedTestCandidates: number;
+      projectRoutedExecutions: number;
+      projectRoutedHits: number;
+      projectRouteHitRate?: number;
+    };
+  };
   runtimeSession?: RuntimeSessionContext;
   recentDebugEvents: number;
 }

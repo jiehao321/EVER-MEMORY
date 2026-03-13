@@ -2,12 +2,12 @@
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 import Database from 'better-sqlite3';
+import { cleanupOpenClawTestArtifacts } from './openclaw-test-cleanup.mjs';
 
 const DEFAULT_DB_PATH = '/root/.openclaw/memory/evermemory/store/evermemory.db';
 
 function fail(message) {
-  console.error(`[evermemory:openclaw-smoke] ${message}`);
-  process.exit(1);
+  throw new Error(message);
 }
 
 function runOpenClaw(args) {
@@ -110,65 +110,96 @@ function queryDbEvidence(tag, scopeChatId, dbPath) {
 const dbPath = process.env.EVERMEMORY_DB_PATH ?? DEFAULT_DB_PATH;
 const tag = `E2E-${Date.now()}-openclaw-smoke`;
 const scopeChatId = 'evermemory-openclaw-smoke-chat';
+const smokeSessionIds = ['evermemory-openclaw-smoke-store', 'evermemory-openclaw-smoke-recall'];
 
-const pluginInfo = runOpenClaw(['plugins', 'info', 'evermemory']);
-assertIncludes(pluginInfo, 'Status: loaded', 'plugin info');
-assertIncludes(pluginInfo, 'evermemory_store', 'plugin info');
-assertIncludes(pluginInfo, 'evermemory_recall', 'plugin info');
+let evidence;
+let scriptError;
 
-const gatewayStatus = runOpenClaw(['gateway', 'status']);
-assertIncludes(gatewayStatus, 'Runtime: running', 'gateway status');
-assertIncludes(gatewayStatus, 'RPC probe: ok', 'gateway status');
+try {
+  const pluginInfo = runOpenClaw(['plugins', 'info', 'evermemory']);
+  assertIncludes(pluginInfo, 'Status: loaded', 'plugin info');
+  assertIncludes(pluginInfo, 'evermemory_store', 'plugin info');
+  assertIncludes(pluginInfo, 'evermemory_recall', 'plugin info');
 
-const storeMessage = [
-  'Please call evermemory_store with:',
-  `content="${tag} smoke memory"`,
-  'type="fact"',
-  'lifecycle="episodic"',
-  `tags=["${tag}"]`,
-  `scope={chatId:"${scopeChatId}",project:"evermemory"}.`,
-  'Return only tool result text.',
-].join(' ');
+  const gatewayStatus = runOpenClaw(['gateway', 'status']);
+  assertIncludes(gatewayStatus, 'Runtime: running', 'gateway status');
+  assertIncludes(gatewayStatus, 'RPC probe: ok', 'gateway status');
 
-const storeRaw = runOpenClaw([
-  'agent',
-  '--session-id',
-  'evermemory-openclaw-smoke-store',
-  '--message',
-  storeMessage,
-  '--json',
-]);
-const storeResult = parseAgentJson(storeRaw);
-const storeText = getPayloadText(storeResult);
-assertIncludes(storeText, 'Stored memory:', 'store result');
-assertIncludes(storeText, tag, 'store result');
+  const storeMessage = [
+    'Please call evermemory_store with:',
+    `content="${tag} smoke memory"`,
+    'type="fact"',
+    'lifecycle="episodic"',
+    `tags=["${tag}"]`,
+    `scope={chatId:"${scopeChatId}",project:"evermemory"}.`,
+    'Return only tool result text.',
+  ].join(' ');
 
-const recallMessage = [
-  'Please call evermemory_recall with:',
-  `query="${tag}"`,
-  'limit=5',
-  `scope={chatId:"${scopeChatId}",project:"evermemory"}.`,
-  'Return only tool result text.',
-].join(' ');
+  const storeRaw = runOpenClaw([
+    'agent',
+    '--session-id',
+    smokeSessionIds[0],
+    '--message',
+    storeMessage,
+    '--json',
+  ]);
+  const storeResult = parseAgentJson(storeRaw);
+  const storeText = getPayloadText(storeResult);
+  assertIncludes(storeText, 'Stored memory:', 'store result');
+  assertIncludes(storeText, tag, 'store result');
 
-const recallRaw = runOpenClaw([
-  'agent',
-  '--session-id',
-  'evermemory-openclaw-smoke-recall',
-  '--message',
-  recallMessage,
-  '--json',
-]);
-const recallResult = parseAgentJson(recallRaw);
-const recallText = getPayloadText(recallResult);
-assertIncludes(recallText, 'Found', 'recall result');
-assertIncludes(recallText, tag, 'recall result');
+  const recallMessage = [
+    'Please call evermemory_recall with:',
+    `query="${tag}"`,
+    'limit=5',
+    `scope={chatId:"${scopeChatId}",project:"evermemory"}.`,
+    'Return only tool result text.',
+  ].join(' ');
 
-const evidence = queryDbEvidence(tag, scopeChatId, dbPath);
+  const recallRaw = runOpenClaw([
+    'agent',
+    '--session-id',
+    smokeSessionIds[1],
+    '--message',
+    recallMessage,
+    '--json',
+  ]);
+  const recallResult = parseAgentJson(recallRaw);
+  const recallText = getPayloadText(recallResult);
+  assertIncludes(recallText, 'Found', 'recall result');
+  assertIncludes(recallText, tag, 'recall result');
 
-console.log('[evermemory:openclaw-smoke] PASS');
-console.log(`[evermemory:openclaw-smoke] tag=${tag}`);
-console.log(`[evermemory:openclaw-smoke] storeRunId=${storeResult.runId}`);
-console.log(`[evermemory:openclaw-smoke] recallRunId=${recallResult.runId}`);
-console.log(`[evermemory:openclaw-smoke] dbMemoryId=${evidence.memoryId}`);
-console.log(`[evermemory:openclaw-smoke] dbRetrievalEventId=${evidence.retrievalEventId}`);
+  evidence = queryDbEvidence(tag, scopeChatId, dbPath);
+
+  console.log('[evermemory:openclaw-smoke] PASS');
+  console.log(`[evermemory:openclaw-smoke] tag=${tag}`);
+  console.log(`[evermemory:openclaw-smoke] storeRunId=${storeResult.runId}`);
+  console.log(`[evermemory:openclaw-smoke] recallRunId=${recallResult.runId}`);
+  console.log(`[evermemory:openclaw-smoke] dbMemoryId=${evidence.memoryId}`);
+  console.log(`[evermemory:openclaw-smoke] dbRetrievalEventId=${evidence.retrievalEventId}`);
+} catch (error) {
+  scriptError = error;
+} finally {
+  try {
+    const cleanup = cleanupOpenClawTestArtifacts({
+      dbPath,
+      tag,
+      sessionIds: smokeSessionIds,
+    });
+    const totalDeleted = Object.values(cleanup).reduce((sum, value) => sum + Number(value), 0);
+    console.log(`[evermemory:openclaw-smoke] cleanup tag=${tag} totalDeleted=${totalDeleted}`);
+  } catch (error) {
+    if (!scriptError) {
+      scriptError = error;
+    } else {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[evermemory:openclaw-smoke] cleanup failed: ${detail}`);
+    }
+  }
+}
+
+if (scriptError) {
+  const detail = scriptError instanceof Error ? scriptError.message : String(scriptError);
+  console.error(`[evermemory:openclaw-smoke] FAIL ${detail}`);
+  process.exit(1);
+}

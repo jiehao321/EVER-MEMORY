@@ -1,0 +1,356 @@
+{
+  "version": "2026-03-13",
+  "scope": {
+    "userId": "u-recall-benchmark",
+    "project": "evermemory"
+  },
+  "seedMemories": [
+    {
+      "content": "项目连续性摘要（evermemory）：状态：Batch-B 已进入发布收口；关键约束：不扩大需求范围；最近决策：先保证真实回归稳定；下一步：完成发布清单并复测。",
+      "type": "summary",
+      "tags": ["active_project_summary", "project_continuity"],
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "项目状态更新：项目(evermemory) 已完成连续性 KPI 接入，当前重点是质量门禁自动化。",
+      "type": "project",
+      "tags": ["project_state"],
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "最近决策：优先保证记忆系统在真实 OpenClaw 场景中的稳定性，再做优化扩展。",
+      "type": "decision",
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "下一步：执行 teams:release、soak 与 feishu 实战回归，之后冻结参数。",
+      "type": "commitment",
+      "tags": ["next_step"],
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "关键约束：所有高风险操作必须先确认，且变更需附带可回滚路径。",
+      "type": "constraint",
+      "source": { "kind": "reflection_derived", "actor": "system" }
+    },
+    {
+      "content": "任务分解：先完成 C3 防漂移流程，再完成 C4 发布与回滚终版清单。",
+      "type": "task",
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "项目进展：真实回归脚本已经稳定，下一步是发布门禁联调。",
+      "type": "project",
+      "tags": ["project_state"],
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "当前阶段：发布前收口阶段，重点是质量和回滚路径。",
+      "type": "summary",
+      "tags": ["active_project_summary"],
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "下一步：完成安全漂移演练并固化 SOP。",
+      "type": "commitment",
+      "tags": ["next_step"],
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "最近决策：先做大规模实测，再冻结参数。",
+      "type": "decision",
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "项目进展：A1/B1 已完成验证，B2 进入准确率打分阶段。",
+      "type": "project",
+      "source": { "kind": "runtime_project", "actor": "system" }
+    },
+    {
+      "content": "openclaw-smoke E2E-9001 sample: 项目进展测试样本，仅用于测试污染。",
+      "type": "project",
+      "tags": ["smoke", "test_sample"],
+      "source": { "kind": "test", "actor": "system" }
+    },
+    {
+      "content": "shared-scope test sample: 当前阶段测试数据，不应优先命中。",
+      "type": "summary",
+      "tags": ["fixture", "test_data"],
+      "source": { "kind": "test", "actor": "system" }
+    }
+  ],
+  "samples": [
+    {
+      "id": "progress-01",
+      "category": "project_progress",
+      "query": "项目进展到哪了？",
+      "expectedRouteKind": "project_progress",
+      "expectedAnyTypes": ["summary", "project", "decision"],
+      "minHits": 1,
+      "requireNoTestNoise": true,
+      "maxNoisyHits": 1
+    },
+    {
+      "id": "progress-02",
+      "category": "project_progress",
+      "query": "最近进展请汇报一下。",
+      "expectedRouteKind": "project_progress",
+      "expectedAnyTypes": ["summary", "project", "decision"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "progress-03",
+      "category": "project_progress",
+      "query": "我们刚才推进到哪里了？",
+      "expectedRouteKind": "project_progress",
+      "expectedAnyTypes": ["summary", "project", "decision"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "progress-04",
+      "category": "project_progress",
+      "query": "给我当前项目进展。",
+      "expectedRouteKind": "project_progress",
+      "expectedAnyTypes": ["summary", "project", "decision"],
+      "minHits": 1,
+      "requireNoTestNoise": true,
+      "maxNoisyHits": 1
+    },
+    {
+      "id": "progress-05",
+      "category": "project_progress",
+      "query": "现在进度怎样？",
+      "expectedRouteKind": "project_progress",
+      "expectedAnyTypes": ["summary", "project", "decision"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "stage-01",
+      "category": "current_stage",
+      "query": "当前阶段是什么？",
+      "expectedRouteKind": "current_stage",
+      "expectedAnyTypes": ["summary", "project", "decision"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "stage-02",
+      "category": "current_stage",
+      "query": "现在阶段状态如何？",
+      "expectedRouteKind": "current_stage",
+      "expectedAnyTypes": ["summary", "project"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "stage-03",
+      "category": "current_stage",
+      "query": "我们在第几阶段？",
+      "expectedRouteKind": "current_stage",
+      "expectedAnyTypes": ["summary", "project"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "stage-04",
+      "category": "current_stage",
+      "query": "phase 现在到哪里了？",
+      "expectedRouteKind": "current_stage",
+      "expectedAnyTypes": ["summary", "project"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "stage-05",
+      "category": "current_stage",
+      "query": "当前 phase 是什么？",
+      "expectedRouteKind": "current_stage",
+      "expectedAnyTypes": ["summary", "project"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-01",
+      "category": "next_step",
+      "query": "下一步做什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "decision", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-02",
+      "category": "next_step",
+      "query": "下一步先做哪一项？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "task", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-03",
+      "category": "next_step",
+      "query": "下一步后续动作是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-04",
+      "category": "next_step",
+      "query": "下一步怎么推进？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-05",
+      "category": "next_step",
+      "query": "下一步 next step 是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-06",
+      "category": "next_step",
+      "query": "接下来做什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-07",
+      "category": "next_step",
+      "query": "next action 是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-08",
+      "category": "next_step",
+      "query": "后续计划是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-09",
+      "category": "next_step",
+      "query": "下一阶段做什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-10",
+      "category": "next_step",
+      "query": "what's next?",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-11",
+      "category": "next_step",
+      "query": "下一项任务是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "task", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-12",
+      "category": "next_step",
+      "query": "接下来怎么办？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-13",
+      "category": "next_step",
+      "query": "next milestone 是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-14",
+      "category": "next_step",
+      "query": "后续动作有哪些？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "task", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "next-15",
+      "category": "next_step",
+      "query": "follow up 计划是什么？",
+      "expectedRouteKind": "next_step",
+      "expectedAnyTypes": ["commitment", "summary", "task"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "decision-01",
+      "category": "last_decision",
+      "query": "上次最后决策是什么？",
+      "expectedRouteKind": "last_decision",
+      "expectedAnyTypes": ["decision", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "decision-02",
+      "category": "last_decision",
+      "query": "最近决策请再说一遍。",
+      "expectedRouteKind": "last_decision",
+      "expectedAnyTypes": ["decision", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "decision-03",
+      "category": "last_decision",
+      "query": "最近决策为什么这样定？",
+      "expectedRouteKind": "last_decision",
+      "expectedAnyTypes": ["decision", "summary", "constraint"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "decision-04",
+      "category": "last_decision",
+      "query": "最后决策是什么？",
+      "expectedRouteKind": "last_decision",
+      "expectedAnyTypes": ["decision", "summary"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    },
+    {
+      "id": "pollution-01",
+      "category": "suppression_guard",
+      "query": "项目进展和下一步都说一下。",
+      "expectedRouteKind": "project_progress",
+      "expectedAnyTypes": ["summary", "project", "commitment", "decision"],
+      "minHits": 1,
+      "requireNoTestNoise": true
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
+import Database from 'better-sqlite3';
 import memoryPlugin from '../src/openclaw/plugin.js';
 import { createTempDbPath } from './helpers.js';
 
@@ -194,6 +195,168 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
     'session_end',
     { sessionId: 'session-openclaw-1', messageCount: 2 },
     { sessionId: 'session-openclaw-1', sessionKey: 'chat-openclaw-1' },
+  );
+
+  await services[0].stop?.();
+  rmSync(databasePath, { force: true });
+});
+
+test('OpenClaw adapter rebinds host user/chat/channel scope for main-session persistence', async () => {
+  const databasePath = createTempDbPath('openclaw-plugin-scope-binding');
+  const { api, hooks, services } = createMockApi(databasePath);
+
+  await memoryPlugin.register(api);
+  assert.equal(services.length, 1);
+  await services[0].start();
+
+  await runHook(
+    hooks,
+    'session_start',
+    { sessionId: 'session-feishu-main-1', sessionKey: 'agent:main:session:internal-1' },
+    { sessionId: 'session-feishu-main-1', sessionKey: 'agent:main:session:internal-1' },
+  );
+
+  await runHook(
+    hooks,
+    'before_agent_start',
+    {
+      prompt: '项目 Apollo 当前阶段是 Batch 1，下一步修复 Feishu scope 绑定。',
+      messages: [],
+    },
+    {
+      sessionId: 'session-feishu-main-1',
+      sessionKey: 'agent:main:session:internal-1',
+      runId: 'run-feishu-main-1',
+      requester: { senderId: 'ou_real_host_user_1' },
+      conversationId: 'oc_real_host_chat_1',
+      messageChannel: 'feishu',
+    },
+  );
+
+  await runHook(
+    hooks,
+    'agent_end',
+    {
+      success: true,
+      messages: [
+        { role: 'user', content: '项目 Apollo 需要优先修复主会话 scope 透传。' },
+        { role: 'assistant', content: '已确认，先绑定真实 user/chat/channel 再回归验证。' },
+      ],
+    },
+    {
+      sessionId: 'session-feishu-main-1',
+      runId: 'run-feishu-main-1',
+      requesterSenderId: 'ou_real_host_user_1',
+      conversation: { id: 'oc_real_host_chat_1' },
+      channel: 'feishu',
+    },
+  );
+
+  const secondHook = await runHook(
+    hooks,
+    'before_agent_start',
+    {
+      prompt: '继续汇总 Apollo 项目的当前进展和下一步。',
+      messages: [],
+    },
+    {
+      sessionId: 'session-feishu-main-1',
+      runId: 'run-feishu-main-2',
+      requesterSenderId: 'ou_real_host_user_1',
+      conversationId: 'oc_real_host_chat_1',
+      messageChannel: 'feishu',
+    },
+  );
+
+  assert.ok(secondHook && typeof secondHook === 'object');
+  assert.match(String((secondHook as { prependContext?: unknown }).prependContext ?? ''), /evermemory-context/i);
+
+  const db = new Database(databasePath, { readonly: true });
+  try {
+    const memoryRows = db.prepare(`
+      SELECT scope_user_id, scope_chat_id, channel
+      FROM memory_items
+      WHERE session_id = ?
+      ORDER BY created_at DESC
+    `).all('session-feishu-main-1') as Array<{
+      scope_user_id: string | null;
+      scope_chat_id: string | null;
+      channel: string | null;
+    }>;
+
+    assert.ok(memoryRows.length >= 1);
+    assert.ok(memoryRows.some((row) => row.scope_user_id === 'ou_real_host_user_1'));
+    assert.ok(memoryRows.some((row) => row.scope_chat_id === 'oc_real_host_chat_1'));
+    assert.ok(memoryRows.some((row) => row.channel === 'feishu'));
+
+    const latestBriefing = db.prepare(`
+      SELECT session_id, user_id
+      FROM boot_briefings
+      WHERE session_id = ?
+      ORDER BY generated_at DESC
+      LIMIT 1
+    `).get('session-feishu-main-1') as { session_id: string; user_id: string | null } | undefined;
+    assert.ok(latestBriefing);
+    assert.equal(latestBriefing?.user_id, 'ou_real_host_user_1');
+
+    const intentRow = db.prepare(`
+      SELECT session_id, message_id
+      FROM intent_records
+      WHERE session_id = ? AND message_id = ?
+      LIMIT 1
+    `).get('session-feishu-main-1', 'run-feishu-main-1') as { session_id: string; message_id: string } | undefined;
+    assert.equal(intentRow?.session_id, 'session-feishu-main-1');
+    assert.equal(intentRow?.message_id, 'run-feishu-main-1');
+
+    const experienceRow = db.prepare(`
+      SELECT session_id, message_id
+      FROM experience_logs
+      WHERE session_id = ? AND message_id = ?
+      LIMIT 1
+    `).get('session-feishu-main-1', 'run-feishu-main-1') as { session_id: string; message_id: string } | undefined;
+    assert.equal(experienceRow?.session_id, 'session-feishu-main-1');
+    assert.equal(experienceRow?.message_id, 'run-feishu-main-1');
+
+    const interactionRows = db.prepare(`
+      SELECT payload_json
+      FROM debug_events
+      WHERE kind = 'interaction_processed'
+      ORDER BY created_at DESC
+      LIMIT 20
+    `).all() as Array<{ payload_json: string }>;
+    const scopedInteraction = interactionRows
+      .map((row) => JSON.parse(row.payload_json) as Record<string, unknown>)
+      .find((payload) => (
+        payload.source === 'before_agent_start_injection'
+        && payload.scopeUserId === 'ou_real_host_user_1'
+        && payload.scopeChatId === 'oc_real_host_chat_1'
+      ));
+    assert.ok(scopedInteraction);
+    assert.equal(scopedInteraction?.scopeChannel, 'feishu');
+    assert.equal(scopedInteraction?.scopeSessionStartRebound, true);
+
+    const sessionEndPayload = db.prepare(`
+      SELECT payload_json
+      FROM debug_events
+      WHERE kind = 'session_end_processed' AND entity_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get('session-feishu-main-1') as { payload_json: string } | undefined;
+    assert.ok(sessionEndPayload);
+    const parsedSessionEnd = JSON.parse(String(sessionEndPayload?.payload_json)) as Record<string, unknown>;
+    assert.equal(parsedSessionEnd.scopeUserId, 'ou_real_host_user_1');
+    assert.equal(parsedSessionEnd.scopeChatId, 'oc_real_host_chat_1');
+    assert.equal(parsedSessionEnd.channel, 'feishu');
+    assert.equal(typeof parsedSessionEnd.experienceId, 'string');
+  } finally {
+    db.close();
+  }
+
+  await runHook(
+    hooks,
+    'session_end',
+    { sessionId: 'session-feishu-main-1' },
+    { sessionId: 'session-feishu-main-1' },
   );
 
   await services[0].stop?.();

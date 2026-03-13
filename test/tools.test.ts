@@ -84,6 +84,11 @@ test('recall, briefing, and status return structured outputs with improved statu
   assert.ok((statusAfter.recentDebugByKind?.session_end_processed ?? 0) >= 1);
   assert.ok((statusAfter.latestDebugEvents?.length ?? 0) >= 1);
   assert.ok((statusAfter.latestProfileRecompute?.memoryCount ?? 0) >= 1);
+  assert.ok((statusAfter.continuityKpis?.sampleWindow.sessionEndEvents ?? 0) >= 1);
+  assert.ok((statusAfter.continuityKpis?.autoMemory.generated ?? 0) >= 1);
+  assert.ok((statusAfter.continuityKpis?.autoMemory.accepted ?? 0) >= 1);
+  assert.equal(typeof statusAfter.continuityKpis?.retrievalPolicy.suppressedTestCandidates, 'number');
+  assert.equal(typeof statusAfter.continuityKpis?.retrievalPolicy.projectRoutedExecutions, 'number');
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });
