@@ -1,70 +1,132 @@
-# EverMemory (Release 0.0.1 Baseline)
+# EverMemory
 
-EverMemory is an OpenClaw memory plugin package focused on deterministic, inspectable persistence and continuity.
+Deterministic memory plugin for OpenClaw, focused on inspectable persistence, project continuity, and operator-grade reliability.
 
-## Language
+Single-file bilingual README (Chinese + English).
 
-- English: this file (`README.md`)
-- 中文文档: [`README.zh-CN.md`](README.zh-CN.md)
+Language switch: [中文](#zh) | [English](#en)
 
-## GitHub Quick Links
+---
 
-- Installation guide: `docs/evermemory-installation-guide.md`
-- Operator runbook: `docs/evermemory-operator-runbook.md`
-- Release checklist: `docs/evermemory-release-checklist.md`
-- Rollback procedure: `docs/evermemory-rollback-procedure.md`
-- Capability matrix: `docs/evermemory-capability-matrix.md`
-- v1 boundary: `docs/evermemory-v1-boundary.md`
-- OpenClaw install/publish skill: `skills/openclaw-evermemory-installer/SKILL.md`
+<a id="zh"></a>
+## 中文
 
-## Current status
+### 1. 项目定位
 
-This README describes the repository as it exists today, not the full roadmap.
+EverMemory 是一个面向 OpenClaw 的记忆插件，目标是把“可持续对话记忆”做成可落地、可调试、可发布的工程能力，而不是黑盒记忆。
 
-Two important boundaries:
+核心原则：
+- 确定性优先：写入/召回结果可复现，可解释。
+- 运维优先：有状态、有门禁、有回滚、有证据。
+- 渐进增强：稳定核心 + 可选增强 + 实验能力分层。
 
-- the **library/API surface** is broader than the **currently registered OpenClaw plugin tool surface**
-- current maturity is a **production baseline for core deterministic memory flows**, not a claim that every implemented subsystem is equally hardened
+### 2. 当前状态（2026-03-14）
 
-See also:
+- npm 插件：`evermemory@0.0.1` 已发布。
+- ClawHub Skill：`openclaw-evermemory-installer@0.1.0` 已发布。
+- 质量门禁最新基线：
+  - `teams:status` PASS
+  - `teams:dev` PASS
+  - `teams:release` PASS
+  - recall benchmark：`30 样本 / 29 通过 / 0.9667`
+  - OpenClaw security gate：`critical=0`
 
-- `docs/evermemory-v1-boundary.md`
-- `docs/evermemory-capability-matrix.md`
-- `docs/evermemory-continuity-decay-remediation-plan.md`
-- `docs/evermemory-branch-and-release-governance.md`
-- `docs/evermemory-release-quality-checklist.md`
-- `docs/evermemory-release-0.0.1.md`
+### 3. 主要功能
 
-**Operator procedures:**
+#### 3.1 稳定核心（生产基线）
 
-- Release checklist: `docs/evermemory-release-checklist.md`
-- Rollback procedure: `docs/evermemory-rollback-procedure.md`
-- Operator runbook: `docs/evermemory-operator-runbook.md`
-- Troubleshooting guide: `docs/evermemory-troubleshooting.md`
+- 确定性写入：`evermemory_store`
+  - 统一写入策略（低价值内容可拒绝并返回明确原因）。
+- 确定性召回：`evermemory_recall`
+  - 支持 `structured` / `keyword` / `hybrid` 模式。
+  - 关键词召回含权重排序（覆盖度、时效性、质量信号）。
+- 状态观测：`evermemory_status`
+  - 返回 schema、计数、最近调试事件、运行态上下文。
+- SQLite 持久化与幂等迁移。
+- OpenClaw 生命周期集成：`session_start` / `before_agent_start` / `agent_end`。
 
-Current operator focus (2026-03-13):
-- continuity quality and real project-memory usefulness are below target
-- automatic interaction-to-memory capture is not yet a stable default production flow
-- memory decay/lifecycle exists as a baseline, but requires further productization for true long-horizon continuity
+#### 3.2 可选增强（按配置启用）
 
-Latest quality gate snapshot (2026-03-13):
-- `teams:status` PASS
-- `teams:dev` PASS
-- `teams:release` PASS
-- recall benchmark: `30 samples / 29 pass / accuracy 0.9667`
-- OpenClaw security gate: `critical=0`
+- semantic sidecar 语义检索（默认关闭）。
+- LLM intent enrich（需要宿主注入 analyzer）。
 
-## Quick Start (English)
+#### 3.3 实验能力（已实现，谨慎生产使用）
 
-1. Build and validate:
+- 意图分析与持久化（IntentService）。
+- 反思与候选规则（ReflectionService）。
+- 行为规则提炼、排序、冲突治理（BehaviorService）。
+- 用户画像投影（stable/derived 严格分层）。
+- 手动治理能力：consolidate / explain / export / import / review / restore。
+
+### 4. 架构概览
+
+```text
+OpenClaw Runtime
+  -> EverMemory Plugin Adapter (src/openclaw/plugin.ts)
+      -> Core Services
+         - MemoryService
+         - RetrievalService
+         - BriefingService
+         - IntentService
+         - ReflectionService
+         - BehaviorService
+         - ProfileProjectionService
+      -> Storage Repositories
+         - memory / intent / reflection / behavior / profile / briefing / debug
+      -> SQLite (better-sqlite3)
+```
+
+关键数据流：
+- 写入链路：tool/hook -> policy -> repo -> sqlite -> debug evidence
+- 召回链路：query -> candidate load -> ranking/policy -> result + debug evidence
+- 会话链路：session_start 建立上下文，before_agent_start 注入相关记忆，agent_end 生成经验与反思
+
+### 5. 当前 OpenClaw 工具面
+
+已注册（插件默认暴露）：
+- `evermemory_store`（别名：`memory_store`）
+- `evermemory_recall`（别名：`memory_recall`）
+- `evermemory_status`
+
+库层已实现但默认未全部注册为 OpenClaw tool：
+- `evermemory_briefing`
+- `evermemory_intent`
+- `evermemory_reflect`
+- `evermemory_rules`
+- `evermemory_profile`
+- `evermemory_consolidate`
+- `evermemory_explain`
+- `evermemory_export`
+- `evermemory_import`
+- `evermemory_review`
+- `evermemory_restore`
+
+### 6. 已完成的主要工作（工程交付）
+
+- 完成 0.0.1 发布基线（代码、文档、门禁、回滚流程）。
+- 完成 recall 路由与排序增强（项目连续性、下一步/进度/决策等查询优化）。
+- 完成质量体系脚本化：
+  - `teams:status` / `teams:dev` / `teams:release`
+  - `quality:gate:openclaw`
+  - `test:openclaw:smoke` / `test:openclaw:security`
+  - `test:recall:benchmark`
+- 完成发布链路：
+  - npm 包发布（`evermemory@0.0.1`）
+  - ClawHub Skill 发布（`openclaw-evermemory-installer@0.1.0`）
+- 完成运维文档体系：安装、Runbook、Troubleshooting、Release Checklist、Rollback Procedure。
+
+### 7. 快速开始
+
+#### 7.1 本地开发验证
 
 ```bash
+npm install
 npm run check
 npm run test:unit
 npm run teams:dev
 ```
 
-2. Install plugin to OpenClaw:
+#### 7.2 安装到 OpenClaw（本地路径）
 
 ```bash
 openclaw plugins install /path/to/evermemory --link
@@ -74,930 +136,192 @@ openclaw gateway restart
 openclaw plugins info evermemory
 ```
 
-3. Verify release-level quality:
+#### 7.3 从 npm 安装
 
 ```bash
-npm run teams:release
-```
-
-4. Optional: use the bundled skill workflow:
-
-```bash
-bash skills/openclaw-evermemory-installer/scripts/install_plugin.sh --source local --link --bind-slot --restart-gateway
-```
-
-The project now includes:
-
-- typed config loading
-- SQLite bootstrap and idempotent migrations
-- repositories for memory / briefing / debug events / intent / reflection / behavior rules / projected profile
-- deterministic write policy baseline
-- memory service with explicit accept/reject results
-- deterministic keyword recall with weighted ranking (keyword coverage + recency + quality signals)
-- optional semantic sidecar index (disabled by default)
-- retrieval modes integration: `structured` / `keyword` / `hybrid`
-- lifecycle maintenance baseline: dedupe/merge + stale episodic archive
-- continuity remediation plan for automatic memory capture, richer project briefing, and stronger decay/governance
-- projected profile recompute baseline (stable/derived split + explicit-over-inferred guard)
-- richer status/debug surface baseline (schema/debug snapshots for operators)
-- explainability tool baseline (`evermemory_explain` for write/retrieval/rule)
-- import/export baseline with reviewed import (`evermemory_export` / `evermemory_import`)
-- archive review/restore baseline (`evermemory_review` / `evermemory_restore`)
-- operator runbook + troubleshooting docs for phase handoff
-- boot briefing generation and persistence
-- deterministic intent analysis baseline (`IntentService`)
-- optional LLM intent enrichment path with strict parser + fallback
-- `messageReceived` hook with intent-guided targeted recall
-- experience logging (`ExperienceService`)
-- reflection record generation with candidate rules (`ReflectionService`)
-- behavior rule promotion with evidence/conflict/dedup gating (`BehaviorService`)
-- `sessionEnd` reflection + automatic rule promotion integration
-- runtime session context helpers
-- minimal `session_start` wiring
-- implemented wrapper/library capability surface:
-  - `evermemory_store`
-  - `evermemory_recall`
-  - `evermemory_briefing`
-  - `evermemory_status`
-  - `evermemory_intent`
-  - `evermemory_reflect`
-  - `evermemory_rules`
-  - `evermemory_profile`
-  - `evermemory_consolidate`
-  - `evermemory_explain`
-  - `evermemory_export`
-  - `evermemory_import`
-  - `evermemory_review`
-  - `evermemory_restore`
-- currently registered OpenClaw plugin tools:
-  - `evermemory_store`
-  - `evermemory_recall`
-  - `evermemory_status`
-- key-path tests for migrations, repositories, intent enrichment/fallback, behavior promotion/ranking, message/session end integration, reflection flow, and tools
-  - retrieval ranking refinement coverage
-
-## Production readiness
-
-Current readiness should be stated conservatively.
-
-### Stable
-
-These are the parts that are reasonable to describe as the current production baseline:
-
-- deterministic SQLite-backed persistence
-- idempotent migrations
-- deterministic memory write policy with explicit accept/reject results
-- keyword-based recall with weighted ranking
-- OpenClaw plugin hook integration for session lifecycle and prompt-context injection
-- currently registered OpenClaw plugin tools:
-  - `evermemory_store`
-  - `evermemory_recall`
-  - `evermemory_status`
-- operator-oriented status/debug visibility
-
-### Optional
-
-These are implemented but optional by configuration or host wiring:
-
-- semantic sidecar retrieval (`semantic.enabled=false` by default)
-- LLM-assisted intent enrichment (requires host-injected analyzer)
-- direct install into other OpenClaw instances by operator-managed packaging/integration
-
-### Experimental
-
-These are real code-level capabilities, but should not be marketed as equally hardened default production features yet:
-
-- boot briefing generation
-- intent analysis as a standalone library/API surface
-- reflection generation and automatic rule promotion
-- projected profile recompute
-- manual consolidation flows
-- explainability wrappers beyond status
-- import/export workflows
-- archive review/restore workflows
-
-### Out of scope
-
-These are not part of the current repository claim:
-
-- bundled external LLM provider integration
-- embeddings / external vector retrieval platform
-- schedulers or background workers
-- complex operator UI
-- claiming that every wrapper method is already host-registered as an OpenClaw tool
-
-## Support level
-
-Current support level is best described as:
-
-- **Stable core** for deterministic store / recall / status flows
-- **Operator-managed optional features** for semantic sidecar and injected LLM enrichment
-- **Experimental advanced workflows** for reflection, rules, profiles, import/export, and restore-related operations
-- **No broad compatibility guarantee yet** beyond the tested repository/runtime baseline in this repo
-
-Practical implication:
-
-- version `0.0.1` is suitable for cautious operator use
-- it should not yet be described as fully mature across every OpenClaw deployment shape
-- docs should distinguish **implemented in code** from **registered as plugin tool** and from **widely production-proven**
-
-## Direct install for other OpenClaw instances
-
-The repo already contains the basic package metadata and plugin descriptors needed for direct use in another OpenClaw environment:
-
-- `dist/`
-- `plugin.json`
-- `openclaw.plugin.json`
-- package metadata in `package.json`
-
-That makes **direct operator install** a valid path, but with realistic caveats:
-
-- support should be considered **best effort / operator-managed** at this stage
-- consumers should pin the exact package version and test against their host runtime
-- advanced wrapper methods should not be assumed to appear as OpenClaw tools unless the host/plugin registration layer exposes them
-- external LLM integrations still require host-side adapter injection
-
-In other words: installable, yes; broadly hardened distribution story, not yet.
-
-## Package entrypoints
-
-Main module exports:
-
-- `initializeEverMemory(config?)`
-- `getPluginDefinition()`
-- `getDefaultConfig()`
-
-`plugin.json` declares a minimal plugin entry pointing to `dist/index.js` and names the exported initialize/definition functions.
-
-## Minimal initialization example
-
-```ts
-import { initializeEverMemory } from './dist/index.js';
-
-const evermemory = initializeEverMemory();
-
-const session = evermemory.sessionStart({
-  sessionId: 'sess-1',
-  userId: 'user-1',
-  chatId: 'chat-1',
-});
-
-console.log(session.briefing);
-```
-
-Intent analysis example:
-
-```ts
-const intent = evermemory.analyzeIntent({
-  text: '更正一下，不是 A 方案，改为 B 方案。',
-  sessionId: 'sess-1',
-  scope: { userId: 'user-1' },
-});
-
-console.log(intent.intent.type); // correction
-```
-
-Message hook example:
-
-```ts
-const messageResult = evermemory.messageReceived({
-  sessionId: 'sess-1',
-  messageId: 'msg-1',
-  text: '结合之前的项目计划，继续推进下一步。',
-  scope: { userId: 'user-1', project: 'evermemory' },
-});
-
-console.log(messageResult.recall.total);
-```
-
-Session end reflection example:
-
-```ts
-const endResult = evermemory.sessionEnd({
-  sessionId: 'sess-1',
-  messageId: 'msg-2',
-  inputText: '更正一下，先确认再执行。',
-  actionSummary: '执行前确认',
-  outcomeSummary: '用户确认通过',
-});
-
-console.log(endResult.reflection?.candidateRules ?? []);
-```
-
-## Tool surface
-
-### `evermemory_store`
-Input:
-- `content`
-- optional `type`
-- optional `lifecycle`
-- optional `scope`
-- optional `source`
-- optional `tags`
-- optional `relatedEntities`
-
-Call chain:
-- tool -> `MemoryService.store()` -> deterministic write policy -> repository write or reject path
-
-Return:
-```ts
-{
-  accepted: boolean,
-  reason: string,
-  memory: MemoryItem | null,
-}
-```
-
-Behavior:
-- low-value chatter is rejected without throwing
-- reject path returns an explicit `reason`
-- tool and service now share the same single evaluation path
-
-### `evermemory_recall`
-Input:
-- `query`
-- optional `scope`
-- optional `types`
-- optional `lifecycles`
-- optional `mode` (`structured` | `keyword` | `hybrid`)
-- optional `limit`
-
-Call chain:
-- tool -> `RetrievalService.recall()` -> repository candidate fetch -> keyword retrieval
-
-Return:
-```ts
-{
-  items: MemoryItem[],
-  total: number,
-  limit: number,
-}
-```
-
-Behavior:
-- empty result is valid and non-exceptional
-- supports `structured` / `keyword` / `hybrid` retrieval modes
-- `hybrid` mode auto-falls back to `keyword` when semantic sidecar is disabled
-
-### `evermemory_briefing`
-Input:
-- optional `sessionId`
-- optional `scope`
-- optional `tokenTarget`
-
-Call chain:
-- tool -> `BriefingService.build()` -> repository reads -> briefing persistence
-
-Return:
-- a `BootBriefing`
-
-Behavior:
-- empty memory still yields a valid structured briefing
-
-### `evermemory_status`
-Input:
-- optional `userId`
-- optional `sessionId`
-
-Return:
-```ts
-{
-  schemaVersion: number,
-  databasePath: string,
-  memoryCount: number,
-  activeMemoryCount?: number,
-  archivedMemoryCount?: number,
-  semanticIndexCount?: number,
-  profileCount?: number,
-  experienceCount?: number,
-  reflectionCount?: number,
-  activeRuleCount?: number,
-  countsByType: Partial<Record<MemoryType, number>>,
-  countsByLifecycle: Partial<Record<MemoryLifecycle, number>>,
-  latestBriefing?: {...},
-  latestReflection?: {...},
-  latestRule?: {...},
-  latestProfile?: {...},
-  latestWriteDecision?: {...},
-  latestRetrieval?: {...},
-  latestProfileRecompute?: {...},
-  recentDebugByKind?: Record<string, number>,
-  latestDebugEvents?: Array<{ kind: string, createdAt: string, entityId?: string }>,
-  runtimeSession?: RuntimeSessionContext,
-  recentDebugEvents: number,
-}
-```
-
-Behavior:
-- status uses repository-level count/countBy aggregation instead of coarse list-length counting
-- status includes schema/debug snapshots for operator explainability
-- designed for engineering/operator visibility, not a full UI
-
-### `evermemory_intent`
-Input:
-- `message`
-- optional `sessionId`
-- optional `messageId`
-- optional `scope`
-
-Call chain:
-- tool -> `IntentService.analyze()` -> heuristics -> optional LLM enrich/parser -> intent persistence
-
-Return:
-- an `IntentRecord`
-
-### `evermemory_reflect`
-Input:
-- optional `sessionId`
-- optional `mode` (`light` | `full`)
-
-Call chain:
-- tool -> `ReflectionService.reflect()` -> reflection persistence + candidate rule output
-
-Return:
-- reflection list
-- candidate rules
-- summary (`processedExperiences`, `createdReflections`)
-
-### `evermemory_rules`
-Input:
-- optional `scope`
-- optional `intentType`
-- optional `channel`
-- optional `contexts`
-- optional `limit`
-
-Call chain:
-- tool -> `BehaviorService.getActiveRules()` -> applicability/ranking -> active rule list
-
-Return:
-- `rules` (sorted active rules)
-- `total`
-- `filters` (effective lookup filters)
-
-### `evermemory_profile`
-Input:
-- optional `userId`
-- optional `recompute`
-
-Call chain:
-- tool -> `ProfileProjectionService` -> projected profile recompute/read
-
-Return:
-```ts
-{
-  profile: ProjectedProfile | null,
-  source: 'recomputed' | 'stored' | 'latest' | 'none',
-}
-```
-
-Behavior:
-- enforces `stable/derived` separation via profile projection service
-- when `userId` is omitted, returns latest profile snapshot if available
-
-### `evermemory_consolidate`
-Input:
-- optional `mode` (`light` | `daily` | `deep`)
-- optional `scope`
-
-Call chain:
-- tool -> `MemoryService.consolidate()` -> lifecycle maintenance pass
-
-Return:
-```ts
-{
-  mode: 'light' | 'daily' | 'deep',
-  processed: number,
-  merged: number,
-  archivedStale: number,
-}
-```
-
-Behavior:
-- executes manual dedupe/merge + stale episodic archive pass
-- safe on empty datasets (returns zero counts)
-
-### `evermemory_explain`
-Input:
-- optional `topic` (`write` | `retrieval` | `rule`)
-- optional `entityId`
-- optional `limit`
-
-Call chain:
-- tool -> debug events query -> structured explanation output
-
-Return:
-```ts
-{
-  topic: 'write' | 'retrieval' | 'rule',
-  total: number,
-  items: Array<{
-    createdAt: string,
-    kind: string,
-    entityId?: string,
-    question: string,
-    answer: string,
-    evidence: Record<string, unknown>,
-  }>,
-}
-```
-
-Behavior:
-- provides explainability for write/retrieval/rule decisions
-- defaults to `write` topic when omitted
-
-### `evermemory_export`
-Input:
-- optional `scope`
-- optional `includeArchived`
-- optional `limit`
-
-Call chain:
-- tool -> `MemoryTransferService.exportSnapshot()` -> memory query -> snapshot artifact
-
-Return:
-```ts
-{
-  snapshot: {
-    format: 'evermemory.snapshot.v1',
-    generatedAt: string,
-    total: number,
-    items: MemoryItem[],
-  },
-  summary: {
-    exported: number,
-    includeArchived: boolean,
-    scope?: MemoryScope,
-  }
-}
-```
-
-Behavior:
-- exports deterministic snapshot artifacts from canonical store
-- `includeArchived=false` by default to reduce noise in migration snapshots
-
-### `evermemory_import`
-Input:
-- `snapshot` (`evermemory.snapshot.v1`)
-- optional `mode` (`review` | `apply`)
-- optional `approved`
-- optional `allowOverwrite`
-- optional `scopeOverride`
-
-Call chain:
-- tool -> `MemoryTransferService.importSnapshot()` -> review gate -> optional apply path
-
-Return:
-```ts
-{
-  mode: 'review' | 'apply',
-  approved: boolean,
-  applied: boolean,
-  total: number,
-  toCreate: number,
-  toUpdate: number,
-  imported: number,
-  updated: number,
-  rejected: Array<{ id?: string, reason: string }>,
-}
-```
-
-Behavior:
-- defaults to `review` mode (no writes)
-- `apply` mode requires `approved=true`
-- duplicate IDs are rejected unless `allowOverwrite=true`
-
-### `evermemory_review`
-Input:
-- optional `scope`
-- optional `query`
-- optional `limit`
-- optional `includeSuperseded`
-
-Call chain:
-- tool -> `MemoryArchiveService.reviewArchived()` -> archived memory query -> restore candidates
-
-Return:
-```ts
-{
-  total: number,
-  candidates: Array<{
-    id: string,
-    content: string,
-    type: MemoryType,
-    lifecycle: MemoryLifecycle,
-    scope: MemoryScope,
-    updatedAt: string,
-    supersededBy?: string,
-    restoreEligible: boolean,
-    reason?: string,
-  }>,
-}
-```
-
-Behavior:
-- returns archived memory candidates for operator review
-- superseded archive entries are hidden by default (`includeSuperseded=false`)
-
-### `evermemory_restore`
-Input:
-- `ids`
-- optional `mode` (`review` | `apply`)
-- optional `approved`
-- optional `targetLifecycle` (`working` | `episodic` | `semantic`)
-- optional `allowSuperseded`
-
-Call chain:
-- tool -> `MemoryArchiveService.restoreArchived()` -> review gate -> optional apply path
-
-Return:
-```ts
-{
-  mode: 'review' | 'apply',
-  approved: boolean,
-  applied: boolean,
-  total: number,
-  restorable: number,
-  restored: number,
-  targetLifecycle: 'working' | 'episodic' | 'semantic',
-  rejected: Array<{ id?: string, reason: string }>,
-}
-```
-
-Behavior:
-- defaults to `review` mode (no writes)
-- `apply` mode requires `approved=true`
-- superseded archived memories are blocked unless `allowSuperseded=true`
-
-## Config
-
-Default config:
-
-```ts
-{
-  enabled: true,
-  databasePath: '.openclaw/memory/evermemory/store/evermemory.db',
-  bootTokenBudget: 1200,
-  maxRecall: 8,
-  debugEnabled: true,
-  semantic: {
-    enabled: false,
-    maxCandidates: 200,
-    minScore: 0.15
-  },
-  intent: {
-    useLLM: false,
-    fallbackHeuristics: true
-  },
-  retrieval: {
-    keywordWeights: {
-      keyword: 0.38,
-      recency: 0.13,
-      importance: 0.14,
-      confidence: 0.12,
-      explicitness: 0.08,
-      scopeMatch: 0.07,
-      typePriority: 0.05,
-      lifecyclePriority: 0.03
-    },
-    hybridWeights: {
-      keyword: 0.5,
-      semantic: 0.35,
-      base: 0.15
-    }
-  }
-}
-```
-
-## Storage
-
-Default database path:
-
-```text
-.openclaw/memory/evermemory/store/evermemory.db
-```
-
-Tables created by current migrations:
-- `memory_items`
-- `boot_briefings`
-- `debug_events`
-- `intent_records`
-- `experience_logs`
-- `reflection_records`
-- `behavior_rules`
-- `semantic_index`
-- `projected_profiles`
-- `schema_version`
-
-## Operator notes
-
-- Memory write decisions remain deterministic.
-- Intent enrichment is optional and disabled by default (`intent.useLLM=false`).
-- If LLM enrichment is enabled, parser/fallback protects runtime from malformed outputs.
-- Reflection outputs in session-end flow can auto-promote into governed active behavior rules.
-- Semantic sidecar indexing is optional and disabled by default.
-- Duplicate/near-duplicate memory can be consolidated; stale episodic memory can be auto-archived.
-- `session_start` creates a boot briefing and caches it in process memory.
-- `session_start` / `message_received` both load applicable behavior rules into runtime context.
-- Runtime session context is in-memory only and will not survive process restart.
-- `evermemory_status` is intentionally minimal and engineering-oriented.
-- Recall supports `structured` / `keyword` / `hybrid` modes (hybrid depends on optional semantic sidecar).
-- Retrieval ranking weights are configurable (`retrieval.keywordWeights` / `retrieval.hybridWeights`) and auto-normalized.
-- Lifecycle maintenance keeps active memory cleaner via dedupe/merge/archive baseline.
-- Runtime interaction context now tracks the latest message intent and recalled items per session.
-- import baseline is review-first and requires explicit approval before apply.
-- archive restore baseline is review-first and requires explicit approval before apply.
-- operator runbook: `docs/evermemory-operator-runbook.md`
-- troubleshooting guide: `docs/evermemory-troubleshooting.md`
-
-## Environment health
-
-Use Node `22.x` (see `.nvmrc`) and run:
-
-```bash
-npm run doctor
-```
-
-If native SQLite probe fails (including `SIGSEGV`), run:
-
-```bash
-npm rebuild better-sqlite3
-```
-
-## Validation
-
-Build and type-check:
-
-```bash
-npm run check
-npm run build
-```
-
-Run unit tests (without environment doctor gate):
-
-```bash
-npm run test
-```
-
-Run full validation (environment + type-check + tests):
-
-```bash
-npm run validate
-```
-
-Run release quality gate (doctor + check + build + unit tests):
-
-```bash
-npm run quality:gate
-```
-
-Run release quality gate with real OpenClaw smoke:
-
-```bash
-npm run quality:gate:openclaw
-```
-
-Run OpenClaw security regression gate (baseline controlled):
-
-```bash
-npm run test:openclaw:security
-```
-
-Apply host hardening defaults for OpenClaw config (`~/.openclaw/openclaw.json`):
-
-```bash
-npm run openclaw:harden
-```
-
-Run security drift recovery workflow (detect -> harden if needed -> re-test -> release gate):
-
-```bash
-npm run openclaw:security:recover
-```
-
-Run forced drift drill (always harden -> re-test -> release gate):
-
-```bash
-npm run openclaw:security:drill
-```
-
-Notes:
-- The hardening script is environment-aware: if Docker is unavailable, sandbox mode falls back to `off` to avoid breaking runtime.
-
-Run real OpenClaw smoke test (plugin loaded + store/recall + DB evidence):
-
-```bash
-npm run test:openclaw:smoke
-```
-
-Note:
-- Smoke script now auto-cleans test artifacts from DB in `finally` (memory/debug/intent/experience rows tagged by this run).
-
-Run standardized Feishu qgent dialogue E2E (multi-turn natural dialogue + DB/debug evidence):
-
-```bash
-npm run test:openclaw:feishu-qgent
-```
-
-Note:
-- Feishu qgent script now auto-cleans this run's test artifacts from DB in `finally`.
-
-Optional environment overrides for Feishu qgent E2E:
-- `EVERMEMORY_FEISHU_SESSION_ID`: force one Feishu direct session id
-- `EVERMEMORY_FEISHU_AGENT_ID`: target agent id (default `main`)
-- `EVERMEMORY_FEISHU_SESSION_KEY_HINT`: preferred key fragment (default `feishu:default:direct`)
-
-Run release gate with OpenClaw smoke + Feishu qgent dialogue + security:
-
-```bash
-npm run quality:gate:feishu-qgent
-```
-
-Run Agent Teams status/dashboard check (project director view):
-
-```bash
-npm run teams:status
-```
-
-Run Agent Teams daily dev gate:
-
-```bash
-npm run teams:dev
-```
-
-Run Agent Teams release gate:
-
-```bash
-npm run teams:release
-```
-
-Run recall quality benchmark (20+ standardized prompts with scored accuracy):
-
-```bash
-npm run test:recall:benchmark
-```
-
-Update recall benchmark baseline after approved result:
-
-```bash
-npm run test:recall:benchmark:baseline
-```
-
-View latest archived quality evidence records:
-
-```bash
-npm run evidence:latest
-```
-
-Run high-volume real OpenClaw soak validation (smoke loop + periodic security checks):
-
-```bash
-npm run test:openclaw:soak
-```
-
-Run real continuity E2E (automatic memory capture + recall evidence chain):
-
-```bash
-npm run test:openclaw:continuity
-```
-
-Note:
-- Continuity script now auto-cleans this run's test artifacts from DB in `finally`.
-
-Optional soak with Feishu qgent dialogue on each iteration:
-
-```bash
-npm run test:openclaw:soak:feishu
-```
-
-Purge historical test artifacts (one-time or periodic maintenance):
-
-```bash
-npm run openclaw:cleanup:test-data
-```
-
-Preview purge impact without deleting:
-
-```bash
-npm run openclaw:cleanup:test-data:dry
-```
-
-Notes:
-- Requires local OpenClaw gateway running and `evermemory` plugin loaded.
-- Uses default DB path `/root/.openclaw/memory/evermemory/store/evermemory.db` unless `EVERMEMORY_DB_PATH` is set.
-- Security gate baseline file: `config/openclaw-security-baseline.json`.
-- Recall benchmark sample set: `config/recall-benchmark-samples.json`.
-- Recall benchmark baseline file: `.openclaw/reports/recall-benchmark-baseline.json`.
-- GitHub Actions CI (`.github/workflows/ci.yml`) runs `doctor + check + build + test:unit` on push/PR.
-
-## OpenClaw integration (real host wiring)
-
-This repository now provides native OpenClaw plugin assets:
-
-- `openclaw.plugin.json`
-- root `index.js` (re-exports `./dist/openclaw/plugin.js` for packaged installs)
-- package manifest `openclaw.extensions`
-- installation guide: `docs/evermemory-installation-guide.md`
-
-### Install / enable checklist
-
-1. Clone or unpack this repository to a stable absolute path
-2. Run `npm install`
-3. Run `npm run build`
-4. Add the repository root to `plugins.load.paths`
-5. Enable `plugins.entries.evermemory`
-6. Bind `plugins.slots.memory` to `"evermemory"`
-7. Restart gateway with `openclaw gateway restart`
-8. Verify with `evermemory_status`, `evermemory_store`, `evermemory_recall`
-
-### Minimal OpenClaw config
-
-Use an absolute path for stable loading:
-
-```json
-{
-  "plugins": {
-    "load": {
-      "paths": [
-        "/root/.openclaw/workspace/projects/evermemory"
-      ]
-    },
-    "entries": {
-      "evermemory": {
-        "enabled": true,
-        "config": {
-          "databasePath": "/root/.openclaw/memory/evermemory/store/evermemory.db",
-          "maxRecall": 8,
-          "debugEnabled": true
-        }
-      }
-    },
-    "slots": {
-      "memory": "evermemory"
-    }
-  }
-}
-```
-
-### Why all three plugin sections matter
-
-- `plugins.load.paths`: tells OpenClaw where to discover the plugin package
-- `plugins.entries.evermemory`: enables the EverMemory plugin instance and passes runtime config
-- `plugins.slots.memory`: binds EverMemory as the default memory slot
-
-If you skip the slot binding, the plugin may load but will not become the active default memory provider.
-
-Then restart gateway:
-
-```bash
+openclaw plugins install evermemory@0.0.1
+openclaw plugins enable evermemory
+openclaw config set plugins.slots.memory evermemory
 openclaw gateway restart
 ```
 
-### Verification
-
-Recommended validation path:
+#### 7.4 使用内置 Skill 执行安装/发布
 
 ```bash
-cd /root/.openclaw/workspace/projects/evermemory
-npm run doctor
-npm run check
-npm run test
+# 安装插件
+bash skills/openclaw-evermemory-installer/scripts/install_plugin.sh --source local --link --bind-slot --restart-gateway
+
+# 校验安装
+bash skills/openclaw-evermemory-installer/scripts/verify_install.sh
 ```
 
-Then in OpenClaw verify:
+### 8. 质量门禁与发布
 
+发布前必跑：
+
+```bash
+npm run teams:release
+```
+
+该命令会串联：
+- 类型检查 / 构建 / 单测
+- OpenClaw smoke
+- OpenClaw security gate
+- recall benchmark
+- release pack
+
+### 9. 目录结构（核心）
+
+```text
+src/
+  core/           # memory/intent/reflection/behavior/profile 等核心能力
+  retrieval/      # 召回策略与排序
+  hooks/          # session_start / before_agent_start / agent_end
+  storage/        # SQLite 仓储与迁移
+  openclaw/       # OpenClaw 插件适配层
+  tools/          # 工具封装
+scripts/          # 质量门禁、发布、e2e、安全脚本
+docs/             # 发布与运维文档
+skills/           # OpenClaw Skill（安装与发布流程）
+```
+
+### 10. 文档入口
+
+- 安装指南：`docs/evermemory-installation-guide.md`
+- 运维手册：`docs/evermemory-operator-runbook.md`
+- 发布清单：`docs/evermemory-release-checklist.md`
+- 回滚流程：`docs/evermemory-rollback-procedure.md`
+- 故障排查：`docs/evermemory-troubleshooting.md`
+- 能力矩阵：`docs/evermemory-capability-matrix.md`
+- 边界说明：`docs/evermemory-v1-boundary.md`
+
+---
+
+<a id="en"></a>
+## English
+
+### 1. Project Positioning
+
+EverMemory is an OpenClaw memory plugin built for deterministic, inspectable, and operable long-term memory.
+
+Engineering principles:
+- Determinism first: repeatable write/recall outcomes.
+- Operator first: observable state, quality gates, rollback-ready process.
+- Progressive hardening: stable core + optional enhancements + experimental capabilities.
+
+### 2. Current Status (2026-03-14)
+
+- npm package published: `evermemory@0.0.1`.
+- ClawHub skill published: `openclaw-evermemory-installer@0.1.0`.
+- Latest quality snapshot:
+  - `teams:status` PASS
+  - `teams:dev` PASS
+  - `teams:release` PASS
+  - recall benchmark: `30 samples / 29 pass / 0.9667`
+  - OpenClaw security gate: `critical=0`
+
+### 3. Main Capabilities
+
+#### 3.1 Stable Core (production baseline)
+
+- Deterministic write path via `evermemory_store`.
+- Deterministic recall path via `evermemory_recall` with `structured`/`keyword`/`hybrid`.
+- Operational status surface via `evermemory_status`.
+- SQLite persistence with idempotent migrations.
+- OpenClaw lifecycle integration (`session_start`, `before_agent_start`, `agent_end`).
+
+#### 3.2 Optional Enhancements
+
+- Semantic sidecar retrieval (disabled by default).
+- LLM intent enrichment (requires host-injected analyzer).
+
+#### 3.3 Experimental Capabilities
+
+- Intent analysis and persistence.
+- Reflection and candidate-rule generation.
+- Behavior-rule promotion/ranking/governance.
+- Profile projection with stable/derived split.
+- Manual governance tools: consolidate/explain/export/import/review/restore.
+
+### 4. Architecture
+
+```text
+OpenClaw Runtime
+  -> EverMemory Plugin Adapter (src/openclaw/plugin.ts)
+      -> Core Services
+      -> Storage Repositories
+      -> SQLite
+```
+
+Primary flows:
+- write: tool/hook -> policy -> repo -> sqlite -> debug evidence
+- recall: query -> candidate loading -> ranking/policy -> output + evidence
+- session: start context -> pre-agent memory injection -> end-of-session reflection
+
+### 5. Current OpenClaw Tool Surface
+
+Registered by default:
+- `evermemory_store` (alias: `memory_store`)
+- `evermemory_recall` (alias: `memory_recall`)
 - `evermemory_status`
-- `evermemory_store`
-- `evermemory_recall`
 
-Compatibility aliases provided:
+Implemented at library level (not all registered as plugin tools by default):
+- `evermemory_briefing`, `evermemory_intent`, `evermemory_reflect`, `evermemory_rules`
+- `evermemory_profile`, `evermemory_consolidate`, `evermemory_explain`
+- `evermemory_export`, `evermemory_import`, `evermemory_review`, `evermemory_restore`
 
-- `memory_store` -> `evermemory_store`
-- `memory_recall` -> `evermemory_recall`
+### 6. What Has Been Delivered
 
-### Rollback
+- Release 0.0.1 baseline (code + docs + gates + rollback procedure).
+- Retrieval routing/ranking improvements for project continuity queries.
+- Scripted quality system (teams/dev/release, OpenClaw smoke/security, recall benchmark).
+- Distribution pipeline completed:
+  - npm package published
+  - ClawHub installer skill published
+- Full operator documentation set (installation/runbook/troubleshooting/release/rollback).
 
-If EverMemory causes issues after enablement, follow the rollback procedure:
+### 7. Quick Start
 
-See `docs/evermemory-rollback-procedure.md` for detailed step-by-step rollback commands.
+```bash
+npm install
+npm run check
+npm run test:unit
+npm run teams:dev
+```
 
-Quick rollback (2 minutes):
+Install into OpenClaw (local path):
 
-1. Unbind memory slot or switch to previous provider in `~/.openclaw/openclaw.json`
-2. Restart gateway: `openclaw gateway restart`
-3. Verify: `openclaw gateway status`
+```bash
+openclaw plugins install /path/to/evermemory --link
+openclaw plugins enable evermemory
+openclaw config set plugins.slots.memory evermemory
+openclaw gateway restart
+openclaw plugins info evermemory
+```
 
-If issues persist:
+Install from npm:
 
-1. Disable plugin entry: set `plugins.entries.evermemory.enabled` to `false`
-2. Restart gateway: `openclaw gateway restart`
-3. Verify: `openclaw plugins info evermemory`
+```bash
+openclaw plugins install evermemory@0.0.1
+openclaw plugins enable evermemory
+openclaw config set plugins.slots.memory evermemory
+openclaw gateway restart
+```
 
-For complete removal:
+### 8. Release Gate
 
-1. Remove EverMemory path from `plugins.load.paths`
-2. Restart gateway: `openclaw gateway restart`
+Run before any release:
 
-Always preserve the database during rollback for evidence and potential re-enablement.
+```bash
+npm run teams:release
+```
 
-See `docs/evermemory-installation-guide.md` for the full install / verify / rollback procedure.
+This gate covers typecheck/build/tests/OpenClaw smoke/OpenClaw security/benchmark/release pack.
+
+### 9. Key Paths
+
+- `src/` core implementation
+- `scripts/` quality/release/e2e/security automation
+- `docs/` release and operator documentation
+- `skills/` OpenClaw installer/publisher skill
+
