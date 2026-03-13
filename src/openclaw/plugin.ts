@@ -1,5 +1,7 @@
 import { Type } from '@sinclair/typebox';
 import {
+  CONSOLIDATION_MODES,
+  INTENT_TYPES,
   MEMORY_LIFECYCLES,
   MEMORY_TYPES,
   PLUGIN_NAME,
@@ -103,6 +105,10 @@ function asOptionalInteger(value: unknown): number | undefined {
   return normalized > 0 ? normalized : undefined;
 }
 
+function asOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 function asOptionalEnum<T extends readonly string[]>(value: unknown, values: T): T[number] | undefined {
   const normalized = asOptionalString(value);
   if (!normalized) {
@@ -111,23 +117,24 @@ function asOptionalEnum<T extends readonly string[]>(value: unknown, values: T):
   return (values as readonly string[]).includes(normalized) ? (normalized as T[number]) : undefined;
 }
 
-function parseScope(value: unknown): { userId?: string; chatId?: string; project?: string } | undefined {
+function parseScope(value: unknown): { userId?: string; chatId?: string; project?: string; global?: boolean } | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
   const userId = asOptionalString(value.userId);
   const chatId = asOptionalString(value.chatId);
   const project = asOptionalString(value.project);
-  if (!userId && !chatId && !project) {
+  const global = asOptionalBoolean(value.global);
+  if (!userId && !chatId && !project && global === undefined) {
     return undefined;
   }
-  return { userId, chatId, project };
+  return { userId, chatId, project, global };
 }
 
 function mergeScope(
-  base: { userId?: string; chatId?: string; project?: string },
-  override?: { userId?: string; chatId?: string; project?: string },
-): { userId?: string; chatId?: string; project?: string } {
+  base: { userId?: string; chatId?: string; project?: string; global?: boolean },
+  override?: { userId?: string; chatId?: string; project?: string; global?: boolean },
+): { userId?: string; chatId?: string; project?: string; global?: boolean } {
   if (!override) {
     return base;
   }
@@ -135,6 +142,47 @@ function mergeScope(
     userId: override.userId ?? base.userId,
     chatId: override.chatId ?? base.chatId,
     project: override.project ?? base.project,
+    global: override.global ?? base.global,
+  };
+}
+
+const MEMORY_SOURCE_KINDS = [
+  'message',
+  'tool',
+  'manual',
+  'summary',
+  'inference',
+  'test',
+  'runtime_user',
+  'runtime_project',
+  'reflection_derived',
+  'imported',
+] as const;
+
+const MEMORY_SOURCE_ACTORS = ['user', 'assistant', 'system'] as const;
+
+function parseMemorySource(
+  value: unknown,
+): {
+    kind: (typeof MEMORY_SOURCE_KINDS)[number];
+    actor?: (typeof MEMORY_SOURCE_ACTORS)[number];
+    sessionId?: string;
+    messageId?: string;
+    channel?: string;
+  } | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const kind = asOptionalEnum(value.kind, MEMORY_SOURCE_KINDS);
+  if (!kind) {
+    return undefined;
+  }
+  return {
+    kind,
+    actor: asOptionalEnum(value.actor, MEMORY_SOURCE_ACTORS),
+    sessionId: asOptionalString(value.sessionId),
+    messageId: asOptionalString(value.messageId),
+    channel: asOptionalString(value.channel),
   };
 }
 
@@ -489,7 +537,7 @@ function syncSessionStartScope(
 function resolveToolScope(
   sessionScopes: Map<string, SessionScopeState>,
   toolContext: UnknownRecord,
-): { userId?: string; chatId?: string; project?: string } {
+): { userId?: string; chatId?: string; project?: string; global?: boolean } {
   const sessionId = asOptionalString(toolContext.sessionId);
   const scopeState = sessionId
     ? upsertScopeState(sessionScopes, sessionId, undefined, toolContext)
@@ -507,6 +555,55 @@ const memoryLifecycleSchema = Type.Optional(
   Type.Union(MEMORY_LIFECYCLES.map((value) => Type.Literal(value))),
 );
 const retrievalModeSchema = Type.Optional(Type.Union(RETRIEVAL_MODES.map((value) => Type.Literal(value))));
+const intentTypeSchema = Type.Optional(Type.Union(INTENT_TYPES.map((value) => Type.Literal(value))));
+const consolidationModeSchema = Type.Optional(
+  Type.Union(CONSOLIDATION_MODES.map((value) => Type.Literal(value))),
+);
+const reflectModeSchema = Type.Optional(Type.Union([
+  Type.Literal('light'),
+  Type.Literal('full'),
+]));
+const explainTopicSchema = Type.Optional(Type.Union([
+  Type.Literal('write'),
+  Type.Literal('retrieval'),
+  Type.Literal('rule'),
+]));
+const rulesActionSchema = Type.Optional(Type.Union([
+  Type.Literal('freeze'),
+  Type.Literal('deprecate'),
+  Type.Literal('rollback'),
+]));
+const importModeSchema = Type.Optional(Type.Union([
+  Type.Literal('review'),
+  Type.Literal('apply'),
+]));
+const restoreModeSchema = Type.Optional(Type.Union([
+  Type.Literal('review'),
+  Type.Literal('apply'),
+]));
+const restoreLifecycleSchema = Type.Optional(Type.Union([
+  Type.Literal('working'),
+  Type.Literal('episodic'),
+  Type.Literal('semantic'),
+]));
+const REFLECT_MODES = ['light', 'full'] as const;
+const RULE_MUTATION_ACTIONS = ['freeze', 'deprecate', 'rollback'] as const;
+const EXPLAIN_TOPICS = ['write', 'retrieval', 'rule'] as const;
+const IMPORT_MODES = ['review', 'apply'] as const;
+const RESTORE_MODES = ['review', 'apply'] as const;
+const RESTORE_TARGET_LIFECYCLES = ['working', 'episodic', 'semantic'] as const;
+const sourceSchema = Type.Optional(
+  Type.Object(
+    {
+      kind: Type.Optional(Type.String()),
+      actor: Type.Optional(Type.String()),
+      sessionId: Type.Optional(Type.String()),
+      messageId: Type.Optional(Type.String()),
+      channel: Type.Optional(Type.String()),
+    },
+    { additionalProperties: false },
+  ),
+);
 
 const scopeSchema = Type.Optional(
   Type.Object(
@@ -514,6 +611,7 @@ const scopeSchema = Type.Optional(
       userId: Type.Optional(Type.String()),
       chatId: Type.Optional(Type.String()),
       project: Type.Optional(Type.String()),
+      global: Type.Optional(Type.Boolean()),
     },
     { additionalProperties: false },
   ),
@@ -644,6 +742,7 @@ const memoryPlugin = {
             type: memoryTypeSchema,
             lifecycle: memoryLifecycleSchema,
             scope: scopeSchema,
+            source: sourceSchema,
             tags: Type.Optional(Type.Array(Type.String())),
             relatedEntities: Type.Optional(Type.Array(Type.String())),
           },
@@ -664,6 +763,7 @@ const memoryPlugin = {
             type: asOptionalEnum(params.type, MEMORY_TYPES),
             lifecycle: asOptionalEnum(params.lifecycle, MEMORY_LIFECYCLES),
             scope: mergeScope(baseScope, parseScope(params.scope)),
+            source: parseMemorySource(params.source),
             tags: asOptionalStringArray(params.tags),
             relatedEntities: asOptionalStringArray(params.relatedEntities),
           });
@@ -764,6 +864,411 @@ const memoryPlugin = {
         },
       }),
       { name: 'evermemory_status' },
+    );
+
+    api.registerTool(
+      (toolContext: UnknownRecord) => ({
+        name: 'evermemory_briefing',
+        label: 'EverMemory Briefing',
+        description: 'Build current memory briefing sections for the active scope.',
+        parameters: Type.Object(
+          {
+            sessionId: Type.Optional(Type.String()),
+            scope: scopeSchema,
+            tokenTarget: Type.Optional(Type.Number({ minimum: 1 })),
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const baseScope = resolveToolScope(sessionScopes, toolContext);
+          const briefing = evermemory.evermemoryBriefing({
+            sessionId: asOptionalString(params.sessionId) ?? asOptionalString(toolContext.sessionId),
+            scope: mergeScope(baseScope, parseScope(params.scope)),
+            tokenTarget: asOptionalInteger(params.tokenTarget),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Briefing generated: sections(identity=${briefing.sections.identity.length}, constraints=${briefing.sections.constraints.length}, continuity=${briefing.sections.recentContinuity.length}, projects=${briefing.sections.activeProjects.length})`,
+            }],
+            details: briefing,
+          };
+        },
+      }),
+      { name: 'evermemory_briefing' },
+    );
+
+    api.registerTool(
+      (toolContext: UnknownRecord) => ({
+        name: 'evermemory_intent',
+        label: 'EverMemory Intent',
+        description: 'Analyze a message intent and persist deterministic intent record.',
+        parameters: Type.Object(
+          {
+            message: Type.String(),
+            sessionId: Type.Optional(Type.String()),
+            messageId: Type.Optional(Type.String()),
+            scope: scopeSchema,
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const message = asOptionalString(params.message);
+          if (!message) {
+            return {
+              content: [{ type: 'text', text: 'Missing required field: message' }],
+              details: { reason: 'missing_message' },
+            };
+          }
+          const baseScope = resolveToolScope(sessionScopes, toolContext);
+          const intent = evermemory.evermemoryIntent({
+            message,
+            sessionId: asOptionalString(params.sessionId) ?? asOptionalString(toolContext.sessionId),
+            messageId: asOptionalString(params.messageId),
+            scope: mergeScope(baseScope, parseScope(params.scope)),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Intent analyzed: type=${intent.intent.type}, urgency=${intent.signals.urgency}, memoryNeed=${intent.signals.memoryNeed}`,
+            }],
+            details: intent,
+          };
+        },
+      }),
+      { name: 'evermemory_intent' },
+    );
+
+    api.registerTool(
+      () => ({
+        name: 'evermemory_reflect',
+        label: 'EverMemory Reflect',
+        description: 'Generate reflection records and candidate behavior rules.',
+        parameters: Type.Object(
+          {
+            sessionId: Type.Optional(Type.String()),
+            mode: reflectModeSchema,
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const result = evermemory.evermemoryReflect({
+            sessionId: asOptionalString(params.sessionId),
+            mode: asOptionalEnum(params.mode, REFLECT_MODES),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Reflection completed: created=${result.summary.createdReflections}, candidates=${result.candidateRules.length}`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_reflect' },
+    );
+
+    api.registerTool(
+      (toolContext: UnknownRecord) => ({
+        name: 'evermemory_rules',
+        label: 'EverMemory Rules',
+        description: 'Load active behavior rules or mutate a specific rule lifecycle state.',
+        parameters: Type.Object(
+          {
+            scope: scopeSchema,
+            intentType: intentTypeSchema,
+            channel: Type.Optional(Type.String()),
+            contexts: Type.Optional(Type.Array(Type.String())),
+            limit: Type.Optional(Type.Number({ minimum: 1, maximum: 50 })),
+            includeInactive: Type.Optional(Type.Boolean()),
+            includeDeprecated: Type.Optional(Type.Boolean()),
+            includeFrozen: Type.Optional(Type.Boolean()),
+            action: rulesActionSchema,
+            ruleId: Type.Optional(Type.String()),
+            reason: Type.Optional(Type.String()),
+            reflectionId: Type.Optional(Type.String()),
+            replacementRuleId: Type.Optional(Type.String()),
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const action = asOptionalEnum(params.action, RULE_MUTATION_ACTIONS);
+          const ruleId = asOptionalString(params.ruleId);
+          if (action && !ruleId) {
+            return {
+              content: [{ type: 'text', text: 'Missing required field: ruleId (when action is provided)' }],
+              details: { reason: 'missing_rule_id_for_action', action },
+            };
+          }
+          const baseScope = resolveToolScope(sessionScopes, toolContext);
+          const result = evermemory.evermemoryRules({
+            scope: mergeScope(baseScope, parseScope(params.scope)),
+            intentType: asOptionalEnum(params.intentType, INTENT_TYPES),
+            channel: asOptionalString(params.channel),
+            contexts: asOptionalStringArray(params.contexts),
+            limit: asOptionalInteger(params.limit),
+            includeInactive: asOptionalBoolean(params.includeInactive),
+            includeDeprecated: asOptionalBoolean(params.includeDeprecated),
+            includeFrozen: asOptionalBoolean(params.includeFrozen),
+            action,
+            ruleId,
+            reason: asOptionalString(params.reason),
+            reflectionId: asOptionalString(params.reflectionId),
+            replacementRuleId: asOptionalString(params.replacementRuleId),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: result.mutation
+                ? `Rule mutation: action=${result.mutation.action}, changed=${result.mutation.changed}, reason=${result.mutation.reason}`
+                : `Loaded ${result.total} active rule(s).`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_rules' },
+    );
+
+    api.registerTool(
+      () => ({
+        name: 'evermemory_profile',
+        label: 'EverMemory Profile',
+        description: 'Read or recompute projected user profile.',
+        parameters: Type.Object(
+          {
+            userId: Type.Optional(Type.String()),
+            recompute: Type.Optional(Type.Boolean()),
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const result = evermemory.evermemoryProfile({
+            userId: asOptionalString(params.userId),
+            recompute: asOptionalBoolean(params.recompute),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Profile source=${result.source}, exists=${result.profile ? 'yes' : 'no'}`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_profile' },
+    );
+
+    api.registerTool(
+      (toolContext: UnknownRecord) => ({
+        name: 'evermemory_consolidate',
+        label: 'EverMemory Consolidate',
+        description: 'Run manual lifecycle maintenance and consolidation pass.',
+        parameters: Type.Object(
+          {
+            mode: consolidationModeSchema,
+            scope: scopeSchema,
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const baseScope = resolveToolScope(sessionScopes, toolContext);
+          const result = evermemory.evermemoryConsolidate({
+            mode: asOptionalEnum(params.mode, CONSOLIDATION_MODES),
+            scope: mergeScope(baseScope, parseScope(params.scope)),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Consolidation done: mode=${result.mode}, processed=${result.processed}, merged=${result.merged}, archivedStale=${result.archivedStale}`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_consolidate' },
+    );
+
+    api.registerTool(
+      () => ({
+        name: 'evermemory_explain',
+        label: 'EverMemory Explain',
+        description: 'Explain write/retrieval/rule decisions from debug evidence.',
+        parameters: Type.Object(
+          {
+            topic: explainTopicSchema,
+            entityId: Type.Optional(Type.String()),
+            limit: Type.Optional(Type.Number({ minimum: 1, maximum: 20 })),
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const result = evermemory.evermemoryExplain({
+            topic: asOptionalEnum(params.topic, EXPLAIN_TOPICS),
+            entityId: asOptionalString(params.entityId),
+            limit: asOptionalInteger(params.limit),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Explain topic=${result.topic}, items=${result.total}`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_explain' },
+    );
+
+    api.registerTool(
+      (toolContext: UnknownRecord) => ({
+        name: 'evermemory_export',
+        label: 'EverMemory Export',
+        description: 'Export memory snapshot for review or migration.',
+        parameters: Type.Object(
+          {
+            scope: scopeSchema,
+            includeArchived: Type.Optional(Type.Boolean()),
+            limit: Type.Optional(Type.Number({ minimum: 1, maximum: 1000 })),
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const baseScope = resolveToolScope(sessionScopes, toolContext);
+          const result = evermemory.evermemoryExport({
+            scope: mergeScope(baseScope, parseScope(params.scope)),
+            includeArchived: asOptionalBoolean(params.includeArchived),
+            limit: asOptionalInteger(params.limit),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Snapshot exported: total=${result.summary.exported}, includeArchived=${result.summary.includeArchived}`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_export' },
+    );
+
+    api.registerTool(
+      () => ({
+        name: 'evermemory_import',
+        label: 'EverMemory Import',
+        description: 'Review/apply memory snapshot import with safety checks.',
+        parameters: Type.Object(
+          {
+            snapshot: Type.Any(),
+            mode: importModeSchema,
+            approved: Type.Optional(Type.Boolean()),
+            allowOverwrite: Type.Optional(Type.Boolean()),
+            scopeOverride: scopeSchema,
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          if (!isRecord(params.snapshot)) {
+            return {
+              content: [{ type: 'text', text: 'Missing required field: snapshot' }],
+              details: { reason: 'missing_snapshot' },
+            };
+          }
+          const result = evermemory.evermemoryImport({
+            snapshot: params.snapshot as any,
+            mode: asOptionalEnum(params.mode, IMPORT_MODES),
+            approved: asOptionalBoolean(params.approved),
+            allowOverwrite: asOptionalBoolean(params.allowOverwrite),
+            scopeOverride: parseScope(params.scopeOverride),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Import ${result.mode}: applied=${result.applied}, total=${result.total}, imported=${result.imported}, updated=${result.updated}, rejected=${result.rejected.length}`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_import' },
+    );
+
+    api.registerTool(
+      (toolContext: UnknownRecord) => ({
+        name: 'evermemory_review',
+        label: 'EverMemory Review',
+        description: 'Review archived memory candidates and optional rule provenance.',
+        parameters: Type.Object(
+          {
+            scope: scopeSchema,
+            query: Type.Optional(Type.String()),
+            limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
+            includeSuperseded: Type.Optional(Type.Boolean()),
+            ruleId: Type.Optional(Type.String()),
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const baseScope = resolveToolScope(sessionScopes, toolContext);
+          const result = evermemory.evermemoryReview({
+            scope: mergeScope(baseScope, parseScope(params.scope)),
+            query: asOptionalString(params.query),
+            limit: asOptionalInteger(params.limit),
+            includeSuperseded: asOptionalBoolean(params.includeSuperseded),
+            ruleId: asOptionalString(params.ruleId),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Review completed: candidates=${result.total}${result.ruleReview ? ', ruleReview=present' : ''}`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_review' },
+    );
+
+    api.registerTool(
+      () => ({
+        name: 'evermemory_restore',
+        label: 'EverMemory Restore',
+        description: 'Review/apply restore plan for archived memories.',
+        parameters: Type.Object(
+          {
+            ids: Type.Array(Type.String()),
+            mode: restoreModeSchema,
+            approved: Type.Optional(Type.Boolean()),
+            targetLifecycle: restoreLifecycleSchema,
+            allowSuperseded: Type.Optional(Type.Boolean()),
+          },
+          { additionalProperties: false },
+        ),
+        async execute(_toolCallId: string, params: UnknownRecord) {
+          const ids = asOptionalStringArray(params.ids);
+          if (!ids || ids.length === 0) {
+            return {
+              content: [{ type: 'text', text: 'Missing required field: ids' }],
+              details: { reason: 'missing_ids' },
+            };
+          }
+          const result = evermemory.evermemoryRestore({
+            ids,
+            mode: asOptionalEnum(params.mode, RESTORE_MODES),
+            approved: asOptionalBoolean(params.approved),
+            targetLifecycle: asOptionalEnum(params.targetLifecycle, RESTORE_TARGET_LIFECYCLES),
+            allowSuperseded: asOptionalBoolean(params.allowSuperseded),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: `Restore ${result.mode}: applied=${result.applied}, restorable=${result.restorable}, restored=${result.restored}, rejected=${result.rejected.length}`,
+            }],
+            details: result,
+          };
+        },
+      }),
+      { name: 'evermemory_restore' },
     );
 
     api.registerService({

@@ -1,6 +1,6 @@
 # EverMemory v1 Boundary
 
-_Last reviewed: 2026-03-13_
+_Last reviewed: 2026-03-14_
 
 ## Purpose
 
@@ -16,9 +16,7 @@ It is intentionally conservative:
 
 EverMemory v1 is currently best understood as:
 
-> a deterministic SQLite-backed memory package for OpenClaw with a working core store/recall/status plugin surface, plus additional internal/library capabilities for briefing, intent, reflection, rules, profile projection, consolidation, explainability, import/export, and archive review/restore.
-
-That means the repository already contains more code than the plugin currently exposes to OpenClaw as first-class tools.
+> a deterministic SQLite-backed memory package for OpenClaw with a full plugin tool surface covering store/recall/status/briefing/intent/reflection/rules/profile/consolidation/explainability/import-export/review-restore, plus optional semantic and optional host-injected LLM enrichment.
 
 ## In scope for v1
 
@@ -52,6 +50,17 @@ These areas are implemented in code and should be treated as the stable v1 core.
      - `evermemory_store`
      - `evermemory_recall`
      - `evermemory_status`
+     - `evermemory_briefing`
+     - `evermemory_intent`
+     - `evermemory_reflect`
+     - `evermemory_rules`
+     - `evermemory_profile`
+     - `evermemory_consolidate`
+     - `evermemory_explain`
+     - `evermemory_export`
+     - `evermemory_import`
+     - `evermemory_review`
+     - `evermemory_restore`
 
 5. **Operator visibility baseline**
    - status/debug snapshots
@@ -74,19 +83,8 @@ These capabilities exist and are real, but are optional by configuration, host w
    - not bundled as a built-in provider integration
 
 3. **Library/API-level advanced operations**
-   - available from `initializeEverMemory()` return surface:
-     - `evermemoryBriefing`
-     - `evermemoryIntent`
-     - `evermemoryReflect`
-     - `evermemoryRules`
-     - `evermemoryProfile`
-     - `evermemoryConsolidate`
-     - `evermemoryExplain`
-     - `evermemoryExport`
-     - `evermemoryImport`
-     - `evermemoryReview`
-     - `evermemoryRestore`
-   - these are code-level capabilities, but **not all are registered as plugin tools for OpenClaw host use yet**
+   - available from `initializeEverMemory()` return surface
+   - also registered in plugin layer as OpenClaw tools by default
 
 ## Experimental
 
@@ -130,33 +128,24 @@ The following should be considered outside the v1 claim for the current reposito
 4. **Rich operator UI / admin console**
    - no dedicated UI shipped here
 
-5. **Claiming full plugin-tool parity for all library capabilities**
-   - inaccurate today
-   - only store / recall / status are registered as plugin tools in the OpenClaw integration layer
+5. **Claiming broad production-hard maturity for all advanced workflows**
+   - tool parity is now in place, but operational maturity across all hosts still requires iterative tuning
 
 6. **Claiming production-hard multi-instance distribution maturity**
    - packaging exists and can be installed elsewhere
    - but distribution, compatibility, upgrade, and support guarantees are still limited
 
-## Important distinction: library surface vs plugin-exposed surface
+## Important distinction: capability existence vs operational maturity
 
-This repository has two different capability layers:
+This repository has both:
 
 ### A. Library/API surface
-
-Via `initializeEverMemory()`, callers can access a broad set of internal services and wrapper methods.
-
-This is larger than the current plugin tool surface.
+Via `initializeEverMemory()`, callers can access internal services and wrapper methods.
 
 ### B. OpenClaw plugin-exposed surface
+In `src/openclaw/plugin.ts`, the plugin now registers full wrapper parity for default operator use.
 
-In `src/openclaw/plugin.ts`, the plugin currently registers only:
-
-- `evermemory_store`
-- `evermemory_recall`
-- `evermemory_status`
-
-So any document that presents all internal wrapper methods as already available to OpenClaw operators by default would be overstating the current host integration.
+The current boundary risk is no longer exposure parity, but production-hardening depth and cross-host behavior consistency.
 
 ## What v1 should honestly promise
 
@@ -164,8 +153,8 @@ EverMemory v1 can honestly promise:
 
 - deterministic local persistence
 - inspectable write/retrieval behavior
-- a working store/recall/status plugin baseline for OpenClaw
-- a larger internal capability base that is already implemented and can be expanded into broader host exposure later
+- a full default plugin tool surface for core and advanced memory workflows
+- deterministic and inspectable operator workflows with documented release/rollback gates
 
 EverMemory v1 should **not** yet promise:
 

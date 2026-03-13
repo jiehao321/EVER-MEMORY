@@ -132,10 +132,32 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   const storeTool = tools.get('memory_store');
   const recallTool = tools.get('memory_recall');
   const statusTool = tools.get('evermemory_status');
+  const briefingTool = tools.get('evermemory_briefing');
+  const intentTool = tools.get('evermemory_intent');
+  const reflectTool = tools.get('evermemory_reflect');
+  const rulesTool = tools.get('evermemory_rules');
+  const profileTool = tools.get('evermemory_profile');
+  const consolidateTool = tools.get('evermemory_consolidate');
+  const explainTool = tools.get('evermemory_explain');
+  const exportTool = tools.get('evermemory_export');
+  const importTool = tools.get('evermemory_import');
+  const reviewTool = tools.get('evermemory_review');
+  const restoreTool = tools.get('evermemory_restore');
 
   assert.ok(storeTool);
   assert.ok(recallTool);
   assert.ok(statusTool);
+  assert.ok(briefingTool);
+  assert.ok(intentTool);
+  assert.ok(reflectTool);
+  assert.ok(rulesTool);
+  assert.ok(profileTool);
+  assert.ok(consolidateTool);
+  assert.ok(explainTool);
+  assert.ok(exportTool);
+  assert.ok(importTool);
+  assert.ok(reviewTool);
+  assert.ok(restoreTool);
 
   const storeResult = await storeTool.execute('tc-1', {
     content: '项目计划：先做质量审查，再推进开发实现。',
@@ -172,6 +194,64 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
 
   const statusResult = await statusTool.execute('tc-3', {});
   assert.ok(statusResult.details.memoryCount >= 1);
+
+  const briefingResult = await briefingTool.execute('tc-briefing', {});
+  assert.ok(briefingResult.details.sections);
+
+  const intentResult = await intentTool.execute('tc-intent', {
+    message: '请先确认范围，再执行变更。',
+  });
+  assert.equal(typeof intentResult.details.intent.type, 'string');
+
+  const reflectResult = await reflectTool.execute('tc-reflect', {
+    mode: 'light',
+  });
+  assert.ok(reflectResult.details.summary.processedExperiences >= 0);
+
+  const rulesResult = await rulesTool.execute('tc-rules', {
+    limit: 5,
+  });
+  assert.ok(Array.isArray(rulesResult.details.rules));
+
+  const profileResult = await profileTool.execute('tc-profile', {
+    userId: 'user-openclaw-1',
+    recompute: true,
+  });
+  assert.ok(['recomputed', 'stored', 'none', 'latest'].includes(profileResult.details.source));
+
+  const consolidateResult = await consolidateTool.execute('tc-consolidate', {
+    mode: 'light',
+  });
+  assert.equal(typeof consolidateResult.details.processed, 'number');
+
+  const explainResult = await explainTool.execute('tc-explain', {
+    topic: 'write',
+    limit: 3,
+  });
+  assert.ok(Array.isArray(explainResult.details.items));
+
+  const exportResult = await exportTool.execute('tc-export', {
+    limit: 10,
+  });
+  assert.equal(exportResult.details.snapshot.format, 'evermemory.snapshot.v1');
+
+  const importReviewResult = await importTool.execute('tc-import', {
+    snapshot: exportResult.details.snapshot,
+    mode: 'review',
+  });
+  assert.equal(importReviewResult.details.mode, 'review');
+  assert.equal(importReviewResult.details.applied, false);
+
+  const reviewResult = await reviewTool.execute('tc-review', {
+    limit: 5,
+  });
+  assert.equal(typeof reviewResult.details.total, 'number');
+
+  const restoreResult = await restoreTool.execute('tc-restore', {
+    ids: ['missing-memory-id'],
+    mode: 'review',
+  });
+  assert.equal(restoreResult.details.mode, 'review');
 
   await runHook(
     hooks,

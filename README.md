@@ -81,14 +81,12 @@ OpenClaw Runtime
 - 召回链路：query -> candidate load -> ranking/policy -> result + debug evidence
 - 会话链路：session_start 建立上下文，before_agent_start 注入相关记忆，agent_end 生成经验与反思
 
-### 5. 当前 OpenClaw 工具面
+### 5. 当前 OpenClaw 工具面（已完整注册）
 
 已注册（插件默认暴露）：
 - `evermemory_store`（别名：`memory_store`）
 - `evermemory_recall`（别名：`memory_recall`）
 - `evermemory_status`
-
-库层已实现但默认未全部注册为 OpenClaw tool：
 - `evermemory_briefing`
 - `evermemory_intent`
 - `evermemory_reflect`
@@ -258,17 +256,23 @@ Primary flows:
 - recall: query -> candidate loading -> ranking/policy -> output + evidence
 - session: start context -> pre-agent memory injection -> end-of-session reflection
 
-### 5. Current OpenClaw Tool Surface
+### 5. Current OpenClaw Tool Surface (fully registered)
 
 Registered by default:
 - `evermemory_store` (alias: `memory_store`)
 - `evermemory_recall` (alias: `memory_recall`)
 - `evermemory_status`
-
-Implemented at library level (not all registered as plugin tools by default):
-- `evermemory_briefing`, `evermemory_intent`, `evermemory_reflect`, `evermemory_rules`
-- `evermemory_profile`, `evermemory_consolidate`, `evermemory_explain`
-- `evermemory_export`, `evermemory_import`, `evermemory_review`, `evermemory_restore`
+- `evermemory_briefing`
+- `evermemory_intent`
+- `evermemory_reflect`
+- `evermemory_rules`
+- `evermemory_profile`
+- `evermemory_consolidate`
+- `evermemory_explain`
+- `evermemory_export`
+- `evermemory_import`
+- `evermemory_review`
+- `evermemory_restore`
 
 ### 6. What Has Been Delivered
 
@@ -324,4 +328,3 @@ This gate covers typecheck/build/tests/OpenClaw smoke/OpenClaw security/benchmar
 - `scripts/` quality/release/e2e/security automation
 - `docs/` release and operator documentation
 - `skills/` OpenClaw installer/publisher skill
-
