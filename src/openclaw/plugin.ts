@@ -9,6 +9,7 @@ import {
 import { getDefaultConfig, initializeEverMemory } from '../index.js';
 
 type UnknownRecord = Record<string, unknown>;
+type EverMemoryRuntime = ReturnType<typeof initializeEverMemory>;
 
 interface SessionScopeState {
   scope: {
@@ -16,6 +17,15 @@ interface SessionScopeState {
     chatId?: string;
     project?: string;
   };
+  channel?: string;
+  sessionKey?: string;
+  sessionStartBindingKey?: string;
+}
+
+interface HostBinding {
+  userId?: string;
+  chatId?: string;
+  channel?: string;
   sessionKey?: string;
 }
 
@@ -41,6 +51,38 @@ function asOptionalString(value: unknown): string | undefined {
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function readPath(source: unknown, path: readonly string[]): unknown {
+  let current: unknown = source;
+  for (const segment of path) {
+    if (!isRecord(current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
+function pickFirstString(source: unknown, paths: readonly (readonly string[])[]): string | undefined {
+  for (const path of paths) {
+    const value = asOptionalString(readPath(source, path));
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function inferChannelFromSessionKey(sessionKey: string | undefined): string | undefined {
+  if (!sessionKey) {
+    return undefined;
+  }
+  const normalized = sessionKey.toLowerCase();
+  const knownChannels = ['feishu', 'discord', 'slack', 'telegram', 'wechat', 'web', 'cli'];
+  return knownChannels.find((channel) => (
+    normalized.startsWith(`${channel}:`) || normalized.includes(`:${channel}:`) || normalized.includes(`/${channel}/`)
+  ));
 }
 
 function asOptionalStringArray(value: unknown): string[] | undefined {
@@ -283,14 +325,165 @@ function buildInjectedContext(
   };
 }
 
-function createScopeState(sessionId: string, sessionKey?: string): SessionScopeState {
+function resolveHostBinding(event: unknown, context: unknown): HostBinding {
+  const sources = [context, event];
+  const sessionKey = sources
+    .map((source) => pickFirstString(source, [
+      ['sessionKey'],
+      ['session_key'],
+      ['session', 'key'],
+    ]))
+    .find((value) => Boolean(value));
+  const userId = sources
+    .map((source) => pickFirstString(source, [
+      ['requesterSenderId'],
+      ['requester_sender_id'],
+      ['userId'],
+      ['user_id'],
+      ['requesterUserId'],
+      ['requester_user_id'],
+      ['senderId'],
+      ['sender_id'],
+      ['fromUserId'],
+      ['from_user_id'],
+      ['openId'],
+      ['open_id'],
+      ['requester', 'senderId'],
+      ['requester', 'sender_id'],
+      ['requester', 'userId'],
+      ['requester', 'user_id'],
+      ['requester', 'id'],
+      ['sender', 'id'],
+      ['sender', 'senderId'],
+      ['sender', 'userId'],
+      ['message', 'senderId'],
+      ['message', 'sender_id'],
+      ['message', 'userId'],
+      ['message', 'user_id'],
+      ['message', 'sender', 'id'],
+    ]))
+    .find((value) => Boolean(value));
+  const chatId = sources
+    .map((source) => pickFirstString(source, [
+      ['chatId'],
+      ['chat_id'],
+      ['conversationId'],
+      ['conversation_id'],
+      ['threadId'],
+      ['thread_id'],
+      ['roomId'],
+      ['room_id'],
+      ['chat', 'id'],
+      ['chat', 'chatId'],
+      ['chat', 'chat_id'],
+      ['conversation', 'id'],
+      ['conversation', 'chatId'],
+      ['conversation', 'chat_id'],
+      ['message', 'chatId'],
+      ['message', 'chat_id'],
+      ['message', 'conversationId'],
+      ['message', 'conversation_id'],
+    ]))
+    .find((value) => Boolean(value))
+    ?? sessionKey;
+  const channel = (
+    sources
+      .map((source) => pickFirstString(source, [
+        ['channelId'],
+        ['channel_id'],
+        ['channel'],
+        ['messageChannel'],
+        ['message_channel'],
+        ['platform'],
+        ['message', 'channel'],
+        ['message', 'channelId'],
+        ['message', 'channel_id'],
+        ['meta', 'channel'],
+      ]))
+      .find((value) => Boolean(value))
+    ?? inferChannelFromSessionKey(sessionKey)
+  );
   return {
+    userId,
+    chatId,
+    channel,
     sessionKey,
+  };
+}
+
+function createScopeState(sessionId: string, binding: HostBinding = {}): SessionScopeState {
+  const chatId = binding.chatId ?? binding.sessionKey ?? sessionId;
+  return {
+    sessionKey: binding.sessionKey,
+    channel: binding.channel,
     scope: {
-      chatId: sessionKey ?? sessionId,
+      userId: binding.userId,
+      chatId,
       project: PLUGIN_NAME,
     },
   };
+}
+
+function mergeScopeState(
+  current: SessionScopeState,
+  sessionId: string,
+  binding: HostBinding,
+): SessionScopeState {
+  const nextSessionKey = binding.sessionKey ?? current.sessionKey;
+  return {
+    ...current,
+    sessionKey: nextSessionKey,
+    channel: binding.channel ?? current.channel,
+    scope: {
+      userId: binding.userId ?? current.scope.userId,
+      chatId: binding.chatId ?? current.scope.chatId ?? nextSessionKey ?? sessionId,
+      project: current.scope.project ?? PLUGIN_NAME,
+    },
+  };
+}
+
+function buildScopeBindingKey(state: SessionScopeState): string {
+  return [
+    state.scope.userId ?? '',
+    state.scope.chatId ?? '',
+    state.scope.project ?? '',
+    state.channel ?? '',
+  ].join('|');
+}
+
+function upsertScopeState(
+  sessionScopes: Map<string, SessionScopeState>,
+  sessionId: string,
+  event: unknown,
+  context: unknown,
+): SessionScopeState {
+  const binding = resolveHostBinding(event, context);
+  const current = sessionScopes.get(sessionId);
+  const next = current
+    ? mergeScopeState(current, sessionId, binding)
+    : createScopeState(sessionId, binding);
+  sessionScopes.set(sessionId, next);
+  return next;
+}
+
+function syncSessionStartScope(
+  evermemory: EverMemoryRuntime,
+  sessionId: string,
+  scopeState: SessionScopeState,
+): boolean {
+  const bindingKey = buildScopeBindingKey(scopeState);
+  if (scopeState.sessionStartBindingKey === bindingKey) {
+    return false;
+  }
+  evermemory.sessionStart({
+    sessionId,
+    userId: scopeState.scope.userId,
+    chatId: scopeState.scope.chatId,
+    project: scopeState.scope.project,
+    channel: scopeState.channel,
+  });
+  scopeState.sessionStartBindingKey = bindingKey;
+  return true;
 }
 
 function resolveToolScope(
@@ -298,12 +491,14 @@ function resolveToolScope(
   toolContext: UnknownRecord,
 ): { userId?: string; chatId?: string; project?: string } {
   const sessionId = asOptionalString(toolContext.sessionId);
-  const requesterSenderId = asOptionalString(toolContext.requesterSenderId);
-  const sessionScope = sessionId ? sessionScopes.get(sessionId)?.scope : undefined;
+  const scopeState = sessionId
+    ? upsertScopeState(sessionScopes, sessionId, undefined, toolContext)
+    : undefined;
+  const toolBinding = resolveHostBinding(undefined, toolContext);
   return {
-    userId: requesterSenderId ?? sessionScope?.userId,
-    chatId: sessionScope?.chatId ?? asOptionalString(toolContext.sessionKey),
-    project: sessionScope?.project ?? PLUGIN_NAME,
+    userId: toolBinding.userId ?? scopeState?.scope.userId,
+    chatId: toolBinding.chatId ?? scopeState?.scope.chatId ?? toolBinding.sessionKey,
+    project: scopeState?.scope.project ?? PLUGIN_NAME,
   };
 }
 
@@ -349,52 +544,52 @@ const memoryPlugin = {
       });
     };
 
-    registerHook('session_start', (event: unknown) => {
-      if (!isRecord(event)) {
-        return;
-      }
-      const sessionId = asOptionalString(event.sessionId);
-      const sessionKey = asOptionalString(event.sessionKey);
+    registerHook('session_start', (event: unknown, context: unknown) => {
+      const sessionId = (
+        (isRecord(event) ? asOptionalString(event.sessionId) : undefined)
+        ?? (isRecord(context) ? asOptionalString(context.sessionId) : undefined)
+      );
       if (!sessionId) {
         return;
       }
 
-      sessionScopes.set(sessionId, createScopeState(sessionId, sessionKey));
-      const scopeState = sessionScopes.get(sessionId)!;
-
-      evermemory.sessionStart({
-        sessionId,
-        chatId: scopeState.scope.chatId,
-      });
+      const scopeState = upsertScopeState(sessionScopes, sessionId, event, context);
+      syncSessionStartScope(evermemory, sessionId, scopeState);
     });
 
     registerHook('before_agent_start', (event: unknown, context: unknown) => {
-      if (!isRecord(event) || !isRecord(context)) {
+      if (!isRecord(context)) {
         return undefined;
       }
-      const prompt = asOptionalString(event.prompt);
-      const sessionId = asOptionalString(context.sessionId);
+      const prompt = isRecord(event) ? asOptionalString(event.prompt) : undefined;
+      const sessionId = asOptionalString(context.sessionId)
+        ?? (isRecord(event) ? asOptionalString(event.sessionId) : undefined);
       if (!prompt || !sessionId) {
         return undefined;
       }
 
-      if (!sessionScopes.has(sessionId)) {
-        sessionScopes.set(sessionId, createScopeState(sessionId, asOptionalString(context.sessionKey)));
-      }
-      const scopeState = sessionScopes.get(sessionId)!;
+      const scopeState = upsertScopeState(sessionScopes, sessionId, event, context);
+      const scopeRebound = syncSessionStartScope(evermemory, sessionId, scopeState);
+      const runId = asOptionalString(context.runId);
 
       const result = evermemory.messageReceived({
         sessionId,
-        messageId: asOptionalString(context.runId),
+        messageId: runId,
         text: prompt,
         scope: scopeState.scope,
-        channel: asOptionalString(context.channelId),
+        channel: scopeState.channel,
       });
 
       const injected = buildInjectedContext(result.recall.items, result.behaviorRules);
-      evermemory.debugRepo.log('interaction_processed', asOptionalString(context.runId), {
+      evermemory.debugRepo.log('interaction_processed', runId, {
         sessionId,
         source: 'before_agent_start_injection',
+        scopeUserId: scopeState.scope.userId,
+        scopeChatId: scopeState.scope.chatId,
+        scopeProject: scopeState.scope.project,
+        scopeChannel: scopeState.channel,
+        scopeSessionKey: scopeState.sessionKey,
+        scopeSessionStartRebound: scopeRebound,
         routeIntentType: result.intent.intent.type,
         recalled: result.recall.total,
         ...injected.stats,
@@ -403,36 +598,35 @@ const memoryPlugin = {
     });
 
     registerHook('agent_end', (event: unknown, context: unknown) => {
-      if (!isRecord(context)) {
-        return;
-      }
-      const sessionId = asOptionalString(context.sessionId);
+      const sessionId = (
+        (isRecord(context) ? asOptionalString(context.sessionId) : undefined)
+        ?? (isRecord(event) ? asOptionalString(event.sessionId) : undefined)
+      );
       if (!sessionId) {
         return;
       }
-      const scopeState = sessionScopes.get(sessionId) ?? createScopeState(
-        sessionId,
-        asOptionalString(context.sessionKey),
-      );
+      const scopeState = upsertScopeState(sessionScopes, sessionId, event, context);
+      syncSessionStartScope(evermemory, sessionId, scopeState);
 
       const messages = isRecord(event) && Array.isArray(event.messages) ? event.messages : [];
       const exchange = extractLastExchange(messages);
 
       evermemory.sessionEnd({
         sessionId,
-        messageId: asOptionalString(context.runId),
+        messageId: isRecord(context) ? asOptionalString(context.runId) : undefined,
         scope: scopeState.scope,
+        channel: scopeState.channel,
         inputText: exchange.userText,
         actionSummary: exchange.assistantText,
         outcomeSummary: isRecord(event) && event.success === true ? 'run_success' : 'run_failed',
       });
     });
 
-    registerHook('session_end', (event: unknown) => {
-      if (!isRecord(event)) {
-        return;
-      }
-      const sessionId = asOptionalString(event.sessionId);
+    registerHook('session_end', (event: unknown, context: unknown) => {
+      const sessionId = (
+        (isRecord(event) ? asOptionalString(event.sessionId) : undefined)
+        ?? (isRecord(context) ? asOptionalString(context.sessionId) : undefined)
+      );
       if (!sessionId) {
         return;
       }
