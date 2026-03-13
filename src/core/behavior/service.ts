@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { evaluatePromotionCandidate } from './promotion.js';
+import {
+  evaluateBehaviorLifecycle,
+  freezeBehaviorRule,
+  markBehaviorRuleApplied,
+  markBehaviorRuleContradicted,
+} from './lifecycle.js';
+import {
+  buildPromotedRuleGovernance,
+  evaluatePromotionCandidate,
+  freezeConflictingRules,
+} from './promotion.js';
 import { rankBehaviorRules } from './ranking.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { BehaviorRepository } from '../../storage/behaviorRepo.js';
@@ -7,6 +17,9 @@ import type { ReflectionRepository } from '../../storage/reflectionRepo.js';
 import type {
   BehaviorRule,
   BehaviorRuleLookupInput,
+  BehaviorRuleMutationInput,
+  BehaviorRuleMutationResult,
+  BehaviorRuleReviewRecord,
   PromoteFromReflectionInput,
   PromoteFromReflectionResult,
   ReflectionRecord,
@@ -38,7 +51,6 @@ export class BehaviorService {
   promoteFromReflection(input: PromoteFromReflectionInput): PromoteFromReflectionResult {
     const reflection = this.reflectionRepo.findById(input.reflectionId);
     if (!reflection) {
-      // Return empty result instead of throwing to prevent session end interruption
       return {
         reflectionId: input.reflectionId,
         promotedRules: [],
@@ -57,6 +69,36 @@ export class BehaviorService {
     const rejected: PromoteFromReflectionResult['rejected'] = [];
 
     for (const candidate of reflection.candidateRules) {
+      const frozenRules = freezeConflictingRules(candidate, [...existingRules, ...promotedRules]);
+      for (const frozenRule of frozenRules) {
+        const governedFrozenRule: BehaviorRule = {
+          ...frozenRule,
+          state: {
+            ...frozenRule.state,
+            frozen: true,
+            statusReason: frozenRule.lifecycle.freezeReason,
+            statusSourceReflectionId: reflection.id,
+            statusChangedAt: nowIso(),
+          },
+          trace: {
+            ...frozenRule.trace,
+            reviewSourceRefs: Array.from(new Set([
+              ...(frozenRule.trace?.reviewSourceRefs ?? []),
+              ...reflection.evidence.refs,
+            ])),
+            deactivatedByReflectionId: reflection.id,
+            deactivatedReason: frozenRule.lifecycle.freezeReason,
+            deactivatedAt: nowIso(),
+          },
+        };
+        this.behaviorRepo.insert(governedFrozenRule);
+        this.debugRepo?.log('rule_frozen', governedFrozenRule.id, {
+          reflectionId: reflection.id,
+          reason: governedFrozenRule.lifecycle.freezeReason,
+          statement: governedFrozenRule.statement,
+        });
+      }
+
       const decision = evaluatePromotionCandidate({
         statement: candidate,
         reflection,
@@ -96,9 +138,26 @@ export class BehaviorService {
           confidence: reflection.evidence.confidence,
           recurrenceCount: reflection.evidence.recurrenceCount,
         },
+        lifecycle: buildPromotedRuleGovernance({
+          priority: decision.priority,
+          confidence: reflection.evidence.confidence,
+          recurrenceCount: reflection.evidence.recurrenceCount,
+          now: timestamp,
+        }),
         state: {
           active: true,
           deprecated: false,
+          frozen: false,
+          statusReason: 'promoted',
+          statusSourceReflectionId: reflection.id,
+          statusChangedAt: timestamp,
+        },
+        trace: {
+          promotedFromReflectionId: reflection.id,
+          promotedReason: decision.reason,
+          promotedAt: timestamp,
+          reviewSourceRefs: reflection.evidence.refs,
+          promotionEvidenceSummary: reflection.analysis.summary,
         },
       };
 
@@ -110,6 +169,11 @@ export class BehaviorService {
         category: rule.category,
         priority: rule.priority,
         confidence: rule.evidence.confidence,
+        level: rule.lifecycle.level,
+        maturity: rule.lifecycle.maturity,
+        promotedReason: decision.reason,
+        reviewSourceRefs: rule.trace?.reviewSourceRefs,
+        promotionEvidenceSummary: rule.trace?.promotionEvidenceSummary,
       });
     }
 
@@ -128,10 +192,139 @@ export class BehaviorService {
       userId: input.scope?.userId,
       channel: input.channel,
       limit: Math.max(60, limit * 5),
+      includeInactive: input.includeInactive,
+      includeDeprecated: input.includeDeprecated,
+      includeFrozen: input.includeFrozen,
     });
 
     const ranked = rankBehaviorRules(candidates, input);
-    return ranked.slice(0, limit).map((item) => item.rule);
+    const selected = ranked.slice(0, limit).map((item) => item.rule);
+
+    return selected.map((rule) => {
+      const appliedRule = markBehaviorRuleApplied(evaluateBehaviorLifecycle(rule));
+      this.behaviorRepo.insert(appliedRule);
+      return appliedRule;
+    });
+  }
+
+  mutateRule(input: BehaviorRuleMutationInput): BehaviorRuleMutationResult {
+    const rule = this.behaviorRepo.findById(input.ruleId);
+    if (!rule) {
+      return {
+        action: input.action,
+        rule: null,
+        changed: false,
+        reason: 'rule_not_found',
+      };
+    }
+
+    let updatedRule: BehaviorRule;
+    if (input.action === 'freeze') {
+      updatedRule = freezeBehaviorRule(rule, 'manual');
+    } else if (input.action === 'deprecate') {
+      updatedRule = freezeBehaviorRule(rule, 'deprecated');
+    } else {
+      updatedRule = freezeBehaviorRule(
+        markBehaviorRuleContradicted(rule, { reason: 'rollback' }),
+        'rollback',
+      );
+    }
+
+    const timestamp = nowIso();
+    updatedRule = {
+      ...updatedRule,
+      updatedAt: timestamp,
+      state: {
+        ...updatedRule.state,
+        active: false,
+        deprecated: input.action !== 'freeze',
+        frozen: true,
+        statusReason: input.reason ?? updatedRule.lifecycle.freezeReason,
+        statusSourceReflectionId: input.reflectionId,
+        statusChangedAt: timestamp,
+        supersededBy: input.replacementRuleId ?? updatedRule.state.supersededBy,
+      },
+      lifecycle: {
+        ...updatedRule.lifecycle,
+        frozenAt: input.action === 'freeze' ? timestamp : updatedRule.lifecycle.frozenAt,
+        freezeReason: input.action === 'freeze'
+          ? 'manual'
+          : input.action === 'deprecate'
+            ? 'deprecated'
+            : 'rollback',
+        lastReviewedAt: timestamp,
+      },
+      trace: {
+        ...updatedRule.trace,
+        deactivatedByRuleId: input.replacementRuleId,
+        deactivatedByReflectionId: input.reflectionId,
+        deactivatedReason: input.reason ?? updatedRule.lifecycle.freezeReason,
+        deactivatedAt: timestamp,
+      },
+    };
+
+    this.behaviorRepo.insert(updatedRule);
+
+    const debugKind = input.action === 'freeze'
+      ? 'rule_frozen'
+      : input.action === 'deprecate'
+        ? 'rule_deprecated'
+        : 'rule_rolled_back';
+    this.debugRepo?.log(debugKind, updatedRule.id, {
+      action: input.action,
+      reason: input.reason,
+      reflectionId: input.reflectionId,
+      replacementRuleId: input.replacementRuleId,
+      statusChangedAt: timestamp,
+    });
+
+    return {
+      action: input.action,
+      rule: updatedRule,
+      changed: true,
+      reason: input.reason ?? 'ok',
+    };
+  }
+
+  reviewRule(ruleId: string): BehaviorRuleReviewRecord | null {
+    const rule = this.behaviorRepo.findById(ruleId);
+    if (!rule) {
+      return null;
+    }
+
+    const reflectionId = rule.trace?.promotedFromReflectionId ?? rule.state.statusSourceReflectionId;
+    const reflection = reflectionId ? this.reflectionRepo.findById(reflectionId) : null;
+
+    return {
+      rule,
+      reflection: reflection
+        ? {
+            id: reflection.id,
+            summary: reflection.analysis.summary,
+            nextTimeRecommendation: reflection.analysis.nextTimeRecommendation,
+            confidence: reflection.evidence.confidence,
+            recurrenceCount: reflection.evidence.recurrenceCount,
+            evidenceRefs: reflection.evidence.refs,
+            reviewedAt: reflection.state.reviewedAt,
+          }
+        : undefined,
+      sourceTrace: {
+        promotedFromReflectionId: rule.trace?.promotedFromReflectionId,
+        promotedReason: rule.trace?.promotedReason,
+        promotedAt: rule.trace?.promotedAt,
+        statusReason: rule.state.statusReason,
+        statusChangedAt: rule.state.statusChangedAt,
+        statusSourceReflectionId: rule.state.statusSourceReflectionId,
+        deactivatedByRuleId: rule.trace?.deactivatedByRuleId,
+        deactivatedByReflectionId: rule.trace?.deactivatedByReflectionId,
+        deactivatedReason: rule.trace?.deactivatedReason,
+        deactivatedAt: rule.trace?.deactivatedAt,
+        reviewSourceRefs: Array.from(new Set([
+          ...(rule.trace?.reviewSourceRefs ?? []),
+          ...(reflection?.evidence.refs ?? []),
+        ])),
+      },
+    };
   }
 
   listRecentRules(limit = 20): BehaviorRule[] {

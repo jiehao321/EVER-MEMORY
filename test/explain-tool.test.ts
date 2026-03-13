@@ -59,12 +59,29 @@ test('evermemory_explain explains write, retrieval, and rule decisions', () => {
   assert.ok(retrievalExplain.total >= 1);
   assert.ok(retrievalExplain.items.every((item) => item.kind === 'retrieval_executed'));
 
+  const promotedRuleId = app.evermemoryExplain({ topic: 'rule', limit: 10 }).items.find((item) => item.kind === 'rule_promoted')?.entityId;
+  if (promotedRuleId) {
+    app.evermemoryRules({
+      action: 'freeze',
+      ruleId: promotedRuleId,
+      reason: '测试冻结链路',
+      limit: 5,
+      includeFrozen: true,
+      includeInactive: true,
+    });
+  }
+
   const ruleExplain = app.evermemoryExplain({
     topic: 'rule',
     limit: 10,
   });
   assert.ok(ruleExplain.total >= 1);
-  assert.ok(ruleExplain.items.every((item) => item.kind === 'rule_promoted' || item.kind === 'rule_rejected'));
+  assert.ok(ruleExplain.items.every((item) =>
+    item.kind === 'rule_promoted'
+    || item.kind === 'rule_rejected'
+    || item.kind === 'rule_frozen'
+    || item.kind === 'rule_deprecated'
+    || item.kind === 'rule_rolled_back'));
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

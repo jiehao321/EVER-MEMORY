@@ -6,7 +6,8 @@ export const PHASE3_SCHEMA_VERSION = 3;
 export const PHASE4_SCHEMA_VERSION = 4;
 export const PHASE5_SCHEMA_VERSION = 5;
 export const PHASE5_PROFILE_SCHEMA_VERSION = 6;
-export const CURRENT_SCHEMA_VERSION = PHASE5_PROFILE_SCHEMA_VERSION;
+export const PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION;
 
 const CREATE_PHASE1_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS schema_version (\n    version INTEGER NOT NULL\n  )`,
@@ -58,12 +59,57 @@ const CREATE_PHASE5_PROFILE_SCHEMA_SQL = [
   'CREATE INDEX IF NOT EXISTS idx_projected_profiles_updated_at ON projected_profiles(updated_at)',
 ] as const;
 
+const CREATE_PHASE6_BEHAVIOR_LIFECYCLE_SQL = [
+  'ALTER TABLE behavior_rules ADD COLUMN level TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN maturity TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN apply_count INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE behavior_rules ADD COLUMN contradiction_count INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE behavior_rules ADD COLUMN last_applied_at TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN last_contradicted_at TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN last_reviewed_at TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN stale INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE behavior_rules ADD COLUMN staleness TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN decay_score REAL NOT NULL DEFAULT 0',
+  'ALTER TABLE behavior_rules ADD COLUMN frozen_at TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN freeze_reason TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN expires_at TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN frozen INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE behavior_rules ADD COLUMN status_reason TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN status_source_reflection_id TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN status_changed_at TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN promoted_from_reflection_id TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN promoted_reason TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN promoted_at TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN review_source_refs_json TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN promotion_evidence_summary TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN deactivated_by_rule_id TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN deactivated_by_reflection_id TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN deactivated_reason TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN deactivated_at TEXT',
+  'CREATE INDEX IF NOT EXISTS idx_behavior_rules_staleness ON behavior_rules(staleness)',
+  'CREATE INDEX IF NOT EXISTS idx_behavior_rules_level ON behavior_rules(level)',
+] as const;
+
 function ensureSchemaVersionTable(db: Database.Database): void {
   db.prepare(CREATE_PHASE1_SCHEMA_SQL[0]).run();
 
   const row = db.prepare('SELECT COUNT(*) as count FROM schema_version').get() as { count: number };
   if (row.count === 0) {
     db.prepare('INSERT INTO schema_version(version) VALUES (0)').run();
+  }
+}
+
+function runStatementsIgnoreDuplicateColumns(db: Database.Database, statements: readonly string[]): void {
+  for (const sql of statements) {
+    try {
+      db.prepare(sql).run();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/duplicate column name/i.test(message)) {
+        continue;
+      }
+      throw error;
+    }
   }
 }
 
@@ -129,6 +175,11 @@ export function runMigrations(db: Database.Database): number {
     db.prepare('UPDATE schema_version SET version = ?').run(PHASE5_PROFILE_SCHEMA_VERSION);
   });
 
+  const phase6BehaviorLifecycleTx = db.transaction(() => {
+    runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE6_BEHAVIOR_LIFECYCLE_SQL);
+    db.prepare('UPDATE schema_version SET version = ?').run(PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION);
+  });
+
   if (currentVersion < PHASE1_SCHEMA_VERSION) {
     phase1Tx();
     currentVersion = PHASE1_SCHEMA_VERSION;
@@ -157,6 +208,11 @@ export function runMigrations(db: Database.Database): number {
   if (currentVersion < PHASE5_PROFILE_SCHEMA_VERSION) {
     phase5ProfileTx();
     currentVersion = PHASE5_PROFILE_SCHEMA_VERSION;
+  }
+
+  if (currentVersion < PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION) {
+    phase6BehaviorLifecycleTx();
+    currentVersion = PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION;
   }
 
   return currentVersion;

@@ -9,7 +9,7 @@ import type {
 const EVENT_KINDS_BY_TOPIC: Record<EverMemoryExplainTopic, Array<DebugEvent['kind']>> = {
   write: ['memory_write_decision', 'memory_write_rejected'],
   retrieval: ['retrieval_executed'],
-  rule: ['rule_promoted', 'rule_rejected'],
+  rule: ['rule_promoted', 'rule_rejected', 'rule_frozen', 'rule_deprecated', 'rule_rolled_back'],
 };
 
 function toNumber(value: unknown): number | undefined {
@@ -108,6 +108,57 @@ function explainRule(event: DebugEvent): EverMemoryExplainToolResult['items'][nu
     };
   }
 
+  if (event.kind === 'rule_frozen') {
+    const reason = toString(event.payload.reason) ?? 'freeze_requested';
+    return {
+      createdAt: event.createdAt,
+      kind: event.kind,
+      entityId: event.entityId,
+      question: 'Why was this rule frozen?',
+      answer: `Rule was frozen and removed from active loading because: ${reason}.`,
+      evidence: {
+        reason,
+        reflectionId: toString(event.payload.reflectionId),
+        statusChangedAt: toString(event.payload.statusChangedAt),
+        replacementRuleId: toString(event.payload.replacementRuleId),
+      },
+    };
+  }
+
+  if (event.kind === 'rule_deprecated') {
+    const reason = toString(event.payload.reason) ?? 'deprecated_requested';
+    return {
+      createdAt: event.createdAt,
+      kind: event.kind,
+      entityId: event.entityId,
+      question: 'Why was this rule deprecated?',
+      answer: `Rule was deprecated because: ${reason}.`,
+      evidence: {
+        reason,
+        reflectionId: toString(event.payload.reflectionId),
+        statusChangedAt: toString(event.payload.statusChangedAt),
+        replacementRuleId: toString(event.payload.replacementRuleId),
+      },
+    };
+  }
+
+  if (event.kind === 'rule_rolled_back') {
+    const reason = toString(event.payload.reason) ?? 'rollback_requested';
+    return {
+      createdAt: event.createdAt,
+      kind: event.kind,
+      entityId: event.entityId,
+      question: 'Why was this rule rolled back?',
+      answer: `Rule was rolled back because: ${reason}.`,
+      evidence: {
+        reason,
+        reflectionId: toString(event.payload.reflectionId),
+        statusChangedAt: toString(event.payload.statusChangedAt),
+        replacementRuleId: toString(event.payload.replacementRuleId),
+      },
+    };
+  }
+
   const category = toString(event.payload.category) ?? 'unknown';
   const priority = toNumber(event.payload.priority);
   const confidence = toNumber(event.payload.confidence);
@@ -122,6 +173,9 @@ function explainRule(event: DebugEvent): EverMemoryExplainToolResult['items'][nu
       priority,
       confidence,
       reflectionId: toString(event.payload.reflectionId),
+      promotedReason: toString(event.payload.promotedReason),
+      reviewSourceRefs: event.payload.reviewSourceRefs,
+      promotionEvidenceSummary: toString(event.payload.promotionEvidenceSummary),
     },
   };
 }

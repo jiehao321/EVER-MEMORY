@@ -13,6 +13,22 @@ export function evermemoryProfile(
     return {
       profile,
       source: input.recompute ? 'recomputed' : (profile ? 'stored' : 'none'),
+      summary: profile
+        ? {
+            stableCanonicalFields: [
+              profile.stable.displayName,
+              profile.stable.preferredAddress,
+              profile.stable.timezone,
+              ...Object.values(profile.stable.explicitPreferences),
+              ...profile.stable.explicitConstraints,
+            ].filter(Boolean).length,
+            derivedHintFields:
+              profile.derived.likelyInterests.length
+              + profile.derived.workPatterns.length
+              + (profile.derived.communicationStyle ? 1 : 0),
+            derivedGuardrail: 'weak_hint_only',
+          }
+        : undefined,
     };
   }
 
@@ -20,5 +36,21 @@ export function evermemoryProfile(
   return {
     profile: latest,
     source: latest ? 'latest' : 'none',
+    summary: latest
+      ? {
+          stableCanonicalFields: [
+            latest.stable.displayName,
+            latest.stable.preferredAddress,
+            latest.stable.timezone,
+            ...Object.values(latest.stable.explicitPreferences),
+            ...latest.stable.explicitConstraints,
+          ].filter(Boolean).length,
+          derivedHintFields:
+            latest.derived.likelyInterests.length
+            + latest.derived.workPatterns.length
+            + (latest.derived.communicationStyle ? 1 : 0),
+          derivedGuardrail: 'weak_hint_only',
+        }
+      : undefined,
   };
 }

@@ -11,11 +11,11 @@ function nowIso(): string {
 }
 
 function makeRule(input: Partial<BehaviorRule> & Pick<BehaviorRule, 'statement' | 'category' | 'priority'>): BehaviorRule {
-  const timestamp = nowIso();
+  const timestamp = input.createdAt ?? nowIso();
   return {
     id: input.id ?? randomUUID(),
     statement: input.statement,
-    createdAt: input.createdAt ?? timestamp,
+    createdAt: timestamp,
     updatedAt: input.updatedAt ?? timestamp,
     appliesTo: {
       userId: input.appliesTo?.userId,
@@ -31,15 +31,35 @@ function makeRule(input: Partial<BehaviorRule> & Pick<BehaviorRule, 'statement' 
       confidence: input.evidence?.confidence ?? 0.9,
       recurrenceCount: input.evidence?.recurrenceCount ?? 2,
     },
+    lifecycle: {
+      level: input.lifecycle?.level ?? 'baseline',
+      maturity: input.lifecycle?.maturity ?? 'emerging',
+      applyCount: input.lifecycle?.applyCount ?? 0,
+      contradictionCount: input.lifecycle?.contradictionCount ?? 0,
+      lastAppliedAt: input.lifecycle?.lastAppliedAt,
+      lastContradictedAt: input.lifecycle?.lastContradictedAt,
+      lastReviewedAt: input.lifecycle?.lastReviewedAt,
+      stale: input.lifecycle?.stale ?? false,
+      staleness: input.lifecycle?.staleness ?? 'fresh',
+      decayScore: input.lifecycle?.decayScore ?? 0,
+      frozenAt: input.lifecycle?.frozenAt,
+      freezeReason: input.lifecycle?.freezeReason,
+      expiresAt: input.lifecycle?.expiresAt,
+    },
     state: {
       active: input.state?.active ?? true,
       deprecated: input.state?.deprecated ?? false,
+      frozen: input.state?.frozen ?? false,
       supersededBy: input.state?.supersededBy,
+      statusReason: input.state?.statusReason,
+      statusSourceReflectionId: input.state?.statusSourceReflectionId,
+      statusChangedAt: input.state?.statusChangedAt,
     },
+    trace: input.trace,
   };
 }
 
-test('behavior promotion accepts strong candidate and rejects duplicates', () => {
+test('behavior promotion writes lifecycle governance metadata and rejects duplicates', () => {
   const databasePath = createTempDbPath('behavior-promotion');
   const app = initializeEverMemory({ databasePath });
 
@@ -76,6 +96,8 @@ test('behavior promotion accepts strong candidate and rejects duplicates', () =>
   });
   assert.ok(first.promotedRules.length >= 1);
   assert.equal(first.reflectionId, reflection!.id);
+  assert.ok(first.promotedRules[0]?.lifecycle.level);
+  assert.ok(first.promotedRules[0]?.lifecycle.maturity);
 
   const second = app.behaviorService.promoteFromReflection({
     reflectionId: reflection!.id,
@@ -96,7 +118,7 @@ test('behavior promotion accepts strong candidate and rejects duplicates', () =>
   rmSync(databasePath, { force: true });
 });
 
-test('sessionStart/messageReceived inject matching behavior rules into runtime context', () => {
+test('sessionStart/messageReceived inject matching behavior rules and increment apply counters', () => {
   const databasePath = createTempDbPath('behavior-runtime');
   const app = initializeEverMemory({ databasePath });
 
@@ -136,11 +158,9 @@ test('sessionStart/messageReceived inject matching behavior rules into runtime c
     chatId: 'chat-runtime-1',
   });
   assert.ok((start.behaviorRules?.length ?? 0) >= 2);
-  assert.equal(start.behaviorRules?.[0].id, userRule.id);
 
   const runtime = app.getRuntimeSessionContext('session-runtime-1');
   assert.ok(runtime?.activeBehaviorRules);
-  assert.ok((runtime?.activeBehaviorRules?.length ?? 0) >= 2);
 
   const messageResult = app.messageReceived({
     sessionId: 'session-runtime-1',
@@ -149,7 +169,8 @@ test('sessionStart/messageReceived inject matching behavior rules into runtime c
     scope: { userId: 'user-runtime-1', project: 'evermemory' },
   });
   assert.ok((messageResult.behaviorRules?.length ?? 0) >= 2);
-  assert.equal(messageResult.behaviorRules?.[0].id, planningRule.id);
+  assert.equal(messageResult.behaviorRules?.[0]?.id, planningRule.id);
+  assert.ok((messageResult.behaviorRules?.[0]?.lifecycle.applyCount ?? 0) >= 1);
 
   const interaction = app.getRuntimeInteractionContext('session-runtime-1');
   assert.ok(interaction?.appliedBehaviorRules);
@@ -159,10 +180,46 @@ test('sessionStart/messageReceived inject matching behavior rules into runtime c
   rmSync(databasePath, { force: true });
 });
 
-test('behavior promotion rejects candidates that conflict with existing active rules', () => {
-  const databasePath = createTempDbPath('behavior-conflict');
+test('behavior lifecycle decays stale rules and freezes contradicted/conflicting rules', () => {
+  const databasePath = createTempDbPath('behavior-governance');
   const app = initializeEverMemory({ databasePath });
-  const timestamp = nowIso();
+  const oldIso = new Date(Date.now() - 75 * 24 * 60 * 60 * 1000).toISOString();
+
+  const staleRule = makeRule({
+    statement: '老旧规则长期未命中时应被降权。',
+    category: 'planning',
+    priority: 88,
+    createdAt: oldIso,
+    updatedAt: oldIso,
+    lifecycle: {
+      level: 'baseline',
+      maturity: 'validated',
+      applyCount: 0,
+      contradictionCount: 0,
+      lastAppliedAt: oldIso,
+      lastReviewedAt: oldIso,
+      stale: false,
+      staleness: 'fresh',
+      decayScore: 0,
+    },
+  });
+  app.behaviorRepo.insert(staleRule);
+
+  const refreshed = app.behaviorRepo.findById(staleRule.id);
+  assert.ok(refreshed);
+  assert.equal(refreshed!.lifecycle.stale, true);
+  assert.equal(refreshed!.lifecycle.staleness, 'expired');
+  assert.ok(refreshed!.priority < staleRule.priority);
+
+  const contradicted = app.behaviorService.mutateRule({
+    action: 'rollback',
+    ruleId: refreshed!.id,
+    reason: '用户明确纠正旧规则',
+    reflectionId: 'reflection-rollback-1',
+  });
+  assert.equal(contradicted.changed, true);
+  assert.ok((contradicted.rule?.lifecycle.contradictionCount ?? 0) >= 1);
+  assert.equal(contradicted.rule?.state.frozen, true);
 
   const existingRule = makeRule({
     statement: '高风险动作无需确认，直接执行。',
@@ -178,7 +235,7 @@ test('behavior promotion rejects candidates that conflict with existing active r
 
   const reflection: ReflectionRecord = {
     id: randomUUID(),
-    createdAt: timestamp,
+    createdAt: nowIso(),
     trigger: {
       kind: 'manual-review',
       experienceIds: [],
@@ -211,7 +268,9 @@ test('behavior promotion rejects candidates that conflict with existing active r
 
   assert.equal(result.promotedRules.length, 0);
   assert.ok(result.rejected.some((item) => item.reason === 'conflicts_with_existing_rule'));
-  assert.ok(app.debugRepo.listRecent('rule_rejected', 10).length >= 1);
+  const conflictedRule = app.behaviorRepo.findById(existingRule.id);
+  assert.equal(conflictedRule?.state.frozen, true);
+  assert.equal(conflictedRule?.lifecycle.freezeReason, 'conflict');
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

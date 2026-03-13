@@ -133,6 +133,18 @@ export function evermemoryStatus(input: {
       ? {
           userId: latestProfile.userId,
           updatedAt: latestProfile.updatedAt,
+          stableCanonicalFields: {
+            displayName: latestProfile.stable.displayName,
+            preferredAddress: latestProfile.stable.preferredAddress,
+            timezone: latestProfile.stable.timezone,
+            explicitPreferences: latestProfile.stable.explicitPreferences,
+            explicitConstraints: latestProfile.stable.explicitConstraints,
+          },
+          derivedWeakHints: {
+            communicationStyle: latestProfile.derived.communicationStyle,
+            likelyInterests: latestProfile.derived.likelyInterests,
+            workPatterns: latestProfile.derived.workPatterns,
+          },
         }
       : undefined,
     latestWriteDecision: latestWriteEvent
@@ -161,6 +173,8 @@ export function evermemoryStatus(input: {
           createdAt: latestProfileRecomputeEvent.createdAt,
           userId: toString(latestProfileRecomputeEvent.payload.userId),
           memoryCount: toNumber(latestProfileRecomputeEvent.payload.memoryCount),
+          stable: latestProfileRecomputeEvent.payload.stable as NonNullable<EverMemoryStatusToolResult['latestProfileRecompute']>['stable'],
+          derived: latestProfileRecomputeEvent.payload.derived as NonNullable<EverMemoryStatusToolResult['latestProfileRecompute']>['derived'],
         }
       : undefined,
     recentDebugByKind,

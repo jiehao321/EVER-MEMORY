@@ -2,7 +2,7 @@ import type { BehaviorRepository } from '../../storage/behaviorRepo.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { ProfileRepository } from '../../storage/profileRepo.js';
-import type { MemoryItem, ProjectedProfile } from '../../types.js';
+import type { MemoryItem, ProfileStableField, ProjectedProfile } from '../../types.js';
 import {
   COMMUNICATION_STYLE_RULES,
   DISPLAY_NAME_REGEX,
@@ -173,7 +173,35 @@ function shouldKeepConstraint(constraint: string): boolean {
   return constraint.trim().length >= 3;
 }
 
-function collectLikelyInterests(memories: MemoryItem[]): ProjectedProfile['derived']['likelyInterests'] {
+function createStableField<T extends string>(value: T, evidenceRefs: Iterable<string>): ProfileStableField<T> {
+  return {
+    value,
+    source: 'stable_explicit',
+    canonical: true,
+    evidenceRefs: [...new Set(evidenceRefs)].slice(0, 3),
+  };
+}
+
+function createDerivedField(value: string, confidence: number, evidenceRefs: Iterable<string>): ProjectedProfile['derived']['likelyInterests'][number] {
+  return {
+    value,
+    confidence,
+    evidenceRefs: [...new Set(evidenceRefs)].slice(0, 3),
+    source: 'derived_inference',
+    guardrail: 'weak_hint',
+    canonical: false,
+  };
+}
+
+function collectLikelyInterests(
+  memories: MemoryItem[],
+  explicitPreferences: Record<string, ProfileStableField>,
+  explicitConstraints: Array<ProfileStableField>,
+): ProjectedProfile['derived']['likelyInterests'] {
+  const blockedValues = new Set<string>([
+    ...Object.values(explicitPreferences).map((item) => normalizeText(item.value)),
+    ...explicitConstraints.map((item) => normalizeText(item.value)),
+  ]);
   const scoreByTerm = new Map<string, DerivedAccumulator>();
 
   for (const memory of memories) {
@@ -188,7 +216,7 @@ function collectLikelyInterests(memories: MemoryItem[]): ProjectedProfile['deriv
     const score = memoryWeight(memory);
     for (const term of terms) {
       const normalized = term.trim();
-      if (!normalized || normalized.length > 32) {
+      if (!normalized || normalized.length > 32 || blockedValues.has(normalizeText(normalized))) {
         continue;
       }
       const entry = scoreByTerm.get(normalized) ?? { score: 0, evidenceRefs: new Set<string>() };
@@ -208,18 +236,18 @@ function collectLikelyInterests(memories: MemoryItem[]): ProjectedProfile['deriv
     .slice(0, MAX_DERIVED_ITEMS);
 
   const maxScore = sorted[0]?.[1].score ?? 1;
-  return sorted.map(([value, item]) => ({
+  return sorted.map(([value, item]) => createDerivedField(
     value,
-    confidence: Number(Math.min(1, item.score / maxScore).toFixed(3)),
-    evidenceRefs: [...item.evidenceRefs].slice(0, 3),
-  }));
+    Number(Math.min(1, item.score / maxScore).toFixed(3)),
+    item.evidenceRefs,
+  ));
 }
 
 function collectWorkPatterns(
   memories: MemoryItem[],
-  explicitConstraints: string[],
+  explicitConstraints: Array<ProfileStableField>,
 ): ProjectedProfile['derived']['workPatterns'] {
-  const explicitText = explicitConstraints.join(' ');
+  const explicitText = explicitConstraints.map((item) => item.value).join(' ');
   const scoreByPattern = new Map<string, DerivedAccumulator>();
 
   for (const memory of memories) {
@@ -229,7 +257,6 @@ function collectWorkPatterns(
         continue;
       }
 
-      // Derived hints must not override explicit stable constraints in the same theme.
       if (pattern.regex.test(explicitText)) {
         continue;
       }
@@ -251,11 +278,11 @@ function collectWorkPatterns(
     .slice(0, MAX_DERIVED_ITEMS);
 
   const maxScore = sorted[0]?.[1].score ?? 1;
-  return sorted.map(([value, item]) => ({
+  return sorted.map(([value, item]) => createDerivedField(
     value,
-    confidence: Number(Math.min(1, item.score / maxScore).toFixed(3)),
-    evidenceRefs: [...item.evidenceRefs].slice(0, 3),
-  }));
+    Number(Math.min(1, item.score / maxScore).toFixed(3)),
+    item.evidenceRefs,
+  ));
 }
 
 function collectCommunicationStyle(memories: MemoryItem[]): ProjectedProfile['derived']['communicationStyle'] {
@@ -290,6 +317,9 @@ function collectCommunicationStyle(memories: MemoryItem[]): ProjectedProfile['de
     tendency: top[0],
     confidence: Number(confidence.toFixed(3)),
     evidenceRefs: [...top[1].evidenceRefs].slice(0, 3),
+    source: 'derived_inference',
+    guardrail: 'weak_hint',
+    canonical: false,
   };
 }
 
@@ -341,31 +371,40 @@ export class ProfileProjectionService {
         return right.timestamps.updatedAt.localeCompare(left.timestamps.updatedAt);
       });
 
-    const explicitPreferences: Record<string, string> = {};
-    const explicitConstraints: string[] = [];
-    let displayName: string | undefined;
-    let preferredAddress: string | undefined;
-    let timezone: string | undefined;
+    const explicitPreferences: Record<string, ProfileStableField> = {};
+    const explicitConstraints: Array<ProfileStableField> = [];
+    let displayName: ProfileStableField | undefined;
+    let preferredAddress: ProfileStableField | undefined;
+    let timezone: ProfileStableField | undefined;
 
     for (const memory of explicitMemories) {
       if (!displayName) {
-        displayName = extractDisplayName(memory.content);
+        const value = extractDisplayName(memory.content);
+        if (value) {
+          displayName = createStableField(value, [memory.id]);
+        }
       }
       if (!preferredAddress) {
-        preferredAddress = extractPreferredAddress(memory.content);
+        const value = extractPreferredAddress(memory.content);
+        if (value) {
+          preferredAddress = createStableField(value, [memory.id]);
+        }
       }
       if (!timezone) {
-        timezone = extractTimezone(memory.content);
+        const value = extractTimezone(memory.content);
+        if (value) {
+          timezone = createStableField(value, [memory.id]);
+        }
       }
 
       if (memory.type === 'constraint' && shouldKeepConstraint(memory.content)) {
-        explicitConstraints.push(memory.content.trim());
+        explicitConstraints.push(createStableField(memory.content.trim(), [memory.id]));
       }
 
       if (memory.type === 'preference' || memory.type === 'style' || memory.type === 'identity') {
         const key = detectPreferenceKey(memory);
         if (key && explicitPreferences[key] === undefined) {
-          explicitPreferences[key] = detectPreferenceValue(key, memory.content);
+          explicitPreferences[key] = createStableField(detectPreferenceValue(key, memory.content), [memory.id]);
         }
       }
     }
@@ -378,7 +417,7 @@ export class ProfileProjectionService {
       ? undefined
       : collectCommunicationStyle(memories);
 
-    const likelyInterests = collectLikelyInterests(memories);
+    const likelyInterests = collectLikelyInterests(memories, explicitPreferences, explicitConstraints);
     const workPatterns = collectWorkPatterns(memories, explicitConstraints);
     const behaviorHints = dedupeStrings(
       this.behaviorRepo
@@ -394,7 +433,7 @@ export class ProfileProjectionService {
         preferredAddress,
         timezone,
         explicitPreferences,
-        explicitConstraints: dedupeStrings(explicitConstraints),
+        explicitConstraints,
       },
       derived: {
         communicationStyle,
@@ -408,12 +447,52 @@ export class ProfileProjectionService {
     this.debugRepo?.log('profile_recomputed', normalizedUserId, {
       userId: normalizedUserId,
       memoryCount: memories.length,
-      explicitPreferences: Object.keys(explicitPreferences),
-      explicitConstraints: profile.stable.explicitConstraints.length,
+      stable: {
+        displayName: profile.stable.displayName?.value,
+        preferredAddress: profile.stable.preferredAddress?.value,
+        timezone: profile.stable.timezone?.value,
+        explicitPreferences: Object.fromEntries(
+          Object.entries(explicitPreferences).map(([key, value]) => [key, {
+            value: value.value,
+            source: value.source,
+            canonical: value.canonical,
+            evidenceRefs: value.evidenceRefs,
+          }]),
+        ),
+        explicitConstraints: profile.stable.explicitConstraints.map((item) => ({
+          value: item.value,
+          source: item.source,
+          canonical: item.canonical,
+          evidenceRefs: item.evidenceRefs,
+        })),
+      },
       derived: {
-        communicationStyle: profile.derived.communicationStyle?.tendency,
-        likelyInterests: profile.derived.likelyInterests.length,
-        workPatterns: profile.derived.workPatterns.length,
+        communicationStyle: profile.derived.communicationStyle
+          ? {
+              tendency: profile.derived.communicationStyle.tendency,
+              confidence: profile.derived.communicationStyle.confidence,
+              evidenceRefs: profile.derived.communicationStyle.evidenceRefs,
+              source: profile.derived.communicationStyle.source,
+              guardrail: profile.derived.communicationStyle.guardrail,
+              canonical: profile.derived.communicationStyle.canonical,
+            }
+          : null,
+        likelyInterests: profile.derived.likelyInterests.map((item) => ({
+          value: item.value,
+          confidence: item.confidence,
+          evidenceRefs: item.evidenceRefs,
+          source: item.source,
+          guardrail: item.guardrail,
+          canonical: item.canonical,
+        })),
+        workPatterns: profile.derived.workPatterns.map((item) => ({
+          value: item.value,
+          confidence: item.confidence,
+          evidenceRefs: item.evidenceRefs,
+          source: item.source,
+          guardrail: item.guardrail,
+          canonical: item.canonical,
+        })),
       },
       behaviorHints: behaviorHints.length,
     });

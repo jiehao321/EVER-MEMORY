@@ -231,7 +231,7 @@ export function initializeEverMemory(
       return evermemoryImport(transferService, input);
     },
     evermemoryReview(input: EverMemoryReviewToolInput = {}): EverMemoryReviewToolResult {
-      return evermemoryReview(archiveService, input);
+      return evermemoryReview(archiveService, behaviorService, input);
     },
     evermemoryRestore(input: EverMemoryRestoreToolInput): EverMemoryRestoreToolResult {
       return evermemoryRestore(archiveService, input);

@@ -241,3 +241,29 @@ reflection 只能产出候选规则，真正激活行为规则必须更后置、
 - 最后整体不可解释、不可治理
 
 EverMemory 应避免走这条路。
+
+
+## 12. Continuity & Memory Decay Remediation (2026-03-13)
+
+A new remediation workstream is now defined in:
+- `docs/evermemory-continuity-decay-remediation-plan.md`
+
+This workstream does **not** replace Phases 1-7. Instead, it addresses a product gap discovered during real-host validation:
+
+- plugin/runtime/debug chains are alive
+- reflection/rule governance is functioning
+- but real project continuity is still below operator expectation
+
+Key issues found in production-style validation:
+- `memory_items` are dominated by test/E2E samples instead of real project knowledge
+- boot briefing generation can succeed structurally while still producing empty sections
+- interaction processing currently favors debug/experience/rule evolution over durable project memory capture
+- lifecycle governance exists, but true long-horizon memory decay and project-state supersession need strengthening
+
+Therefore, the next practical improvement track is:
+1. automatic interaction-to-memory capture
+2. project-summary-first continuity briefing
+3. stronger memory decay / lifecycle migration
+4. separation of test memory from production memory
+
+This should be treated as the highest-value post-Phase-7 productization track.

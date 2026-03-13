@@ -65,13 +65,15 @@ test('evermemory_profile supports recompute and stored/latest read paths', () =>
   });
   assert.equal(recomputed.source, 'recomputed');
   assert.ok(recomputed.profile);
-  assert.equal(recomputed.profile?.stable.explicitPreferences.language, 'zh');
+  assert.equal(recomputed.profile?.stable.explicitPreferences.language.value, 'zh');
+  assert.equal(recomputed.summary?.derivedGuardrail, 'weak_hint_only');
 
   const stored = app.evermemoryProfile({
     userId: 'u-tool-profile-1',
   });
   assert.equal(stored.source, 'stored');
   assert.ok(stored.profile);
+  assert.ok((stored.summary?.stableCanonicalFields ?? 0) >= 1);
 
   const missing = app.evermemoryProfile({
     userId: 'u-tool-profile-missing',
@@ -82,6 +84,10 @@ test('evermemory_profile supports recompute and stored/latest read paths', () =>
   const latest = app.evermemoryProfile();
   assert.equal(latest.source, 'latest');
   assert.equal(latest.profile?.userId, 'u-tool-profile-1');
+
+  const status = app.evermemoryStatus({ userId: 'u-tool-profile-1' });
+  assert.equal(status.latestProfile?.stableCanonicalFields?.explicitPreferences.language.value, 'zh');
+  assert.equal(status.latestProfile?.stableCanonicalFields?.explicitPreferences.language.canonical, true);
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

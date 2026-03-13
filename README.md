@@ -4,6 +4,24 @@ EverMemory is an OpenClaw memory plugin package focused on deterministic, inspec
 
 ## Current status
 
+This README describes the repository as it exists today, not the full roadmap.
+
+Two important boundaries:
+
+- the **library/API surface** is broader than the **currently registered OpenClaw plugin tool surface**
+- current maturity is a **production baseline for core deterministic memory flows**, not a claim that every implemented subsystem is equally hardened
+
+See also:
+
+- `docs/evermemory-v1-boundary.md`
+- `docs/evermemory-capability-matrix.md`
+- `docs/evermemory-continuity-decay-remediation-plan.md`
+
+Current operator focus (2026-03-13):
+- continuity quality and real project-memory usefulness are below target
+- automatic interaction-to-memory capture is not yet a stable default production flow
+- memory decay/lifecycle exists as a baseline, but requires further productization for true long-horizon continuity
+
 The project now includes:
 
 - typed config loading
@@ -15,6 +33,7 @@ The project now includes:
 - optional semantic sidecar index (disabled by default)
 - retrieval modes integration: `structured` / `keyword` / `hybrid`
 - lifecycle maintenance baseline: dedupe/merge + stale episodic archive
+- continuity remediation plan for automatic memory capture, richer project briefing, and stronger decay/governance
 - projected profile recompute baseline (stable/derived split + explicit-over-inferred guard)
 - richer status/debug surface baseline (schema/debug snapshots for operators)
 - explainability tool baseline (`evermemory_explain` for write/retrieval/rule)
@@ -31,7 +50,7 @@ The project now includes:
 - `sessionEnd` reflection + automatic rule promotion integration
 - runtime session context helpers
 - minimal `session_start` wiring
-- minimal tools surface:
+- implemented wrapper/library capability surface:
   - `evermemory_store`
   - `evermemory_recall`
   - `evermemory_briefing`
@@ -46,15 +65,95 @@ The project now includes:
   - `evermemory_import`
   - `evermemory_review`
   - `evermemory_restore`
+- currently registered OpenClaw plugin tools:
+  - `evermemory_store`
+  - `evermemory_recall`
+  - `evermemory_status`
 - key-path tests for migrations, repositories, intent enrichment/fallback, behavior promotion/ranking, message/session end integration, reflection flow, and tools
   - retrieval ranking refinement coverage
 
-## Not included yet
+## Production readiness
 
-- bundled external LLM provider integration (adapter must be injected by host)
-- vector retrieval / embeddings
+Current readiness should be stated conservatively.
+
+### Stable
+
+These are the parts that are reasonable to describe as the current production baseline:
+
+- deterministic SQLite-backed persistence
+- idempotent migrations
+- deterministic memory write policy with explicit accept/reject results
+- keyword-based recall with weighted ranking
+- OpenClaw plugin hook integration for session lifecycle and prompt-context injection
+- currently registered OpenClaw plugin tools:
+  - `evermemory_store`
+  - `evermemory_recall`
+  - `evermemory_status`
+- operator-oriented status/debug visibility
+
+### Optional
+
+These are implemented but optional by configuration or host wiring:
+
+- semantic sidecar retrieval (`semantic.enabled=false` by default)
+- LLM-assisted intent enrichment (requires host-injected analyzer)
+- direct install into other OpenClaw instances by operator-managed packaging/integration
+
+### Experimental
+
+These are real code-level capabilities, but should not be marketed as equally hardened default production features yet:
+
+- boot briefing generation
+- intent analysis as a standalone library/API surface
+- reflection generation and automatic rule promotion
+- projected profile recompute
+- manual consolidation flows
+- explainability wrappers beyond status
+- import/export workflows
+- archive review/restore workflows
+
+### Out of scope
+
+These are not part of the current repository claim:
+
+- bundled external LLM provider integration
+- embeddings / external vector retrieval platform
 - schedulers or background workers
 - complex operator UI
+- claiming that every wrapper method is already host-registered as an OpenClaw tool
+
+## Support level
+
+Current support level is best described as:
+
+- **Stable core** for deterministic store / recall / status flows
+- **Operator-managed optional features** for semantic sidecar and injected LLM enrichment
+- **Experimental advanced workflows** for reflection, rules, profiles, import/export, and restore-related operations
+- **No broad compatibility guarantee yet** beyond the tested repository/runtime baseline in this repo
+
+Practical implication:
+
+- version `0.1.0` is suitable for cautious operator use
+- it should not yet be described as fully mature across every OpenClaw deployment shape
+- docs should distinguish **implemented in code** from **registered as plugin tool** and from **widely production-proven**
+
+## Direct install for other OpenClaw instances
+
+The repo already contains the basic package metadata and plugin descriptors needed for direct use in another OpenClaw environment:
+
+- `dist/`
+- `plugin.json`
+- `openclaw.plugin.json`
+- package metadata in `package.json`
+
+That makes **direct operator install** a valid path, but with realistic caveats:
+
+- support should be considered **best effort / operator-managed** at this stage
+- consumers should pin the exact package version and test against their host runtime
+- advanced wrapper methods should not be assumed to appear as OpenClaw tools unless the host/plugin registration layer exposes them
+- external LLM integrations still require host-side adapter injection
+
+In other words: installable, yes; broadly hardened distribution story, not yet.
 
 ## Package entrypoints
 
@@ -626,8 +725,20 @@ Notes:
 This repository now provides native OpenClaw plugin assets:
 
 - `openclaw.plugin.json`
-- root `index.js` (exports `dist/openclaw/plugin.js`)
+- root `index.js` (re-exports `./dist/openclaw/plugin.js` for packaged installs)
 - package manifest `openclaw.extensions`
+- installation guide: `docs/evermemory-installation-guide.md`
+
+### Install / enable checklist
+
+1. Clone or unpack this repository to a stable absolute path
+2. Run `npm install`
+3. Run `npm run build`
+4. Add the repository root to `plugins.load.paths`
+5. Enable `plugins.entries.evermemory`
+6. Bind `plugins.slots.memory` to `"evermemory"`
+7. Restart gateway with `openclaw gateway restart`
+8. Verify with `evermemory_status`, `evermemory_store`, `evermemory_recall`
 
 ### Minimal OpenClaw config
 
@@ -658,13 +769,49 @@ Use an absolute path for stable loading:
 }
 ```
 
+### Why all three plugin sections matter
+
+- `plugins.load.paths`: tells OpenClaw where to discover the plugin package
+- `plugins.entries.evermemory`: enables the EverMemory plugin instance and passes runtime config
+- `plugins.slots.memory`: binds EverMemory as the default memory slot
+
+If you skip the slot binding, the plugin may load but will not become the active default memory provider.
+
 Then restart gateway:
 
 ```bash
 openclaw gateway restart
 ```
 
+### Verification
+
+Recommended validation path:
+
+```bash
+cd /root/.openclaw/workspace/projects/evermemory
+npm run doctor
+npm run check
+npm run test
+```
+
+Then in OpenClaw verify:
+
+- `evermemory_status`
+- `evermemory_store`
+- `evermemory_recall`
+
 Compatibility aliases provided:
 
 - `memory_store` -> `evermemory_store`
 - `memory_recall` -> `evermemory_recall`
+
+### Rollback
+
+If EverMemory causes issues after enablement:
+
+1. Remove or change `plugins.slots.memory`
+2. Set `plugins.entries.evermemory.enabled` to `false`
+3. Remove the EverMemory root from `plugins.load.paths`
+4. Restart gateway
+
+See `docs/evermemory-installation-guide.md` for the full install / verify / rollback procedure.

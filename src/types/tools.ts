@@ -7,7 +7,11 @@ import type {
   ReflectionTriggerKind,
   RetrievalMode,
 } from './primitives.js';
-import type { BehaviorRule } from './behavior.js';
+import type {
+  BehaviorRule,
+  BehaviorRuleMutationAction,
+  BehaviorRuleReviewRecord,
+} from './behavior.js';
 import type { MemoryItem, MemoryScope, MemorySource, MemoryStoreResult } from './memory.js';
 import type { ProjectedProfile } from './profile.js';
 import type { ReflectionRecord } from './reflection.js';
@@ -67,6 +71,11 @@ export interface EverMemoryProfileToolInput {
 export interface EverMemoryProfileToolResult {
   profile: ProjectedProfile | null;
   source: 'recomputed' | 'stored' | 'latest' | 'none';
+  summary?: {
+    stableCanonicalFields: number;
+    derivedHintFields: number;
+    derivedGuardrail: 'weak_hint_only';
+  };
 }
 
 export interface EverMemoryConsolidateToolInput {
@@ -133,6 +142,7 @@ export interface EverMemoryReviewToolInput {
   query?: string;
   limit?: number;
   includeSuperseded?: boolean;
+  ruleId?: string;
 }
 
 export interface EverMemoryReviewToolResult {
@@ -148,6 +158,7 @@ export interface EverMemoryReviewToolResult {
     restoreEligible: boolean;
     reason?: string;
   }>;
+  ruleReview?: BehaviorRuleReviewRecord;
 }
 
 export type EverMemoryRestoreMode = 'review' | 'apply';
@@ -201,6 +212,14 @@ export interface EverMemoryRulesToolInput {
   channel?: string;
   contexts?: string[];
   limit?: number;
+  includeInactive?: boolean;
+  includeDeprecated?: boolean;
+  includeFrozen?: boolean;
+  action?: BehaviorRuleMutationAction;
+  ruleId?: string;
+  reason?: string;
+  reflectionId?: string;
+  replacementRuleId?: string;
 }
 
 export interface EverMemoryRulesToolResult {
@@ -212,6 +231,22 @@ export interface EverMemoryRulesToolResult {
     channel?: string;
     contexts?: string[];
     limit: number;
+    includeInactive?: boolean;
+    includeDeprecated?: boolean;
+    includeFrozen?: boolean;
+  };
+  governance: {
+    levels: BehaviorRule['lifecycle']['level'][];
+    maturities: BehaviorRule['lifecycle']['maturity'][];
+    frozenCount: number;
+    staleCount: number;
+    maxDecayScore: number;
+  };
+  mutation?: {
+    action: BehaviorRuleMutationAction;
+    changed: boolean;
+    reason: string;
+    rule: BehaviorRule | null;
   };
 }
 
@@ -250,6 +285,18 @@ export interface EverMemoryStatusToolResult {
   latestProfile?: {
     userId: string;
     updatedAt: string;
+    stableCanonicalFields?: {
+      displayName?: ProjectedProfile['stable']['displayName'];
+      preferredAddress?: ProjectedProfile['stable']['preferredAddress'];
+      timezone?: ProjectedProfile['stable']['timezone'];
+      explicitPreferences: ProjectedProfile['stable']['explicitPreferences'];
+      explicitConstraints: ProjectedProfile['stable']['explicitConstraints'];
+    };
+    derivedWeakHints?: {
+      communicationStyle?: ProjectedProfile['derived']['communicationStyle'];
+      likelyInterests: ProjectedProfile['derived']['likelyInterests'];
+      workPatterns: ProjectedProfile['derived']['workPatterns'];
+    };
   };
   latestWriteDecision?: {
     createdAt: string;
@@ -272,6 +319,8 @@ export interface EverMemoryStatusToolResult {
     createdAt: string;
     userId?: string;
     memoryCount?: number;
+    stable?: ProjectedProfile['stable'];
+    derived?: ProjectedProfile['derived'];
   };
   recentDebugByKind?: Partial<Record<DebugEventKind, number>>;
   latestDebugEvents?: Array<{

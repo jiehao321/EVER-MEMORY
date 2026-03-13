@@ -38,9 +38,15 @@ test('profile recompute keeps stable/derived split and never lets derived overri
 
   const profile = app.profileRepo.getByUserId('u-profile-1');
   assert.ok(profile);
-  assert.equal(profile?.stable.explicitPreferences.communication_style, 'concise_direct');
+  assert.equal(profile?.stable.explicitPreferences.communication_style.value, 'concise_direct');
+  assert.equal(profile?.stable.explicitPreferences.communication_style.source, 'stable_explicit');
+  assert.equal(profile?.stable.explicitPreferences.communication_style.canonical, true);
+  assert.ok(profile?.stable.explicitPreferences.communication_style.evidenceRefs.length);
   assert.equal(profile?.derived.communicationStyle, undefined);
   assert.ok((profile?.derived.likelyInterests.length ?? 0) >= 1);
+  assert.equal(profile?.derived.likelyInterests[0]?.source, 'derived_inference');
+  assert.equal(profile?.derived.likelyInterests[0]?.guardrail, 'weak_hint');
+  assert.equal(profile?.derived.likelyInterests[0]?.canonical, false);
 
   const patternValues = profile?.derived.workPatterns.map((item) => item.value) ?? [];
   assert.ok(patternValues.includes('stepwise_planning'));
@@ -88,9 +94,41 @@ test('profile recompute extracts timezone and preferred address from explicit pr
 
   const profile = app.profileRepo.getByUserId('u-profile-2');
   assert.ok(profile);
-  assert.equal(profile?.stable.preferredAddress, 'Alex');
-  assert.equal(profile?.stable.timezone, 'UTC+08:00');
-  assert.equal(profile?.stable.explicitPreferences.timezone, 'UTC+08:00');
+  assert.equal(profile?.stable.preferredAddress?.value, 'Alex');
+  assert.equal(profile?.stable.preferredAddress?.source, 'stable_explicit');
+  assert.equal(profile?.stable.timezone?.value, 'UTC+08:00');
+  assert.equal(profile?.stable.explicitPreferences.timezone.value, 'UTC+08:00');
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('derived profile hints never become canonical even when confidence is high', () => {
+  const databasePath = createTempDbPath('profile-guardrails-derived');
+  const app = initializeEverMemory({ databasePath });
+
+  app.memoryService.store({
+    content: '推断：用户近期频繁提到跑步训练计划。',
+    type: 'summary',
+    scope: { userId: 'u-profile-3' },
+    source: { kind: 'inference', actor: 'system' },
+    explicitness: 0.25,
+    confidence: 0.95,
+    importance: 0.9,
+    tags: ['running'],
+    relatedEntities: ['training_plan'],
+  });
+
+  const profile = app.profileService.recomputeForUser('u-profile-3');
+  assert.ok(profile);
+  assert.ok(profile?.derived.likelyInterests.length);
+  for (const item of profile?.derived.likelyInterests ?? []) {
+    assert.equal(item.source, 'derived_inference');
+    assert.equal(item.guardrail, 'weak_hint');
+    assert.equal(item.canonical, false);
+    assert.ok(item.confidence >= 0);
+    assert.ok(item.evidenceRefs.length >= 1);
+  }
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "entry": "dist/index.js",
   "description": "EverMemory deterministic memory plugin with intent and reflection baseline",
+  "kind": "memory",
   "exports": {
     "initialize": "initializeEverMemory",
     "definition": "getPluginDefinition"

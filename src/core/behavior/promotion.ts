@@ -1,3 +1,7 @@
+import {
+  createInitialBehaviorLifecycle,
+  freezeBehaviorRule,
+} from './lifecycle.js';
 import type { BehaviorRule, BehaviorRuleCategory, BehaviorRulePromotionDecision, ReflectionRecord } from '../../types.js';
 
 const MIN_CONFIDENCE = 0.75;
@@ -73,15 +77,32 @@ function inferPriority(category: BehaviorRuleCategory): number {
   }
 }
 
-function hasDirectConflict(statement: string, existingRules: BehaviorRule[]): boolean {
+function inferLevel(priority: number, confidence: number): NonNullable<BehaviorRulePromotionDecision['level']> {
+  if (priority >= 90 || confidence >= 0.92) {
+    return 'critical';
+  }
+  if (priority >= 70 || confidence >= 0.8) {
+    return 'baseline';
+  }
+  return 'candidate';
+}
+
+function inferMaturity(recurrenceCount: number): NonNullable<BehaviorRulePromotionDecision['maturity']> {
+  if (recurrenceCount >= 4) {
+    return 'validated';
+  }
+  return 'emerging';
+}
+
+function detectDirectConflict(statement: string, existingRules: BehaviorRule[]): BehaviorRule | null {
   const requiresConfirm = includesAny(statement, CONFIRM_REQUIRED_KEYWORDS);
   const skipsConfirm = includesAny(statement, CONFIRM_SKIPPED_KEYWORDS);
 
   if (!requiresConfirm && !skipsConfirm) {
-    return false;
+    return null;
   }
 
-  return existingRules.some((rule) => {
+  return existingRules.find((rule) => {
     if (!rule.state.active || rule.state.deprecated) {
       return false;
     }
@@ -95,7 +116,34 @@ function hasDirectConflict(statement: string, existingRules: BehaviorRule[]): bo
     }
 
     return false;
+  }) ?? null;
+}
+
+export function freezeConflictingRules(statement: string, existingRules: BehaviorRule[]): BehaviorRule[] {
+  const conflict = detectDirectConflict(statement, existingRules);
+  if (!conflict) {
+    return [];
+  }
+  return [freezeBehaviorRule(conflict, 'conflict')];
+}
+
+export function buildPromotedRuleGovernance(input: {
+  priority: number;
+  confidence: number;
+  recurrenceCount: number;
+  now: string;
+}) {
+  const lifecycle = createInitialBehaviorLifecycle({
+    priority: input.priority,
+    confidence: input.confidence,
+    now: input.now,
   });
+
+  return {
+    ...lifecycle,
+    level: inferLevel(input.priority, input.confidence),
+    maturity: inferMaturity(input.recurrenceCount),
+  };
 }
 
 export function evaluatePromotionCandidate(input: {
@@ -161,7 +209,7 @@ export function evaluatePromotionCandidate(input: {
     };
   }
 
-  if (hasDirectConflict(statement, input.existingRules)) {
+  if (detectDirectConflict(statement, input.existingRules)) {
     return {
       accepted: false,
       reason: 'conflicts_with_existing_rule',
@@ -175,5 +223,7 @@ export function evaluatePromotionCandidate(input: {
     statement,
     category,
     priority,
+    level: inferLevel(priority, input.reflection.evidence.confidence),
+    maturity: inferMaturity(input.reflection.evidence.recurrenceCount),
   };
 }
