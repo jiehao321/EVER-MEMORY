@@ -714,6 +714,23 @@ Run real OpenClaw smoke test (plugin loaded + store/recall + DB evidence):
 npm run test:openclaw:smoke
 ```
 
+Run standardized Feishu qgent dialogue E2E (multi-turn natural dialogue + DB/debug evidence):
+
+```bash
+npm run test:openclaw:feishu-qgent
+```
+
+Optional environment overrides for Feishu qgent E2E:
+- `EVERMEMORY_FEISHU_SESSION_ID`: force one Feishu direct session id
+- `EVERMEMORY_FEISHU_AGENT_ID`: target agent id (default `main`)
+- `EVERMEMORY_FEISHU_SESSION_KEY_HINT`: preferred key fragment (default `feishu:default:direct`)
+
+Run release gate with OpenClaw smoke + Feishu qgent dialogue + security:
+
+```bash
+npm run quality:gate:feishu-qgent
+```
+
 Notes:
 - Requires local OpenClaw gateway running and `evermemory` plugin loaded.
 - Uses default DB path `/root/.openclaw/memory/evermemory/store/evermemory.db` unless `EVERMEMORY_DB_PATH` is set.

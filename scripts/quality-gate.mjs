@@ -12,6 +12,7 @@ function fail(message) {
 function parseArgs(argv) {
   let withOpenClaw = false;
   let withSecurity = false;
+  let withFeishuQgent = false;
   let reportPath;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -22,6 +23,10 @@ function parseArgs(argv) {
     }
     if (arg === '--with-security') {
       withSecurity = true;
+      continue;
+    }
+    if (arg === '--with-feishu-qgent') {
+      withFeishuQgent = true;
       continue;
     }
     if (arg === '--report') {
@@ -36,7 +41,7 @@ function parseArgs(argv) {
     fail(`unsupported argument: ${arg}`);
   }
 
-  return { withOpenClaw, withSecurity, reportPath };
+  return { withOpenClaw, withSecurity, withFeishuQgent, reportPath };
 }
 
 function resolveDefaultReportPath() {
@@ -84,6 +89,9 @@ const steps = [
 if (parsed.withOpenClaw) {
   steps.push({ name: 'test:openclaw:smoke', command: 'npm', args: ['run', 'test:openclaw:smoke'] });
 }
+if (parsed.withFeishuQgent) {
+  steps.push({ name: 'test:openclaw:feishu-qgent', command: 'npm', args: ['run', 'test:openclaw:feishu-qgent'] });
+}
 if (parsed.withSecurity) {
   steps.push({ name: 'test:openclaw:security', command: 'npm', args: ['run', 'test:openclaw:security'] });
 }
@@ -104,6 +112,7 @@ const report = {
   generatedAt: new Date().toISOString(),
   withOpenClaw: parsed.withOpenClaw,
   withSecurity: parsed.withSecurity,
+  withFeishuQgent: parsed.withFeishuQgent,
   ok,
   nodeVersion: process.version,
   cwd: process.cwd(),

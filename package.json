@@ -33,6 +33,8 @@
     "openclaw:harden": "node ./scripts/openclaw-host-hardening.mjs",
     "quality:gate": "node ./scripts/quality-gate.mjs",
     "quality:gate:openclaw": "node ./scripts/quality-gate.mjs --with-openclaw --with-security",
+    "quality:gate:feishu-qgent": "node ./scripts/quality-gate.mjs --with-openclaw --with-feishu-qgent --with-security",
+    "test:openclaw:feishu-qgent": "node ./scripts/openclaw-feishu-qgent-e2e.mjs",
     "test:openclaw:smoke": "node ./scripts/openclaw-smoke.mjs",
     "test:openclaw:security": "node ./scripts/openclaw-security-gate.mjs",
     "test:unit": "npm run build:test && node --test dist-test/test/*.test.js",
