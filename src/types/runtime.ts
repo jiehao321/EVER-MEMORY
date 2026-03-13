@@ -71,6 +71,13 @@ export interface SessionEndResult {
   experience: ExperienceLog;
   reflection?: ReflectionRecord;
   promotedRules?: BehaviorRule[];
+  autoMemory?: {
+    generated: number;
+    accepted: number;
+    rejected: number;
+    storedIds: string[];
+    rejectedReasons: string[];
+  };
   rejectedRules?: Array<{
     statement: string;
     reason: string;

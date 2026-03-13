@@ -211,6 +211,9 @@ export class RetrievalService {
     const { ranked, candidates, semanticHitCount } = this.rankByMode(mode, request, limit);
     const top = ranked.slice(0, limit);
     const items = top.map((entry) => entry.memory);
+    if (items.length > 0) {
+      this.memoryRepo.incrementRetrieval(items.map((item) => item.id));
+    }
 
     this.debugRepo?.log('retrieval_executed', undefined, {
       query: request.query,

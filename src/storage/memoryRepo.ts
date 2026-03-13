@@ -294,6 +294,22 @@ export class MemoryRepository {
     `).run(id);
   }
 
+  incrementRetrieval(ids: string[]): void {
+    const unique = Array.from(new Set(ids.filter((id) => typeof id === 'string' && id.length > 0)));
+    if (unique.length === 0) {
+      return;
+    }
+
+    const placeholders = unique.map(() => '?').join(', ');
+    this.db.prepare(`
+      UPDATE memory_items
+      SET retrieval_count = retrieval_count + 1,
+          updated_at = updated_at,
+          last_accessed_at = CURRENT_TIMESTAMP
+      WHERE id IN (${placeholders})
+    `).run(...unique);
+  }
+
   count(filters: MemorySearchFilters = {}): number {
     const { sql, params } = buildWhereClause(filters);
     const row = this.db.prepare(`

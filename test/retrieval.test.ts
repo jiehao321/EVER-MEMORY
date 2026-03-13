@@ -71,6 +71,38 @@ test('retrieval respects scope and returns empty results without throwing', () =
   rmSync(databasePath, { force: true });
 });
 
+test('retrieval increments retrievalCount and lastAccessedAt for recalled memories', () => {
+  const databasePath = createTempDbPath('retrieval-feedback');
+  const app = initializeEverMemory({ databasePath });
+
+  const stored = app.evermemoryStore({
+    content: '项目决策：发布前必须先执行质量门禁。',
+    type: 'decision',
+    scope: { userId: 'u-retrieval-feedback', project: 'evermemory' },
+  });
+  assert.equal(stored.accepted, true);
+  assert.ok(stored.memory?.id);
+
+  const before = app.memoryRepo.findById(stored.memory?.id ?? '');
+  assert.equal(before?.stats.retrievalCount, 0);
+  assert.equal(before?.timestamps.lastAccessedAt, undefined);
+
+  const recall = app.evermemoryRecall({
+    query: '质量门禁',
+    scope: { userId: 'u-retrieval-feedback', project: 'evermemory' },
+    mode: 'keyword',
+    limit: 5,
+  });
+  assert.ok(recall.total >= 1);
+
+  const after = app.memoryRepo.findById(stored.memory?.id ?? '');
+  assert.ok((after?.stats.retrievalCount ?? 0) >= 1);
+  assert.ok(Boolean(after?.timestamps.lastAccessedAt));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
 test('retrieval scope isolation keeps project/user/global records separated', () => {
   const databasePath = createTempDbPath('retrieval-scope-isolation');
   const app = initializeEverMemory({ databasePath });

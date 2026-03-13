@@ -204,7 +204,14 @@ export function initializeEverMemory(
       return handleMessageReceived(input, intentService, behaviorService, retrievalService, debugRepo);
     },
     sessionEnd(input: SessionEndInput): SessionEndResult {
-      return handleSessionEnd(input, experienceService, reflectionService, behaviorService, debugRepo);
+      return handleSessionEnd(
+        input,
+        experienceService,
+        reflectionService,
+        behaviorService,
+        memoryService,
+        debugRepo,
+      );
     },
     evermemoryIntent(input: EverMemoryIntentToolInput) {
       return evermemoryIntent(intentService, input);
