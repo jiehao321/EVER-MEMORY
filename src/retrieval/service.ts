@@ -6,7 +6,10 @@ import type { DebugRepository } from '../storage/debugRepo.js';
 import type { MemoryRepository } from '../storage/memoryRepo.js';
 import type { SemanticRepository } from '../storage/semanticRepo.js';
 import type {
+  MemoryDataClass,
   MemoryItem,
+  MemoryLifecycle,
+  MemoryType,
   RecallForIntentRequest,
   RecallRequest,
   RecallResult,
@@ -26,12 +29,41 @@ interface RetrievalServiceOptions {
   hybridWeights?: Partial<RetrievalHybridWeights>;
 }
 
+type ProjectRecallRouteKind =
+  | 'none'
+  | 'project_progress'
+  | 'current_stage'
+  | 'next_step'
+  | 'last_decision';
+
+interface RecallExecutionMeta {
+  routeKind: ProjectRecallRouteKind;
+  routeApplied: boolean;
+  projectOriented: boolean;
+}
+
+interface CandidatePolicyStats {
+  initialCandidates: number;
+  filteredCandidates: number;
+  suppressedTestCandidates: number;
+  retainedTestCandidates: number;
+  dataClassCounts: Record<MemoryDataClass, number>;
+}
+
+interface RecallSelectionStats {
+  duplicateItemsRemoved: number;
+  highValueItemsSelected: number;
+}
+
 interface ScoredRecallItem {
   memory: MemoryItem;
   score: number;
   keywordScore: number;
   semanticScore: number;
   baseScore: number;
+  projectPriority: number;
+  dataQuality: number;
+  dataClass: MemoryDataClass;
 }
 
 const DEFAULT_RECALL_LIMIT = 8;
@@ -46,6 +78,76 @@ const DEEP_QUERY_PRIORITY_TERMS = [
   '项目', '计划', '里程碑', '阶段', '任务', '约束', '决策', '风险', '质量', '回滚', '门禁',
   'project', 'plan', 'milestone', 'phase', 'task', 'constraint', 'decision', 'risk', 'quality', 'rollback',
 ] as const;
+
+const PROJECT_PROGRESS_PATTERNS = [
+  /\b(project progress|progress update|status update|where are we|how far)/i,
+  /(项目进展|当前进展|最近进展|进度|到哪了|到哪里了|刚才说到哪了|汇报)/,
+];
+
+const CURRENT_STAGE_PATTERNS = [
+  /\b(current stage|current phase|which phase|stage now)\b/i,
+  /(当前阶段|现在阶段|第几阶段|阶段状态|phase\s*\d+|phase)/i,
+];
+
+const NEXT_STEP_PATTERNS = [
+  /\b(next step|what next|next action|follow\s*up|next milestone)\b/i,
+  /(下一步|接下来|后续动作|后续计划|下一阶段|下一项)/,
+];
+
+const LAST_DECISION_PATTERNS = [
+  /\b(last decision|latest decision|what did we decide|why did we decide)\b/i,
+  /(最近决策|最后决策|上次决定|最终决定|为什么这样决定|为什么这么决定)/,
+];
+
+const PROJECT_ORIENTED_INTENTS = new Set(['planning', 'status_update']);
+const PROJECT_ORIENTED_QUERY_PATTERNS = [
+  /(\bproject\b|\bphase\b|\bmilestone\b|\bdecision\b|\bnext step\b|\bprogress\b|\bstage\b)/i,
+  /(项目|阶段|里程碑|决策|下一步|进展|状态)/,
+];
+
+const PROJECT_ROUTE_TYPE_PRIORITY: Record<Exclude<ProjectRecallRouteKind, 'none'>, MemoryType[]> = {
+  project_progress: ['summary', 'project', 'decision', 'commitment', 'constraint', 'task'],
+  current_stage: ['summary', 'project', 'decision', 'commitment', 'constraint', 'task'],
+  next_step: ['commitment', 'decision', 'summary', 'project', 'task', 'constraint'],
+  last_decision: ['decision', 'summary', 'project', 'constraint', 'commitment'],
+};
+
+const PROJECT_ROUTE_QUERY: Record<Exclude<ProjectRecallRouteKind, 'none'>, string> = {
+  project_progress: '项目连续性摘要 项目状态 progress stage',
+  current_stage: '当前阶段 项目状态 phase stage',
+  next_step: '下一步 next step follow up commitment',
+  last_decision: '最近决策 decision',
+};
+
+const PROJECT_ROUTE_MAX_LIMIT: Record<Exclude<ProjectRecallRouteKind, 'none'>, number> = {
+  project_progress: 6,
+  current_stage: 6,
+  next_step: 4,
+  last_decision: 4,
+};
+
+const TEST_TAG_PATTERNS = [
+  /(^|[-_])(e2e|smoke|fixture|test_sample|test_data|mock)([-_]|$)/i,
+];
+
+const TEST_CONTENT_PATTERNS = [
+  /\bopenclaw-smoke\b/i,
+  /\bE2E-[\w-]+\b/i,
+  /AGENTS\.md instructions/i,
+  /skills store policy \(operator configured\)/i,
+  /\b(smoke\s*test|test\s*sample|fixture\s*data|shared-scope\s*test)\b/i,
+];
+
+const RUNTIME_SOURCE_KINDS = new Set([
+  'runtime_user',
+  'runtime_project',
+  'reflection_derived',
+  'message',
+  'summary',
+  'inference',
+]);
+
+const RUNTIME_TAG_PREFIXES = ['auto_capture', 'project_state', 'project_continuity', 'active_project_summary', 'next_step'];
 
 function sanitizeInputText(rawText: string): string {
   return rawText
@@ -147,6 +249,97 @@ function pickIntentQuery(rawText: string, memoryNeed: RecallForIntentRequest['in
   return trimmed;
 }
 
+function buildCandidateSeedQuery(rawQuery: string): string | undefined {
+  const trimmed = sanitizeInputText(rawQuery);
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const normalized = trimmed
+    .replace(/[^a-z0-9_\u4e00-\u9fff\s]+/gi, ' ')
+    .trim();
+  if (normalized.includes('项目')) {
+    return '项目';
+  }
+  if (/\bproject\b/i.test(normalized)) {
+    return 'project';
+  }
+  const firstToken = normalized.split(/\s+/g).find((part) => part.length >= 2);
+  if (firstToken) {
+    if (firstToken.includes('下一步')) {
+      return '下一步';
+    }
+    if (firstToken.includes('决策')) {
+      return '决策';
+    }
+    if (firstToken.includes('阶段')) {
+      return '阶段';
+    }
+    if (firstToken.includes('进展')) {
+      return '进展';
+    }
+    if (firstToken.length > 8 && /^[\u4e00-\u9fff]+$/.test(firstToken)) {
+      return firstToken.slice(0, 4);
+    }
+    return firstToken;
+  }
+
+  const deepSeed = buildDeepQuery(trimmed);
+  if (deepSeed) {
+    return deepSeed;
+  }
+
+  const token = trimmed.split(/\s+/g).find((part) => part.length >= 2);
+  return token;
+}
+
+function normalizeDedupKey(content: string): string {
+  return content
+    .replace(/^(项目状态更新：|关键约束：|最近决策：|下一步：|项目连续性摘要（[^）]+）：)\s*/u, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function routeMatches(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function detectProjectRouteKind(text: string): ProjectRecallRouteKind {
+  const normalized = sanitizeInputText(text);
+  if (!normalized) {
+    return 'none';
+  }
+
+  if (routeMatches(normalized, LAST_DECISION_PATTERNS)) {
+    return 'last_decision';
+  }
+  if (routeMatches(normalized, NEXT_STEP_PATTERNS)) {
+    return 'next_step';
+  }
+  if (routeMatches(normalized, CURRENT_STAGE_PATTERNS)) {
+    return 'current_stage';
+  }
+  if (routeMatches(normalized, PROJECT_PROGRESS_PATTERNS)) {
+    return 'project_progress';
+  }
+
+  return 'none';
+}
+
+function mergeOrderedTypes(primary: MemoryType[], secondary: MemoryType[]): MemoryType[] {
+  const output: MemoryType[] = [];
+  const seen = new Set<MemoryType>();
+  for (const type of [...primary, ...secondary]) {
+    if (seen.has(type)) {
+      continue;
+    }
+    seen.add(type);
+    output.push(type);
+  }
+  return output;
+}
+
 function resolvePositiveInteger(value: number | undefined, fallback: number): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
     return fallback;
@@ -230,13 +423,15 @@ export class RetrievalService {
     this.hybridWeights = resolveHybridWeights(options.hybridWeights);
   }
 
-  recall(request: RecallRequest): RecallResult {
+  recall(request: RecallRequest, meta?: RecallExecutionMeta): RecallResult {
+    const executionMeta = meta ?? this.deriveExecutionMeta(request);
     const requestedMode = request.mode;
     const mode = this.resolveMode(request.mode);
     const limit = resolveRecallLimit(request.limit, this.maxRecall);
-    const { ranked, candidates, semanticHitCount } = this.rankByMode(mode, request, limit);
-    const top = ranked.slice(0, limit);
+    const { ranked, candidates, semanticHitCount, candidatePolicy } = this.rankByMode(mode, request, limit, executionMeta);
+    const { top, selectionStats } = this.selectTopRanked(ranked, limit, executionMeta);
     const items = top.map((entry) => entry.memory);
+
     if (items.length > 0) {
       this.memoryRepo.incrementRetrieval(items.map((item) => item.id));
     }
@@ -255,13 +450,21 @@ export class RetrievalService {
         keyword: this.keywordWeights,
         hybrid: this.hybridWeights,
       },
+      routeKind: executionMeta.routeKind,
+      routeApplied: executionMeta.routeApplied,
+      projectOriented: executionMeta.projectOriented,
       candidates: candidates.length,
+      candidatePolicy,
+      recallOptimization: selectionStats,
       topScores: top.slice(0, 3).map((entry) => ({
         id: entry.memory.id,
         score: Number(entry.score.toFixed(4)),
         keyword: Number(entry.keywordScore.toFixed(3)),
         semantic: Number(entry.semanticScore.toFixed(3)),
         base: Number(entry.baseScore.toFixed(3)),
+        projectPriority: Number(entry.projectPriority.toFixed(3)),
+        dataQuality: Number(entry.dataQuality.toFixed(3)),
+        dataClass: entry.dataClass,
       })),
     });
 
@@ -282,8 +485,15 @@ export class RetrievalService {
       };
     }
 
+    const rawText = request.query?.trim() || request.intent.rawText;
+    const routeKind = detectProjectRouteKind(rawText);
+    const intentProjectOriented = PROJECT_ORIENTED_INTENTS.has(request.intent.intent.type);
+    const routeApplied = routeKind !== 'none';
+    const projectOriented = routeApplied || intentProjectOriented;
+
     const hintedTypes = request.intent.retrievalHints.preferredTypes;
-    const preferredTypes = hintedTypes.length > 0 ? hintedTypes : undefined;
+    const routeTypes = routeApplied ? PROJECT_ROUTE_TYPE_PRIORITY[routeKind as Exclude<ProjectRecallRouteKind, 'none'>] : [];
+    const preferredTypes = mergeOrderedTypes(routeTypes, hintedTypes);
 
     const limit = (() => {
       const requested = resolvePositiveInteger(request.limit, DEFAULT_RECALL_LIMIT);
@@ -297,25 +507,56 @@ export class RetrievalService {
         return Math.max(8, Math.min(requested, 12));
       })();
 
-      return Math.min(byNeed, this.maxRecall);
+      const routed = routeApplied
+        ? Math.min(byNeed, PROJECT_ROUTE_MAX_LIMIT[routeKind as Exclude<ProjectRecallRouteKind, 'none'>])
+        : byNeed;
+
+      return Math.min(routed, this.maxRecall);
     })();
 
-    const lifecycles = memoryNeed === 'deep'
-      ? ['semantic', 'episodic'] as const
-      : memoryNeed === 'targeted'
-        ? ['semantic'] as const
-        : undefined;
+    const lifecycles: MemoryLifecycle[] | undefined = projectOriented
+      ? ['semantic', 'episodic']
+      : memoryNeed === 'deep'
+        ? ['semantic', 'episodic']
+        : memoryNeed === 'targeted'
+          ? ['semantic']
+          : undefined;
+
     const mode: RetrievalMode = request.mode
       ?? (memoryNeed === 'deep' ? 'hybrid' : 'keyword');
 
+    const baseQuery = pickIntentQuery(rawText, memoryNeed);
+    const query = routeApplied
+      ? [baseQuery, PROJECT_ROUTE_QUERY[routeKind as Exclude<ProjectRecallRouteKind, 'none'>], request.scope?.project]
+        .filter((part): part is string => Boolean(part && part.trim()))
+        .join(' ')
+      : baseQuery;
+
     return this.recall({
-      query: pickIntentQuery(request.query?.trim() || request.intent.rawText, memoryNeed),
+      query,
       scope: request.scope,
-      types: preferredTypes,
-      lifecycles: lifecycles ? [...lifecycles] : undefined,
+      types: preferredTypes.length > 0 ? preferredTypes : undefined,
+      lifecycles,
       mode,
       limit,
+    }, {
+      routeKind,
+      routeApplied,
+      projectOriented,
     });
+  }
+
+  private deriveExecutionMeta(request: RecallRequest): RecallExecutionMeta {
+    const routeKind = detectProjectRouteKind(request.query);
+    const routeApplied = routeKind !== 'none';
+    const projectOriented = routeApplied
+      || PROJECT_ORIENTED_QUERY_PATTERNS.some((pattern) => pattern.test(request.query));
+
+    return {
+      routeKind,
+      routeApplied,
+      projectOriented,
+    };
   }
 
   private resolveMode(mode: RetrievalMode | undefined): RetrievalMode {
@@ -330,13 +571,176 @@ export class RetrievalService {
     return mode;
   }
 
+  private classifyMemoryData(memory: MemoryItem): MemoryDataClass {
+    const sourceKind = memory.source.kind;
+    const tags = memory.tags.map((tag) => tag.toLowerCase());
+    const lowerContent = memory.content.toLowerCase();
+
+    const tagLooksTest = tags.some((tag) => TEST_TAG_PATTERNS.some((pattern) => pattern.test(tag)));
+    const contentLooksTest = TEST_CONTENT_PATTERNS.some((pattern) => pattern.test(lowerContent));
+    if (sourceKind === 'test' || tagLooksTest || contentLooksTest) {
+      return 'test';
+    }
+
+    const runtimeBySource = RUNTIME_SOURCE_KINDS.has(sourceKind);
+    const runtimeByTag = tags.some((tag) => RUNTIME_TAG_PREFIXES.some((prefix) => tag.includes(prefix)));
+    if (runtimeBySource || runtimeByTag) {
+      return 'runtime';
+    }
+
+    return 'unknown';
+  }
+
+  private projectPriority(memory: MemoryItem): number {
+    if (memory.type === 'summary' && (memory.tags.includes('active_project_summary') || memory.tags.includes('project_continuity'))) {
+      return 1;
+    }
+    if (memory.type === 'project' && memory.tags.includes('project_state')) {
+      return 0.95;
+    }
+    if (memory.type === 'decision') {
+      return 0.92;
+    }
+    if (memory.type === 'commitment' && memory.tags.includes('next_step')) {
+      return 0.88;
+    }
+    if (memory.type === 'project') {
+      return 0.84;
+    }
+    if (memory.type === 'constraint') {
+      return 0.72;
+    }
+    return 0.45;
+  }
+
+  private dataQuality(memory: MemoryItem): { dataClass: MemoryDataClass; quality: number } {
+    const dataClass = this.classifyMemoryData(memory);
+    if (dataClass === 'runtime') {
+      return { dataClass, quality: 1 };
+    }
+    if (dataClass === 'test') {
+      return { dataClass, quality: 0.2 };
+    }
+    return { dataClass, quality: 0.72 };
+  }
+
+  private applyRecallPolicyScore(
+    memory: MemoryItem,
+    baseScore: number,
+    meta: RecallExecutionMeta,
+  ): {
+      score: number;
+      projectPriority: number;
+      dataQuality: number;
+      dataClass: MemoryDataClass;
+    } {
+    const projectPriority = this.projectPriority(memory);
+    const dataPolicy = this.dataQuality(memory);
+
+    const score = meta.projectOriented
+      ? (baseScore * 0.76 + projectPriority * 0.16 + dataPolicy.quality * 0.08)
+      : (baseScore * 0.9 + dataPolicy.quality * 0.1);
+
+    return {
+      score,
+      projectPriority,
+      dataQuality: dataPolicy.quality,
+      dataClass: dataPolicy.dataClass,
+    };
+  }
+
+  private applyCandidatePolicy(
+    candidates: MemoryItem[],
+    limit: number,
+  ): { candidates: MemoryItem[]; stats: CandidatePolicyStats } {
+    const classCounts: Record<MemoryDataClass, number> = {
+      runtime: 0,
+      test: 0,
+      unknown: 0,
+    };
+
+    const runtimeAndUnknown: MemoryItem[] = [];
+    const tests: MemoryItem[] = [];
+
+    for (const candidate of candidates) {
+      const dataClass = this.classifyMemoryData(candidate);
+      classCounts[dataClass] += 1;
+      if (dataClass === 'test') {
+        tests.push(candidate);
+      } else {
+        runtimeAndUnknown.push(candidate);
+      }
+    }
+
+    const maxTestCandidates = runtimeAndUnknown.length >= limit
+      ? 0
+      : Math.max(1, Math.floor(limit / 2));
+
+    const retainedTests = maxTestCandidates > 0 ? tests.slice(0, maxTestCandidates) : [];
+    const filteredCandidates = [...runtimeAndUnknown, ...retainedTests];
+
+    return {
+      candidates: filteredCandidates,
+      stats: {
+        initialCandidates: candidates.length,
+        filteredCandidates: filteredCandidates.length,
+        suppressedTestCandidates: tests.length - retainedTests.length,
+        retainedTestCandidates: retainedTests.length,
+        dataClassCounts: classCounts,
+      },
+    };
+  }
+
+  private selectTopRanked(
+    ranked: ScoredRecallItem[],
+    limit: number,
+    meta: RecallExecutionMeta,
+  ): { top: ScoredRecallItem[]; selectionStats: RecallSelectionStats } {
+    const highValue = meta.projectOriented
+      ? ranked.filter((entry) => entry.projectPriority >= 0.84)
+      : [];
+    const fallback = meta.projectOriented
+      ? ranked.filter((entry) => entry.projectPriority < 0.84)
+      : ranked;
+
+    const ordered = meta.projectOriented ? [...highValue, ...fallback] : ranked;
+
+    const selected: ScoredRecallItem[] = [];
+    const seenKeys = new Set<string>();
+    let duplicateItemsRemoved = 0;
+
+    for (const entry of ordered) {
+      const key = normalizeDedupKey(entry.memory.content);
+      if (key.length > 0 && seenKeys.has(key)) {
+        duplicateItemsRemoved += 1;
+        continue;
+      }
+      if (key.length > 0) {
+        seenKeys.add(key);
+      }
+      selected.push(entry);
+      if (selected.length >= limit) {
+        break;
+      }
+    }
+
+    return {
+      top: selected,
+      selectionStats: {
+        duplicateItemsRemoved,
+        highValueItemsSelected: selected.filter((entry) => entry.projectPriority >= 0.84).length,
+      },
+    };
+  }
+
   private loadCandidates(request: RecallRequest, limit: number, queryEnabled: boolean): MemoryItem[] {
     const candidateLimit = queryEnabled
       ? Math.max(limit * 5, limit)
       : Math.max(limit * 8, this.semanticCandidateLimit);
+    const seededQuery = queryEnabled ? buildCandidateSeedQuery(request.query) : undefined;
 
     return this.memoryRepo.search({
-      query: queryEnabled ? request.query : undefined,
+      query: seededQuery,
       scope: request.scope,
       types: request.types,
       lifecycles: request.lifecycles,
@@ -350,53 +754,75 @@ export class RetrievalService {
     mode: RetrievalMode,
     request: RecallRequest,
     limit: number,
-  ): { ranked: ScoredRecallItem[]; candidates: MemoryItem[]; semanticHitCount: number } {
+    meta: RecallExecutionMeta,
+  ): { ranked: ScoredRecallItem[]; candidates: MemoryItem[]; semanticHitCount: number; candidatePolicy: CandidatePolicyStats } {
     if (mode === 'structured') {
-      const candidates = this.loadCandidates(request, limit, false);
+      const loaded = this.loadCandidates(request, limit, false);
+      const candidateResult = this.applyCandidatePolicy(loaded, limit);
+      const candidates = candidateResult.candidates;
       const ranked = rankKeywordRecall(
         candidates,
         { ...request, query: '' },
         { weights: this.keywordWeights },
-      ).map((entry) => ({
-        memory: entry.memory,
-        score: entry.score,
-        keywordScore: 0,
-        semanticScore: 0,
-        baseScore: entry.score,
-      }));
+      ).map((entry) => {
+        const policyScore = this.applyRecallPolicyScore(entry.memory, entry.score, meta);
+        return {
+          memory: entry.memory,
+          score: policyScore.score,
+          keywordScore: 0,
+          semanticScore: 0,
+          baseScore: entry.score,
+          projectPriority: policyScore.projectPriority,
+          dataQuality: policyScore.dataQuality,
+          dataClass: policyScore.dataClass,
+        };
+      });
 
       return {
         ranked,
         candidates,
         semanticHitCount: 0,
+        candidatePolicy: candidateResult.stats,
       };
     }
 
     if (mode === 'keyword') {
-      const candidates = this.loadCandidates(request, limit, true);
-      const ranked = rankKeywordRecall(candidates, request, { weights: this.keywordWeights }).map((entry) => ({
-        memory: entry.memory,
-        score: entry.score,
-        keywordScore: entry.factors.keyword,
-        semanticScore: 0,
-        baseScore: entry.score,
-      }));
+      const loaded = this.loadCandidates(request, limit, true);
+      const candidateResult = this.applyCandidatePolicy(loaded, limit);
+      const candidates = candidateResult.candidates;
+      const ranked = rankKeywordRecall(candidates, request, { weights: this.keywordWeights }).map((entry) => {
+        const policyScore = this.applyRecallPolicyScore(entry.memory, entry.score, meta);
+        return {
+          memory: entry.memory,
+          score: policyScore.score,
+          keywordScore: entry.factors.keyword,
+          semanticScore: 0,
+          baseScore: entry.score,
+          projectPriority: policyScore.projectPriority,
+          dataQuality: policyScore.dataQuality,
+          dataClass: policyScore.dataClass,
+        };
+      });
 
       return {
         ranked,
         candidates,
         semanticHitCount: 0,
+        candidatePolicy: candidateResult.stats,
       };
     }
 
-    return this.rankHybrid(request, limit);
+    return this.rankHybrid(request, limit, meta);
   }
 
   private rankHybrid(
     request: RecallRequest,
     limit: number,
-  ): { ranked: ScoredRecallItem[]; candidates: MemoryItem[]; semanticHitCount: number } {
-    const candidates = this.loadCandidates(request, limit, false);
+    meta: RecallExecutionMeta,
+  ): { ranked: ScoredRecallItem[]; candidates: MemoryItem[]; semanticHitCount: number; candidatePolicy: CandidatePolicyStats } {
+    const loaded = this.loadCandidates(request, limit, false);
+    const candidateResult = this.applyCandidatePolicy(loaded, limit);
+    const candidates = candidateResult.candidates;
     const candidateMap = new Map(candidates.map((item) => [item.id, item]));
 
     const keywordRanked = rankKeywordRecall(candidates, request, { weights: this.keywordWeights });
@@ -440,18 +866,22 @@ export class RetrievalService {
       const keywordScore = (keywordScoreById.get(id) ?? 0) / maxKeywordScore;
       const semanticScore = semanticScoreById.get(id) ?? 0;
       const baseScore = (baseScoreById.get(id) ?? 0) / maxBaseScore;
-      const score = (
+      const rawHybridScore = (
         keywordScore * this.hybridWeights.keyword
         + semanticScore * this.hybridWeights.semantic
         + baseScore * this.hybridWeights.base
       );
+      const policyScore = this.applyRecallPolicyScore(memory, rawHybridScore, meta);
 
       ranked.push({
         memory,
-        score,
+        score: policyScore.score,
         keywordScore,
         semanticScore,
         baseScore,
+        projectPriority: policyScore.projectPriority,
+        dataQuality: policyScore.dataQuality,
+        dataClass: policyScore.dataClass,
       });
     }
 
@@ -466,6 +896,7 @@ export class RetrievalService {
       ranked,
       candidates,
       semanticHitCount: semanticScoreById.size,
+      candidatePolicy: candidateResult.stats,
     };
   }
 }

@@ -165,19 +165,97 @@ function extractLastExchange(messages: unknown[]): { userText?: string; assistan
 }
 
 function buildInjectedContext(
-  recallItems: Array<{ type: string; lifecycle: string; content: string }>,
+  recallItems: Array<{ type: string; lifecycle: string; content: string; tags?: string[] }>,
   behaviorRules: Array<{ statement: string; priority?: number }> | undefined,
-): string | undefined {
-  const memoryLines = recallItems
-    .slice(0, 6)
-    .map((item, index) => `${index + 1}. [${item.type}/${item.lifecycle}] ${truncate(item.content, 220)}`);
-  const ruleLines = (behaviorRules ?? [])
-    .filter((rule) => typeof rule.statement === 'string' && rule.statement.trim().length > 0)
-    .slice(0, 4)
-    .map((rule, index) => `${index + 1}. ${truncate(rule.statement, 180)}`);
+): {
+    prependContext?: string;
+    stats: {
+      recalledInput: number;
+      memorySelected: number;
+      memoryDeduped: number;
+      rulesInput: number;
+      rulesSelected: number;
+      rulesDeduped: number;
+      approxTokens: number;
+    };
+  } {
+  const normalizeKey = (value: string): string => value
+    .toLowerCase()
+    .replace(/^(项目状态更新：|关键约束：|最近决策：|下一步：|项目连续性摘要（[^）]+）：)\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const typePriority = (item: { type: string; tags?: string[] }): number => {
+    if (item.type === 'summary' && (item.tags?.includes('active_project_summary') || item.tags?.includes('project_continuity'))) {
+      return 100;
+    }
+    if (item.type === 'project') {
+      return 90;
+    }
+    if (item.type === 'decision') {
+      return 80;
+    }
+    if (item.type === 'constraint') {
+      return 70;
+    }
+    if (item.type === 'commitment') {
+      return 60;
+    }
+    return 20;
+  };
+
+  const dedupedRecallItems = [...recallItems]
+    .sort((left, right) => typePriority(right) - typePriority(left))
+    .reduce<Array<{ type: string; lifecycle: string; content: string; tags?: string[] }>>((acc, item) => {
+      if (acc.length >= 5) {
+        return acc;
+      }
+      const key = normalizeKey(item.content);
+      if (!key) {
+        return acc;
+      }
+      if (acc.some((existing) => normalizeKey(existing.content) === key)) {
+        return acc;
+      }
+      acc.push(item);
+      return acc;
+    }, []);
+
+  const memoryLines = dedupedRecallItems
+    .map((item, index) => `${index + 1}. [${item.type}/${item.lifecycle}] ${truncate(item.content, 200)}`);
+
+  const seenText = new Set(memoryLines.map((line) => normalizeKey(line)));
+  const ruleInputs = (behaviorRules ?? [])
+    .filter((rule) => typeof rule.statement === 'string' && rule.statement.trim().length > 0);
+  const ruleLines = ruleInputs
+    .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0))
+    .reduce<string[]>((acc, rule) => {
+      if (acc.length >= 3) {
+        return acc;
+      }
+      const key = normalizeKey(rule.statement);
+      if (!key || seenText.has(key) || acc.some((line) => normalizeKey(line) === key)) {
+        return acc;
+      }
+      seenText.add(key);
+      acc.push(rule.statement);
+      return acc;
+    }, [])
+    .map((statement, index) => `${index + 1}. ${truncate(statement, 160)}`);
 
   if (memoryLines.length === 0 && ruleLines.length === 0) {
-    return undefined;
+    return {
+      prependContext: undefined,
+      stats: {
+        recalledInput: recallItems.length,
+        memorySelected: 0,
+        memoryDeduped: recallItems.length,
+        rulesInput: ruleInputs.length,
+        rulesSelected: 0,
+        rulesDeduped: ruleInputs.length,
+        approxTokens: 0,
+      },
+    };
   }
 
   const sections: string[] = ['<evermemory-context>'];
@@ -190,7 +268,19 @@ function buildInjectedContext(
     sections.push(...ruleLines.map((line) => `- ${line}`));
   }
   sections.push('</evermemory-context>');
-  return sections.join('\n');
+  const prependContext = sections.join('\n');
+  return {
+    prependContext,
+    stats: {
+      recalledInput: recallItems.length,
+      memorySelected: memoryLines.length,
+      memoryDeduped: Math.max(0, recallItems.length - memoryLines.length),
+      rulesInput: ruleInputs.length,
+      rulesSelected: ruleLines.length,
+      rulesDeduped: Math.max(0, ruleInputs.length - ruleLines.length),
+      approxTokens: Math.ceil(prependContext.length / 4),
+    },
+  };
 }
 
 function createScopeState(sessionId: string, sessionKey?: string): SessionScopeState {
@@ -301,8 +391,15 @@ const memoryPlugin = {
         channel: asOptionalString(context.channelId),
       });
 
-      const prependContext = buildInjectedContext(result.recall.items, result.behaviorRules);
-      return prependContext ? { prependContext } : undefined;
+      const injected = buildInjectedContext(result.recall.items, result.behaviorRules);
+      evermemory.debugRepo.log('interaction_processed', asOptionalString(context.runId), {
+        sessionId,
+        source: 'before_agent_start_injection',
+        routeIntentType: result.intent.intent.type,
+        recalled: result.recall.total,
+        ...injected.stats,
+      });
+      return injected.prependContext ? { prependContext: injected.prependContext } : undefined;
     });
 
     registerHook('agent_end', (event: unknown, context: unknown) => {

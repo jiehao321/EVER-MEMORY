@@ -88,7 +88,7 @@ However, the honest claim is:
 
 - package/install path exists
 - operator-managed installation is plausible
-- broad compatibility/support guarantees are still limited at version `0.1.0`
+- broad compatibility/support guarantees are still limited at version `0.0.1`
 
 ## Recommendation for README language
 

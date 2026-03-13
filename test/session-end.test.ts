@@ -32,16 +32,24 @@ test('sessionEnd writes experience and can trigger lightweight reflection', () =
   assert.equal(result.reflection?.state.promoted, true);
   assert.ok((result.autoMemory?.generated ?? 0) >= 1);
   assert.ok((result.autoMemory?.accepted ?? 0) >= 1);
+  assert.ok((result.autoMemory?.generatedByKind?.project_summary ?? 0) >= 1);
+  assert.ok((result.autoMemory?.acceptedByKind?.project_summary ?? 0) >= 1);
 
   const autoMemories = app.memoryRepo.search({
     scope: { userId: 'u-session-end-1', project: 'evermemory' },
-    types: ['project', 'constraint', 'decision'],
+    types: ['project', 'constraint', 'decision', 'summary', 'commitment'],
     archived: false,
     activeOnly: true,
     limit: 20,
   });
   assert.ok(autoMemories.length >= 1);
-  assert.ok(autoMemories.some((item) => item.source.kind === 'summary'));
+  assert.ok(autoMemories.some((item) => item.source.kind === 'runtime_project' || item.source.kind === 'reflection_derived'));
+  const continuitySummary = autoMemories.find((item) => item.type === 'summary' && item.tags.includes('active_project_summary'));
+  assert.ok(continuitySummary);
+  assert.ok(continuitySummary?.content.includes('状态：'));
+  assert.ok(continuitySummary?.content.includes('关键约束：'));
+  assert.ok(continuitySummary?.content.includes('最近决策：'));
+  assert.ok(continuitySummary?.content.includes('下一步：'));
 
   const followup = app.sessionStart({
     sessionId: 'session-end-2',
@@ -49,6 +57,13 @@ test('sessionEnd writes experience and can trigger lightweight reflection', () =
     project: 'evermemory',
   });
   assert.ok(followup.briefing.sections.recentContinuity.length >= 1);
+  assert.ok(followup.briefing.sections.activeProjects.some((item) => item.includes('项目连续性摘要')));
+  assert.ok(followup.briefing.sections.activeProjects.some((item) => item.includes('下一步：')));
+
+  const endEvent = app.debugRepo.listRecent('session_end_processed', 1)[0];
+  assert.ok(endEvent);
+  assert.ok((endEvent.payload.autoMemoryGeneratedByKind as Record<string, number>).project_summary >= 1);
+  assert.ok((endEvent.payload.projectSummaryAccepted as number) >= 1);
 
   const reflectTool = app.evermemoryReflect({ sessionId: 'session-end-1', mode: 'light' });
   assert.ok(reflectTool.summary.processedExperiences >= 1);
@@ -94,6 +109,7 @@ test('sessionEnd auto memory extraction prefers intent raw text and skips operat
   assert.ok(autoMemories.length >= 1);
   assert.ok(autoMemories.some((item) => item.content.includes('CLEANMEM-1')));
   assert.ok(autoMemories.every((item) => !item.content.includes('Skills store policy')));
+  assert.ok(autoMemories.some((item) => item.type === 'summary' && item.tags.includes('active_project_summary')));
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

@@ -77,6 +77,8 @@ export interface SessionEndResult {
     rejected: number;
     storedIds: string[];
     rejectedReasons: string[];
+    generatedByKind?: Partial<Record<string, number>>;
+    acceptedByKind?: Partial<Record<string, number>>;
   };
   rejectedRules?: Array<{
     statement: string;

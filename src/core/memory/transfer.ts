@@ -18,7 +18,18 @@ const SNAPSHOT_FORMAT = 'evermemory.snapshot.v1' as const;
 const DEFAULT_EXPORT_LIMIT = 200;
 const MAX_EXPORT_LIMIT = 5000;
 const MAX_IMPORT_ITEMS = 5000;
-const ALLOWED_SOURCE_KINDS = ['message', 'tool', 'manual', 'summary', 'inference'] as const;
+const ALLOWED_SOURCE_KINDS: MemoryItem['source']['kind'][] = [
+  'message',
+  'tool',
+  'manual',
+  'summary',
+  'inference',
+  'test',
+  'runtime_user',
+  'runtime_project',
+  'reflection_derived',
+  'imported',
+];
 const ALLOWED_SOURCE_ACTORS = ['user', 'assistant', 'system'] as const;
 
 interface MemoryTransferServiceOptions {

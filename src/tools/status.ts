@@ -36,6 +36,13 @@ export function evermemoryStatus(input: {
     return typeof value === 'boolean' ? value : undefined;
   }
 
+  function toRecord(value: unknown): Record<string, unknown> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+    return value as Record<string, unknown>;
+  }
+
   const effectiveUserId = input.userId ?? input.runtimeSession?.scope.userId;
   const filters = {
     scope: input.userId || input.sessionId
@@ -90,6 +97,67 @@ export function evermemoryStatus(input: {
   const latestWriteEvent = recentDebug.find((event) => event.kind === 'memory_write_decision');
   const latestRetrievalEvent = recentDebug.find((event) => event.kind === 'retrieval_executed');
   const latestProfileRecomputeEvent = recentDebug.find((event) => event.kind === 'profile_recomputed');
+  const recentSessionEndEvents = input.debugRepo.listRecent('session_end_processed', 120);
+  const recentRetrievalEvents = input.debugRepo.listRecent('retrieval_executed', 120);
+
+  let autoMemoryGenerated = 0;
+  let autoMemoryAccepted = 0;
+  let autoMemoryRejected = 0;
+  let projectSummaryGenerated = 0;
+  let projectSummaryAccepted = 0;
+  const autoMemoryGeneratedByKind: Record<string, number> = {};
+  const autoMemoryAcceptedByKind: Record<string, number> = {};
+
+  for (const event of recentSessionEndEvents) {
+    autoMemoryGenerated += toNumber(event.payload.autoMemoryGenerated) ?? 0;
+    autoMemoryAccepted += toNumber(event.payload.autoMemoryAccepted) ?? 0;
+    autoMemoryRejected += toNumber(event.payload.autoMemoryRejected) ?? 0;
+    projectSummaryGenerated += toNumber(event.payload.projectSummaryGenerated) ?? 0;
+    projectSummaryAccepted += toNumber(event.payload.projectSummaryAccepted) ?? 0;
+
+    const generatedByKind = toRecord(event.payload.autoMemoryGeneratedByKind);
+    if (generatedByKind) {
+      for (const [kind, count] of Object.entries(generatedByKind)) {
+        autoMemoryGeneratedByKind[kind] = (autoMemoryGeneratedByKind[kind] ?? 0) + (toNumber(count) ?? 0);
+      }
+    }
+
+    const acceptedByKind = toRecord(event.payload.autoMemoryAcceptedByKind);
+    if (acceptedByKind) {
+      for (const [kind, count] of Object.entries(acceptedByKind)) {
+        autoMemoryAcceptedByKind[kind] = (autoMemoryAcceptedByKind[kind] ?? 0) + (toNumber(count) ?? 0);
+      }
+    }
+  }
+
+  let suppressedTestCandidates = 0;
+  let retainedTestCandidates = 0;
+  let projectRoutedExecutions = 0;
+  let projectRoutedHits = 0;
+
+  for (const event of recentRetrievalEvents) {
+    const candidatePolicy = toRecord(event.payload.candidatePolicy);
+    suppressedTestCandidates += toNumber(candidatePolicy?.suppressedTestCandidates) ?? 0;
+    retainedTestCandidates += toNumber(candidatePolicy?.retainedTestCandidates) ?? 0;
+
+    const routeKind = toString(event.payload.routeKind);
+    const routeApplied = toBoolean(event.payload.routeApplied) === true;
+    const projectOriented = toBoolean(event.payload.projectOriented) === true;
+    const routed = routeApplied || (routeKind !== undefined && routeKind !== 'none');
+    const returned = toNumber(event.payload.returned) ?? 0;
+    if (routed && projectOriented) {
+      projectRoutedExecutions += 1;
+      if (returned > 0) {
+        projectRoutedHits += 1;
+      }
+    }
+  }
+
+  const autoMemoryAcceptRate = autoMemoryGenerated > 0 ? autoMemoryAccepted / autoMemoryGenerated : undefined;
+  const projectSummaryAcceptRate = projectSummaryGenerated > 0
+    ? projectSummaryAccepted / projectSummaryGenerated
+    : undefined;
+  const projectRouteHitRate = projectRoutedExecutions > 0 ? projectRoutedHits / projectRoutedExecutions : undefined;
 
   return {
     schemaVersion,
@@ -179,6 +247,32 @@ export function evermemoryStatus(input: {
       : undefined,
     recentDebugByKind,
     latestDebugEvents,
+    continuityKpis: {
+      sampleWindow: {
+        sessionEndEvents: recentSessionEndEvents.length,
+        retrievalEvents: recentRetrievalEvents.length,
+      },
+      autoMemory: {
+        generated: autoMemoryGenerated,
+        accepted: autoMemoryAccepted,
+        rejected: autoMemoryRejected,
+        acceptRate: autoMemoryAcceptRate,
+        generatedByKind: autoMemoryGeneratedByKind,
+        acceptedByKind: autoMemoryAcceptedByKind,
+      },
+      projectSummary: {
+        generated: projectSummaryGenerated,
+        accepted: projectSummaryAccepted,
+        acceptRate: projectSummaryAcceptRate,
+      },
+      retrievalPolicy: {
+        suppressedTestCandidates,
+        retainedTestCandidates,
+        projectRoutedExecutions,
+        projectRoutedHits,
+        projectRouteHitRate,
+      },
+    },
     runtimeSession: input.runtimeSession,
     recentDebugEvents,
   };

@@ -1,6 +1,12 @@
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
-import type { ConsolidationMode, MemoryItem, MemoryScope } from '../../types.js';
+import type { ConsolidationMode, MemoryItem, MemoryLifecycle, MemoryScope } from '../../types.js';
+import {
+  calculateDecayScore,
+  shouldArchive,
+  shouldMigrateToEpisodic,
+  shouldMigrateToSemantic,
+} from './decay.js';
 
 const DEFAULT_DEDUPE_SCAN_LIMIT = 60;
 const DEFAULT_STALE_EPISODIC_DAYS = 30;
@@ -28,6 +34,9 @@ export interface ConsolidationReport {
   processed: number;
   merged: number;
   archivedStale: number;
+  migratedToEpisodic: number;
+  migratedToSemantic: number;
+  archivedByDecay: number;
 }
 
 function nowIso(): string {
@@ -147,6 +156,21 @@ function toArchivedMemory(
   };
 }
 
+function toMigratedMemory(
+  memory: MemoryItem,
+  newLifecycle: MemoryLifecycle,
+  updatedAt: string,
+): MemoryItem {
+  return {
+    ...memory,
+    lifecycle: newLifecycle,
+    timestamps: {
+      ...memory.timestamps,
+      updatedAt,
+    },
+  };
+}
+
 function scopeForMaintenance(scope: MemoryScope): MemoryScope | undefined {
   if (scope.userId || scope.chatId || scope.project || scope.global !== undefined) {
     return scope;
@@ -203,10 +227,22 @@ export class MemoryLifecycleService {
 
     let merged = 0;
     let archivedStale = 0;
+    let migratedToEpisodic = 0;
+    let migratedToSemantic = 0;
+    let archivedByDecay = 0;
+
     for (const item of candidates) {
       const result = this.maintainForNewMemory(item.id);
       merged += result.merged;
       archivedStale += result.archivedStale;
+    }
+
+    // Apply lifecycle migrations based on mode
+    if (mode === 'daily' || mode === 'deep') {
+      const migrationResult = this.applyLifecycleMigrations(scoped, mode);
+      migratedToEpisodic = migrationResult.migratedToEpisodic;
+      migratedToSemantic = migrationResult.migratedToSemantic;
+      archivedByDecay = migrationResult.archivedByDecay;
     }
 
     return {
@@ -214,6 +250,9 @@ export class MemoryLifecycleService {
       processed: candidates.length,
       merged,
       archivedStale,
+      migratedToEpisodic,
+      migratedToSemantic,
+      archivedByDecay,
     };
   }
 
@@ -299,5 +338,75 @@ export class MemoryLifecycleService {
     }
 
     return archivedCount;
+  }
+
+  private applyLifecycleMigrations(
+    scope: MemoryScope | undefined,
+    mode: ConsolidationMode,
+  ): {
+      migratedToEpisodic: number;
+      migratedToSemantic: number;
+      archivedByDecay: number;
+    } {
+    const limit = mode === 'deep' ? 200 : 100;
+    const candidates = this.memoryRepo.search({
+      scope,
+      activeOnly: true,
+      archived: false,
+      limit,
+    });
+
+    let migratedToEpisodic = 0;
+    let migratedToSemantic = 0;
+    let archivedByDecay = 0;
+
+    for (const memory of candidates) {
+      // Check for working → episodic migration
+      if (shouldMigrateToEpisodic(memory)) {
+        const updatedAt = nowIso();
+        this.memoryRepo.update(toMigratedMemory(memory, 'episodic', updatedAt));
+        this.debugRepo?.log('memory_archived', memory.id, {
+          reason: 'lifecycle_migration',
+          previousLifecycle: 'working',
+          newLifecycle: 'episodic',
+        });
+        migratedToEpisodic += 1;
+        continue;
+      }
+
+      // Check for episodic → semantic migration
+      if (shouldMigrateToSemantic(memory)) {
+        const updatedAt = nowIso();
+        this.memoryRepo.update(toMigratedMemory(memory, 'semantic', updatedAt));
+        this.debugRepo?.log('memory_archived', memory.id, {
+          reason: 'lifecycle_migration',
+          previousLifecycle: 'episodic',
+          newLifecycle: 'semantic',
+        });
+        migratedToSemantic += 1;
+        continue;
+      }
+
+      // Check for decay-based archiving (only in deep mode)
+      if (mode === 'deep') {
+        const decayScore = calculateDecayScore(memory);
+        if (shouldArchive(decayScore)) {
+          const updatedAt = nowIso();
+          this.memoryRepo.update(toArchivedMemory(memory, updatedAt));
+          this.debugRepo?.log('memory_archived', memory.id, {
+            reason: 'decay_threshold',
+            previousLifecycle: memory.lifecycle,
+            decayScore: Number(decayScore.toFixed(4)),
+          });
+          archivedByDecay += 1;
+        }
+      }
+    }
+
+    return {
+      migratedToEpisodic,
+      migratedToSemantic,
+      archivedByDecay,
+    };
   }
 }

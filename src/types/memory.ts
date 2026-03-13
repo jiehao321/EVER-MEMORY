@@ -8,12 +8,24 @@ export interface MemoryScope {
 }
 
 export interface MemorySource {
-  kind: 'message' | 'tool' | 'manual' | 'summary' | 'inference';
+  kind:
+    | 'message'
+    | 'tool'
+    | 'manual'
+    | 'summary'
+    | 'inference'
+    | 'test'
+    | 'runtime_user'
+    | 'runtime_project'
+    | 'reflection_derived'
+    | 'imported';
   actor?: 'user' | 'assistant' | 'system';
   sessionId?: string;
   messageId?: string;
   channel?: string;
 }
+
+export type MemoryDataClass = 'runtime' | 'test' | 'unknown';
 
 export interface MemoryScores {
   confidence: number;

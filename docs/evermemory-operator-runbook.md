@@ -122,7 +122,26 @@ npm run validate
 
 ---
 
-## 6. 审计留痕建议
+## 6. 发布 SOP（0.0.1+）
+
+标准顺序：
+
+```bash
+git checkout release/<version>
+npm run repo:guard
+npm run release:evaluate
+npm run release:pack
+npm run openclaw:cleanup:test-data
+```
+
+执行要求：
+- `release:evaluate` 报告必须为 `GO`
+- `release:pack` 必须产出 `.tgz`
+- 最终 `git status -sb` 必须干净
+
+---
+
+## 7. 审计留痕建议
 
 关键操作需在 `debug_events` 可追踪。重点关注：
 - `memory_exported`
@@ -135,9 +154,10 @@ npm run validate
 
 ---
 
-## 7. 变更纪律
+## 8. 变更纪律
 
 - 先 review，后 apply
 - 先解释，再修复
 - 先门禁，再交付
 - 文档与实现必须同步更新
+- 每次真实测试后必须清理测试数据

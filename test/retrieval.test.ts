@@ -647,3 +647,204 @@ test('recallForIntent deep mode ignores timestamp prefix numeric noise and keeps
   app.database.connection.close();
   rmSync(databasePath, { force: true });
 });
+
+test('project-oriented recall routes project progress/current stage/next step/last decision queries with debug evidence', () => {
+  const databasePath = createTempDbPath('retrieval-project-routes');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '项目连续性摘要（evermemory）：状态：Batch B 开发中；关键约束：只做 Batch B 范围；最近决策：先做项目召回路由；下一步：补齐测试。',
+    type: 'summary',
+    scope: { userId: 'u-route-1', project: 'evermemory' },
+    tags: ['active_project_summary', 'project_continuity'],
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '项目状态更新：项目(evermemory)；输入: 继续推进；执行: 完成路由规则；结果: recall 命中稳定。',
+    type: 'project',
+    scope: { userId: 'u-route-1', project: 'evermemory' },
+    tags: ['project_state'],
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '最近决策：优先项目总结/项目状态/决策三类记忆。',
+    type: 'decision',
+    scope: { userId: 'u-route-1', project: 'evermemory' },
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '下一步：补充 recall 路由与过滤测试。',
+    type: 'commitment',
+    scope: { userId: 'u-route-1', project: 'evermemory' },
+    tags: ['next_step'],
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+
+  const progress = app.messageReceived({
+    sessionId: 'session-route-1',
+    messageId: 'msg-route-progress',
+    text: '项目进展到哪里了？',
+    scope: { userId: 'u-route-1', project: 'evermemory' },
+  });
+  assert.ok(progress.recall.total >= 1);
+
+  const stage = app.messageReceived({
+    sessionId: 'session-route-1',
+    messageId: 'msg-route-stage',
+    text: '当前阶段是什么？',
+    scope: { userId: 'u-route-1', project: 'evermemory' },
+  });
+  assert.ok(stage.recall.total >= 1);
+
+  const nextStep = app.messageReceived({
+    sessionId: 'session-route-1',
+    messageId: 'msg-route-next',
+    text: '下一步做什么？',
+    scope: { userId: 'u-route-1', project: 'evermemory' },
+  });
+  assert.ok(nextStep.recall.total >= 1);
+
+  const decision = app.messageReceived({
+    sessionId: 'session-route-1',
+    messageId: 'msg-route-decision',
+    text: '上次最后决策是什么？',
+    scope: { userId: 'u-route-1', project: 'evermemory' },
+  });
+  assert.ok(decision.recall.total >= 1);
+  assert.ok(decision.recall.items.some((item) => item.type === 'decision' || item.type === 'summary'));
+  const events = app.debugRepo.listRecent('retrieval_executed', 20);
+  const routedKinds = new Set(events.map((event) => String(event.payload.routeKind)));
+  assert.ok(routedKinds.has('project_progress'));
+  assert.ok(routedKinds.has('current_stage'));
+  assert.ok(routedKinds.has('next_step'));
+  assert.ok(routedKinds.has('last_decision'));
+  assert.ok(events.some((event) => event.payload.projectOriented === true));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('project-oriented recall suppresses test samples when runtime memories are sufficient', () => {
+  const databasePath = createTempDbPath('retrieval-test-pollution');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '项目进展摘要（evermemory）：状态：Batch B 进行中；关键约束：保护关键路径；最近决策：先路由后优化；下一步：补证据测试。',
+    type: 'summary',
+    scope: { userId: 'u-pollution-1', project: 'evermemory' },
+    tags: ['active_project_summary', 'project_continuity'],
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '最近决策：先完成项目进展召回路由，再做其他优化。',
+    type: 'decision',
+    scope: { userId: 'u-pollution-1', project: 'evermemory' },
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: 'openclaw-smoke E2E-7788 sample: 项目进展测试样本。',
+    type: 'project',
+    scope: { userId: 'u-pollution-1', project: 'evermemory' },
+    source: { kind: 'test', actor: 'system' },
+    tags: ['e2e', 'smoke', 'test_sample'],
+  });
+  app.evermemoryStore({
+    content: 'shared-scope test sample: 项目进展当前阶段样本。',
+    type: 'summary',
+    scope: { userId: 'u-pollution-1', project: 'evermemory' },
+    source: { kind: 'test', actor: 'system' },
+    tags: ['smoke'],
+  });
+
+  const result = app.evermemoryRecall({
+    query: '项目进展',
+    scope: { userId: 'u-pollution-1', project: 'evermemory' },
+    mode: 'keyword',
+    limit: 2,
+  });
+  assert.equal(result.total, 2);
+  assert.ok(result.items.every((item) => item.source.kind !== 'test'));
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.equal(event?.payload.routeKind, 'project_progress');
+  assert.equal(event?.payload.projectOriented, true);
+  const candidatePolicy = event?.payload.candidatePolicy as {
+    suppressedTestCandidates?: number;
+    retainedTestCandidates?: number;
+  };
+  assert.ok((candidatePolicy?.suppressedTestCandidates ?? 0) >= 1);
+  assert.equal(candidatePolicy?.retainedTestCandidates ?? 0, 0);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('project-oriented ranking boosts summary/project/decision over non-project constraint blocks', () => {
+  const databasePath = createTempDbPath('retrieval-project-priority');
+  const app = initializeEverMemory({ databasePath });
+  const now = new Date().toISOString();
+
+  const highConstraint = createMemory({
+    content: '项目进展提示：执行前先确认。',
+    scope: { userId: 'u-priority-1', project: 'evermemory' },
+    updatedAt: now,
+    type: 'constraint',
+    importance: 1,
+    confidence: 1,
+    explicitness: 1,
+  });
+  const projectSummary = createMemory({
+    content: '项目进展连续性摘要（evermemory）：状态：Batch B 完成中；关键约束：范围收敛；最近决策：优先项目召回；下一步：跑完整验证。',
+    scope: { userId: 'u-priority-1', project: 'evermemory' },
+    updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    type: 'summary',
+    tags: ['active_project_summary', 'project_continuity'],
+    importance: 0.7,
+    confidence: 0.7,
+    explicitness: 0.7,
+  });
+  const projectState = createMemory({
+    content: '项目状态更新：项目(evermemory) 当前项目进展为 Batch B recall 路由。',
+    scope: { userId: 'u-priority-1', project: 'evermemory' },
+    updatedAt: now,
+    type: 'project',
+    tags: ['project_state'],
+    importance: 0.7,
+    confidence: 0.7,
+    explicitness: 0.7,
+  });
+  const decision = createMemory({
+    content: '最近决策：项目进展召回优先返回 summary/project/decision。',
+    scope: { userId: 'u-priority-1', project: 'evermemory' },
+    updatedAt: now,
+    type: 'decision',
+    importance: 0.7,
+    confidence: 0.7,
+    explicitness: 0.7,
+  });
+
+  app.memoryRepo.insert(highConstraint);
+  app.memoryRepo.insert(projectSummary);
+  app.memoryRepo.insert(projectState);
+  app.memoryRepo.insert(decision);
+
+  const result = app.evermemoryRecall({
+    query: '项目进展',
+    scope: { userId: 'u-priority-1', project: 'evermemory' },
+    mode: 'keyword',
+    limit: 3,
+  });
+
+  assert.equal(result.total, 3);
+  assert.ok(result.items[0]?.type === 'summary' || result.items[0]?.type === 'project' || result.items[0]?.type === 'decision');
+  assert.ok(result.items.some((item) => item.type === 'summary'));
+  assert.ok(!result.items.every((item) => item.type === 'constraint'));
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  const optimization = event?.payload.recallOptimization as { highValueItemsSelected?: number; duplicateItemsRemoved?: number };
+  assert.ok((optimization?.highValueItemsSelected ?? 0) >= 1);
+  assert.equal(typeof optimization?.duplicateItemsRemoved, 'number');
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});

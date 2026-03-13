@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 import Database from 'better-sqlite3';
+import { cleanupOpenClawTestArtifacts } from './openclaw-test-cleanup.mjs';
 
 const DEFAULT_DB_PATH = '/root/.openclaw/memory/evermemory/store/evermemory.db';
 const DEFAULT_AGENT_ID = process.env.EVERMEMORY_FEISHU_AGENT_ID ?? 'main';
@@ -9,11 +10,11 @@ const EXPLICIT_SESSION_ID = process.env.EVERMEMORY_FEISHU_SESSION_ID;
 const SESSION_KEY_HINT = process.env.EVERMEMORY_FEISHU_SESSION_KEY_HINT ?? 'feishu:default:direct';
 
 function fail(message, detail) {
-  console.error(`[evermemory:feishu-qgent-e2e] ${message}`);
+  const error = new Error(message);
   if (detail) {
-    console.error(`[evermemory:feishu-qgent-e2e] detail=${detail}`);
+    error.cause = detail;
   }
-  process.exit(1);
+  throw error;
 }
 
 function runOpenClaw(args) {
@@ -216,81 +217,117 @@ function loadEvidence({ dbPath, sessionIds, tag, startedAtSql }) {
 
 const dbPath = process.env.EVERMEMORY_DB_PATH ?? DEFAULT_DB_PATH;
 const agentId = DEFAULT_AGENT_ID;
-const sessionId = resolveFeishuSessionId(agentId);
 const tag = `QGENT-${Date.now()}`;
 const startedAtSql = sqlMinutesAgo(10);
+let sessionId = '';
+const trackedSessionIds = new Set();
+let scriptError;
+let runtimeSessionId = '';
 
-console.log(`[evermemory:feishu-qgent-e2e] using agentId=${agentId} sessionId=${sessionId}`);
+try {
+  sessionId = resolveFeishuSessionId(agentId);
+  trackedSessionIds.add(sessionId);
+  console.log(`[evermemory:feishu-qgent-e2e] using agentId=${agentId} sessionId=${sessionId}`);
 
-runOpenClaw(['gateway', 'status']);
-const pluginInfo = runOpenClaw(['plugins', 'info', 'evermemory']);
-if (!pluginInfo.includes('Status: loaded')) {
-  fail('evermemory plugin is not loaded');
+  runOpenClaw(['gateway', 'status']);
+  const pluginInfo = runOpenClaw(['plugins', 'info', 'evermemory']);
+  if (!pluginInfo.includes('Status: loaded')) {
+    fail('evermemory plugin is not loaded');
+  }
+
+  runtimeSessionId = sessionId;
+
+  const first = runDialogueTurn(
+    agentId,
+    runtimeSessionId,
+    `项目代号${tag}：当前已完成记忆保存修复，下一步是记忆衰减策略落地，发布前必须做 openclaw 真实对话实测。`,
+  );
+  runtimeSessionId = first.sessionId;
+  trackedSessionIds.add(first.sessionId);
+
+  const second = runDialogueTurn(
+    agentId,
+    runtimeSessionId,
+    `${tag} 的当前进展和下一步是什么？请按我们之前对话做状态汇报。`,
+  );
+  runtimeSessionId = second.sessionId;
+  trackedSessionIds.add(second.sessionId);
+
+  const third = runDialogueTurn(
+    agentId,
+    runtimeSessionId,
+    `请基于之前记忆，再复述 ${tag} 的发布前约束。`,
+  );
+  runtimeSessionId = third.sessionId;
+  trackedSessionIds.add(third.sessionId);
+
+  const evidenceSessionIds = Array.from(new Set([sessionId, first.sessionId, second.sessionId, third.sessionId]));
+
+  const evidence = loadEvidence({
+    dbPath,
+    sessionIds: evidenceSessionIds,
+    tag,
+    startedAtSql,
+  });
+
+  const hasAutoMemory = evidence.sessionEnd.some((item) => item.autoMemoryAccepted > 0);
+  const hasRecallHit = evidence.interactions.some((item) => (
+    (item.memoryNeed === 'deep' || item.memoryNeed === 'targeted')
+    && item.recalled > 0
+  ));
+  const hasTagInReply = second.text.includes(tag) || third.text.includes(tag);
+
+  if (!hasAutoMemory) {
+    fail('validation failed: no auto memory accepted in session_end_processed');
+  }
+  if (!hasRecallHit) {
+    fail('validation failed: no targeted/deep recall hit in interaction_processed evidence');
+  }
+  if (!hasTagInReply) {
+    fail('validation failed: dialogue reply did not include tagged continuity signal');
+  }
+  if (evidence.memoryCount <= 0) {
+    fail('validation failed: no tagged memory row persisted for this session');
+  }
+
+  console.log('[evermemory:feishu-qgent-e2e] PASS');
+  console.log(`[evermemory:feishu-qgent-e2e] agentId=${agentId}`);
+  console.log(`[evermemory:feishu-qgent-e2e] resolvedSessionId=${sessionId}`);
+  console.log(`[evermemory:feishu-qgent-e2e] runtimeSessionId=${runtimeSessionId}`);
+  console.log(`[evermemory:feishu-qgent-e2e] evidenceSessionIds=${evidenceSessionIds.join(',')}`);
+  console.log(`[evermemory:feishu-qgent-e2e] tag=${tag}`);
+  console.log(`[evermemory:feishu-qgent-e2e] turnRunIds=${[first.runId, second.runId, third.runId].join(',')}`);
+  console.log(`[evermemory:feishu-qgent-e2e] autoMemoryEvents=${evidence.sessionEnd.length}`);
+  console.log(`[evermemory:feishu-qgent-e2e] recallHitEvents=${evidence.interactions.filter((item) => (
+    (item.memoryNeed === 'deep' || item.memoryNeed === 'targeted')
+    && item.recalled > 0
+  )).length}`);
+  console.log(`[evermemory:feishu-qgent-e2e] retrievalHits(window)=${evidence.retrieval.filter((item) => item.returned > 0).length}`);
+  console.log(`[evermemory:feishu-qgent-e2e] taggedMemoryRows=${evidence.memoryCount}`);
+} catch (error) {
+  scriptError = error;
+} finally {
+  try {
+    const cleanup = cleanupOpenClawTestArtifacts({
+      dbPath,
+      tag,
+      sessionIds: Array.from(trackedSessionIds),
+    });
+    const totalDeleted = Object.values(cleanup).reduce((sum, value) => sum + Number(value), 0);
+    console.log(`[evermemory:feishu-qgent-e2e] cleanup tag=${tag} totalDeleted=${totalDeleted}`);
+  } catch (error) {
+    if (!scriptError) {
+      scriptError = error;
+    } else {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[evermemory:feishu-qgent-e2e] cleanup failed: ${detail}`);
+    }
+  }
 }
 
-let runtimeSessionId = sessionId;
-
-const first = runDialogueTurn(
-  agentId,
-  runtimeSessionId,
-  `项目代号${tag}：当前已完成记忆保存修复，下一步是记忆衰减策略落地，发布前必须做 openclaw 真实对话实测。`,
-);
-runtimeSessionId = first.sessionId;
-
-const second = runDialogueTurn(
-  agentId,
-  runtimeSessionId,
-  `${tag} 的当前进展和下一步是什么？请按我们之前对话做状态汇报。`,
-);
-runtimeSessionId = second.sessionId;
-
-const third = runDialogueTurn(
-  agentId,
-  runtimeSessionId,
-  `请基于之前记忆，再复述 ${tag} 的发布前约束。`,
-);
-runtimeSessionId = third.sessionId;
-
-const evidenceSessionIds = Array.from(new Set([sessionId, first.sessionId, second.sessionId, third.sessionId]));
-
-const evidence = loadEvidence({
-  dbPath,
-  sessionIds: evidenceSessionIds,
-  tag,
-  startedAtSql,
-});
-
-const hasAutoMemory = evidence.sessionEnd.some((item) => item.autoMemoryAccepted > 0);
-const hasRecallHit = evidence.interactions.some((item) => (
-  (item.memoryNeed === 'deep' || item.memoryNeed === 'targeted')
-  && item.recalled > 0
-));
-const hasTagInReply = second.text.includes(tag) || third.text.includes(tag);
-
-if (!hasAutoMemory) {
-  fail('validation failed: no auto memory accepted in session_end_processed');
+if (scriptError) {
+  const detail = scriptError instanceof Error ? scriptError.message : String(scriptError);
+  const cause = scriptError instanceof Error && scriptError.cause ? ` detail=${String(scriptError.cause)}` : '';
+  console.error(`[evermemory:feishu-qgent-e2e] FAIL ${detail}${cause}`);
+  process.exit(1);
 }
-if (!hasRecallHit) {
-  fail('validation failed: no targeted/deep recall hit in interaction_processed evidence');
-}
-if (!hasTagInReply) {
-  fail('validation failed: dialogue reply did not include tagged continuity signal');
-}
-if (evidence.memoryCount <= 0) {
-  fail('validation failed: no tagged memory row persisted for this session');
-}
-
-console.log('[evermemory:feishu-qgent-e2e] PASS');
-console.log(`[evermemory:feishu-qgent-e2e] agentId=${agentId}`);
-console.log(`[evermemory:feishu-qgent-e2e] resolvedSessionId=${sessionId}`);
-console.log(`[evermemory:feishu-qgent-e2e] runtimeSessionId=${runtimeSessionId}`);
-console.log(`[evermemory:feishu-qgent-e2e] evidenceSessionIds=${evidenceSessionIds.join(',')}`);
-console.log(`[evermemory:feishu-qgent-e2e] tag=${tag}`);
-console.log(`[evermemory:feishu-qgent-e2e] turnRunIds=${[first.runId, second.runId, third.runId].join(',')}`);
-console.log(`[evermemory:feishu-qgent-e2e] autoMemoryEvents=${evidence.sessionEnd.length}`);
-console.log(`[evermemory:feishu-qgent-e2e] recallHitEvents=${evidence.interactions.filter((item) => (
-  (item.memoryNeed === 'deep' || item.memoryNeed === 'targeted')
-  && item.recalled > 0
-)).length}`);
-console.log(`[evermemory:feishu-qgent-e2e] retrievalHits(window)=${evidence.retrieval.filter((item) => item.returned > 0).length}`);
-console.log(`[evermemory:feishu-qgent-e2e] taggedMemoryRows=${evidence.memoryCount}`);

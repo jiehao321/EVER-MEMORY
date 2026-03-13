@@ -13,4 +13,9 @@ export interface BootBriefing {
   sections: BootBriefingSections;
   tokenTarget: number;
   actualApproxTokens: number;
+  optimization?: {
+    duplicateBlocksRemoved: number;
+    tokenPrunedBlocks: number;
+    highValueBlocksKept: number;
+  };
 }

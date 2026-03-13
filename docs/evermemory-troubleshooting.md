@@ -484,3 +484,29 @@ Likely causes:
 
 Recommended next step:
 - follow `docs/evermemory-continuity-decay-remediation-plan.md`
+
+---
+
+## 10. 跑完测试后仍有测试数据残留
+
+现象：
+- `recall` 命中明显包含 `E2E-*`、`QGENT-*`、`CONT-*` 之类测试内容
+- 实例 DB 中仍有 smoke/soak 测试痕迹
+
+处理：
+
+```bash
+npm run openclaw:cleanup:test-data
+```
+
+建议先用 dry-run 评估影响：
+
+```bash
+npm run openclaw:cleanup:test-data:dry
+```
+
+若需要清理自定义 DB：
+
+```bash
+node ./scripts/openclaw-purge-test-data.mjs --db /your/path/evermemory.db
+```
