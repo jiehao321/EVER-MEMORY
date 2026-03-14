@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { ProjectedProfile } from '../types.js';
 import { safeJsonParse } from '../util/json.js';
+import { StorageError } from '../errors.js';
 
 interface ProjectedProfileRow {
   user_id: string;
@@ -51,46 +52,82 @@ export class ProfileRepository {
   constructor(private readonly db: Database.Database) {}
 
   upsert(profile: ProjectedProfile): void {
-    this.db.prepare(`
-      INSERT INTO projected_profiles (
-        user_id,
-        updated_at,
-        stable_json,
-        derived_json,
-        behavior_hints_json
-      ) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET
-        updated_at = excluded.updated_at,
-        stable_json = excluded.stable_json,
-        derived_json = excluded.derived_json,
-        behavior_hints_json = excluded.behavior_hints_json
-    `).run(
-      profile.userId,
-      profile.updatedAt,
-      JSON.stringify(profile.stable),
-      JSON.stringify(profile.derived),
-      JSON.stringify(profile.behaviorHints),
-    );
+    try {
+      this.db.prepare(`
+        INSERT INTO projected_profiles (
+          user_id,
+          updated_at,
+          stable_json,
+          derived_json,
+          behavior_hints_json
+        ) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          updated_at = excluded.updated_at,
+          stable_json = excluded.stable_json,
+          derived_json = excluded.derived_json,
+          behavior_hints_json = excluded.behavior_hints_json
+      `).run(
+        profile.userId,
+        profile.updatedAt,
+        JSON.stringify(profile.stable),
+        JSON.stringify(profile.derived),
+        JSON.stringify(profile.behaviorHints),
+      );
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to persist projected profile.', {
+        code: 'STORAGE_PROFILE_UPSERT_FAILED',
+        context: {
+          userId: profile.userId,
+          updatedAt: profile.updatedAt,
+        },
+        cause: error,
+      });
+    }
   }
 
   getByUserId(userId: string): ProjectedProfile | null {
-    const row = this.db.prepare(`
-      SELECT * FROM projected_profiles
-      WHERE user_id = ?
-      LIMIT 1
-    `).get(userId) as ProjectedProfileRow | undefined;
+    try {
+      const row = this.db.prepare(`
+        SELECT * FROM projected_profiles
+        WHERE user_id = ?
+        LIMIT 1
+      `).get(userId) as ProjectedProfileRow | undefined;
 
-    return row ? toProjectedProfile(row) : null;
+      return row ? toProjectedProfile(row) : null;
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to load projected profile.', {
+        code: 'STORAGE_PROFILE_LOOKUP_FAILED',
+        context: { userId },
+        cause: error,
+      });
+    }
   }
 
   listRecent(limit = 20): ProjectedProfile[] {
-    const rows = this.db.prepare(`
-      SELECT * FROM projected_profiles
-      ORDER BY updated_at DESC
-      LIMIT ?
-    `).all(limit) as ProjectedProfileRow[];
+    try {
+      const rows = this.db.prepare(`
+        SELECT * FROM projected_profiles
+        ORDER BY updated_at DESC
+        LIMIT ?
+      `).all(limit) as ProjectedProfileRow[];
 
-    return rows.map(toProjectedProfile);
+      return rows.map(toProjectedProfile);
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to list projected profiles.', {
+        code: 'STORAGE_PROFILE_LIST_FAILED',
+        context: { limit },
+        cause: error,
+      });
+    }
   }
 
   count(): number {

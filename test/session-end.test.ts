@@ -4,11 +4,11 @@ import { rmSync } from 'node:fs';
 import { initializeEverMemory } from '../src/index.js';
 import { createTempDbPath } from './helpers.js';
 
-test('sessionEnd writes experience and can trigger lightweight reflection', () => {
+test('sessionEnd writes experience and can trigger lightweight reflection', async () => {
   const databasePath = createTempDbPath('session-end');
   const app = initializeEverMemory({ databasePath });
 
-  app.messageReceived({
+  await app.messageReceived({
     sessionId: 'session-end-1',
     messageId: 'session-end-msg-0',
     text: '项目推进计划：先做质量门禁，再推进下一阶段。',
@@ -77,11 +77,11 @@ test('sessionEnd writes experience and can trigger lightweight reflection', () =
   rmSync(databasePath, { force: true });
 });
 
-test('sessionEnd auto memory extraction prefers intent raw text and skips operator policy noise', () => {
+test('sessionEnd auto memory extraction prefers intent raw text and skips operator policy noise', async () => {
   const databasePath = createTempDbPath('session-end-noise');
   const app = initializeEverMemory({ databasePath });
 
-  app.messageReceived({
+  await app.messageReceived({
     sessionId: 'session-end-noise-1',
     messageId: 'session-end-noise-msg-0',
     text: '[Fri 2026-03-13 10:44 GMT+8] 项目代号CLEANMEM-1，先修复记忆保存，再做记忆衰减。',
@@ -115,11 +115,11 @@ test('sessionEnd auto memory extraction prefers intent raw text and skips operat
   rmSync(databasePath, { force: true });
 });
 
-test('project continuity recall stays stable across sessions for progress/stage/next-step/decision queries', () => {
+test('project continuity recall stays stable across sessions for progress/stage/next-step/decision queries', async () => {
   const databasePath = createTempDbPath('session-end-project-continuity');
   const app = initializeEverMemory({ databasePath });
 
-  app.messageReceived({
+  await app.messageReceived({
     sessionId: 'session-continuity-1',
     messageId: 'msg-continuity-0',
     text: '项目 Apollo 进入 Batch 2，当前阶段做 recall hardening，需要稳定项目连续性。',
@@ -143,7 +143,7 @@ test('project continuity recall stays stable across sessions for progress/stage/
     project: 'apollo',
   });
 
-  const progress = app.messageReceived({
+  const progress = await app.messageReceived({
     sessionId: 'session-continuity-2',
     messageId: 'msg-continuity-progress',
     text: '项目进展是什么？',
@@ -153,7 +153,7 @@ test('project continuity recall stays stable across sessions for progress/stage/
   assert.ok(progress.recall.total <= 4);
   assert.ok(progress.recall.items.some((item) => item.type === 'summary'));
 
-  const stage = app.messageReceived({
+  const stage = await app.messageReceived({
     sessionId: 'session-continuity-2',
     messageId: 'msg-continuity-stage',
     text: '当前阶段是什么？',
@@ -162,7 +162,7 @@ test('project continuity recall stays stable across sessions for progress/stage/
   assert.ok(stage.recall.total >= 1);
   assert.ok(stage.recall.total <= 4);
 
-  const nextStep = app.messageReceived({
+  const nextStep = await app.messageReceived({
     sessionId: 'session-continuity-2',
     messageId: 'msg-continuity-next',
     text: '下一步是什么？',
@@ -172,7 +172,7 @@ test('project continuity recall stays stable across sessions for progress/stage/
   assert.ok(nextStep.recall.total <= 3);
   assert.ok(nextStep.recall.items.some((item) => item.type === 'commitment' || item.type === 'decision'));
 
-  const decision = app.messageReceived({
+  const decision = await app.messageReceived({
     sessionId: 'session-continuity-2',
     messageId: 'msg-continuity-decision',
     text: '最近决策是什么？',
@@ -203,11 +203,11 @@ test('project continuity recall stays stable across sessions for progress/stage/
   rmSync(databasePath, { force: true });
 });
 
-test('sessionEnd does not over-generate decision or project summary from weak generic signals', () => {
+test('sessionEnd does not over-generate decision or project summary from weak generic signals', async () => {
   const databasePath = createTempDbPath('session-end-boundary');
   const app = initializeEverMemory({ databasePath });
 
-  app.messageReceived({
+  await app.messageReceived({
     sessionId: 'session-boundary-1',
     messageId: 'msg-boundary-0',
     text: '我们继续处理这个项目。',

@@ -6,6 +6,7 @@ import { evaluateWrite } from '../policy/write.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { SemanticRepository } from '../../storage/semanticRepo.js';
+import { embeddingManager } from '../../embedding/manager.js';
 import type {
   MemoryItem,
   MemoryScope,
@@ -111,6 +112,7 @@ export class MemoryService {
         updatedAt: memory.timestamps.updatedAt,
       });
     }
+    this.triggerEmbeddingGeneration(memory);
     const maintenance = this.lifecycleService.maintainForNewMemory(memory.id);
     const projectedProfile = memory.scope.userId && this.profileProjectionService
       ? this.profileProjectionService.recomputeForUser(memory.scope.userId)
@@ -149,5 +151,31 @@ export class MemoryService {
 
   consolidate(input: ConsolidationRequest = {}): ConsolidationReport {
     return this.lifecycleService.consolidate(input);
+  }
+
+  private triggerEmbeddingGeneration(memory: MemoryItem): void {
+    if (!this.semanticRepo) {
+      return;
+    }
+    void this.generateEmbeddingAsync(this.semanticRepo, memory.id, memory.content);
+  }
+
+  private async generateEmbeddingAsync(
+    repo: SemanticRepository,
+    memoryId: string,
+    content: string,
+  ): Promise<void> {
+    if (!embeddingManager.isReady()) {
+      return;
+    }
+    try {
+      const vector = await embeddingManager.embed(content);
+      if (!vector) {
+        return;
+      }
+      await repo.storeEmbedding(memoryId, vector.values, embeddingManager.providerKind);
+    } catch {
+      // best-effort only
+    }
   }
 }

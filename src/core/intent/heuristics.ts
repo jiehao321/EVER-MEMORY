@@ -9,6 +9,25 @@ import type {
   RetrievalScopeHint,
   RetrievalTimeBias,
 } from '../../types.js';
+import {
+  CORRECTION_PATTERNS,
+  EXCITED_PATTERNS,
+  EXECUTION_PATTERNS,
+  FRUSTRATION_PATTERNS,
+  MEMORY_CUE_PATTERNS,
+  PLANNING_PATTERNS,
+  PREFERENCE_PATTERNS,
+  STATUS_PATTERNS,
+} from '../../patterns.js';
+import {
+  INTENT_CONFIDENCE,
+  INTENT_CORRECTION_SIGNAL_HIGH,
+  INTENT_CORRECTION_SIGNAL_LOW,
+  INTENT_CORRECTION_SIGNAL_MEDIUM,
+  INTENT_PREFERENCE_RELEVANCE_HIGH,
+  INTENT_PREFERENCE_RELEVANCE_LOW,
+  INTENT_PREFERENCE_RELEVANCE_MEDIUM,
+} from '../../tuning.js';
 
 export interface HeuristicIntentOutput {
   intentType: IntentType;
@@ -24,46 +43,6 @@ export interface HeuristicIntentOutput {
   preferredScopes: RetrievalScopeHint[];
   preferredTimeBias: RetrievalTimeBias;
 }
-
-const CORRECTION_PATTERNS = [
-  /\b(i mean|correction|to be clear)\b/i,
-  /(不是|更正|纠正|准确来说|修正一下)/,
-];
-
-const PREFERENCE_PATTERNS = [
-  /\b(i like|i prefer|i love|i hate)\b/i,
-  /(我喜欢|我更喜欢|我偏好|我不喜欢|我讨厌)/,
-];
-
-const PLANNING_PATTERNS = [
-  /\b(plan|roadmap|milestone|phase)\b/i,
-  /(计划|路线图|里程碑|阶段|拆分|推进)/,
-];
-
-const STATUS_PATTERNS = [
-  /\b(progress|status|where are we|current phase|latest)\b/i,
-  /(进展|状态|到哪了|到哪里了|当前阶段|最近情况|最新情况|汇报)/,
-];
-
-const EXECUTION_PATTERNS = [
-  /\b(implement|execute|fix|build)\b/i,
-  /(实现|执行|修复|落地|开发|开始做)/,
-];
-
-const MEMORY_CUE_PATTERNS = [
-  /\bremember|previous|before|history|earlier\b/i,
-  /(记住|之前|上次|历史|延续|连续性)/,
-];
-
-const FRUSTRATION_PATTERNS = [
-  /\b(frustrated|annoyed|angry)\b/i,
-  /(烦|气死|崩溃|离谱|不行)/,
-];
-
-const EXCITED_PATTERNS = [
-  /\b(great|awesome|excited)\b/i,
-  /(太好了|很棒|兴奋)/,
-];
 
 function containsAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
@@ -81,24 +60,24 @@ function clamp01(value: number): number {
 
 function inferIntentType(text: string): { type: IntentType; subtype?: string; confidence: number } {
   if (containsAny(text, CORRECTION_PATTERNS)) {
-    return { type: 'correction', confidence: 0.95 };
+    return { type: 'correction', confidence: INTENT_CONFIDENCE.correction };
   }
   if (containsAny(text, PREFERENCE_PATTERNS)) {
-    return { type: 'preference', confidence: 0.92 };
+    return { type: 'preference', confidence: INTENT_CONFIDENCE.preference };
   }
   if (containsAny(text, STATUS_PATTERNS)) {
-    return { type: 'status_update', confidence: 0.9 };
+    return { type: 'status_update', confidence: INTENT_CONFIDENCE.status_update };
   }
   if (containsAny(text, PLANNING_PATTERNS)) {
-    return { type: 'planning', confidence: 0.88 };
+    return { type: 'planning', confidence: INTENT_CONFIDENCE.planning };
   }
   if (containsAny(text, EXECUTION_PATTERNS)) {
-    return { type: 'instruction', subtype: 'execution', confidence: 0.86 };
+    return { type: 'instruction', subtype: 'execution', confidence: INTENT_CONFIDENCE.instruction };
   }
   if (text.includes('?') || text.includes('？')) {
-    return { type: 'question', confidence: 0.8 };
+    return { type: 'question', confidence: INTENT_CONFIDENCE.question };
   }
-  return { type: 'other', confidence: 0.65 };
+  return { type: 'other', confidence: INTENT_CONFIDENCE.other };
 }
 
 function inferEmotionalTone(text: string): IntentEmotionalTone {
@@ -221,8 +200,16 @@ export function analyzeIntentHeuristics(input: IntentAnalyzeInput): HeuristicInt
   const text = input.text.trim();
   const intent = inferIntentType(text);
   const memoryNeed = inferMemoryNeed(text, intent.type);
-  const correctionSignal = intent.type === 'correction' ? 0.95 : containsAny(text, CORRECTION_PATTERNS) ? 0.7 : 0.05;
-  const preferenceRelevance = intent.type === 'preference' ? 0.95 : containsAny(text, PREFERENCE_PATTERNS) ? 0.7 : 0.1;
+  const correctionSignal = intent.type === 'correction'
+    ? INTENT_CORRECTION_SIGNAL_HIGH
+    : containsAny(text, CORRECTION_PATTERNS)
+      ? INTENT_CORRECTION_SIGNAL_MEDIUM
+      : INTENT_CORRECTION_SIGNAL_LOW;
+  const preferenceRelevance = intent.type === 'preference'
+    ? INTENT_PREFERENCE_RELEVANCE_HIGH
+    : containsAny(text, PREFERENCE_PATTERNS)
+      ? INTENT_PREFERENCE_RELEVANCE_MEDIUM
+      : INTENT_PREFERENCE_RELEVANCE_LOW;
 
   return {
     intentType: intent.type,

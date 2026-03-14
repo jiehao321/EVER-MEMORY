@@ -3,11 +3,18 @@ import {
   freezeBehaviorRule,
 } from './lifecycle.js';
 import type { BehaviorRule, BehaviorRuleCategory, BehaviorRulePromotionDecision, ReflectionRecord } from '../../types.js';
-
-const MIN_CONFIDENCE = 0.75;
-const MIN_RECUR_FOR_STYLE = 2;
-const MIN_STATEMENT_LENGTH = 10;
-const MAX_STATEMENT_LENGTH = 220;
+import {
+  CATEGORY_DEFAULT_PRIORITY,
+  LEVEL_BASELINE_CONFIDENCE_THRESHOLD,
+  LEVEL_BASELINE_PRIORITY_THRESHOLD,
+  LEVEL_CRITICAL_CONFIDENCE_THRESHOLD,
+  LEVEL_CRITICAL_PRIORITY_THRESHOLD,
+  PROMOTION_MAX_STATEMENT_LENGTH,
+  PROMOTION_MIN_CONFIDENCE,
+  PROMOTION_MIN_RECUR_FOR_STYLE,
+  PROMOTION_MIN_STATEMENT_LENGTH,
+  PROMOTION_VALIDATED_RECURRENCE_THRESHOLD,
+} from '../../tuning.js';
 
 const SAFETY_KEYWORDS = ['高风险', '风险', '危险', '安全', 'risk', 'safe', 'danger'];
 const CONFIRM_KEYWORDS = ['确认', '复述', '先问', 'confirm', 'confirmation'];
@@ -62,33 +69,33 @@ function inferCategory(statement: string): BehaviorRuleCategory {
 function inferPriority(category: BehaviorRuleCategory): number {
   switch (category) {
     case 'safety':
-      return 95;
+      return CATEGORY_DEFAULT_PRIORITY.safety;
     case 'confirmation':
-      return 88;
+      return CATEGORY_DEFAULT_PRIORITY.confirmation;
     case 'memory':
-      return 72;
+      return CATEGORY_DEFAULT_PRIORITY.memory;
     case 'planning':
-      return 68;
+      return CATEGORY_DEFAULT_PRIORITY.planning;
     case 'execution':
-      return 66;
+      return CATEGORY_DEFAULT_PRIORITY.execution;
     case 'style':
     default:
-      return 54;
+      return CATEGORY_DEFAULT_PRIORITY.style;
   }
 }
 
 function inferLevel(priority: number, confidence: number): NonNullable<BehaviorRulePromotionDecision['level']> {
-  if (priority >= 90 || confidence >= 0.92) {
+  if (priority >= LEVEL_CRITICAL_PRIORITY_THRESHOLD || confidence >= LEVEL_CRITICAL_CONFIDENCE_THRESHOLD) {
     return 'critical';
   }
-  if (priority >= 70 || confidence >= 0.8) {
+  if (priority >= LEVEL_BASELINE_PRIORITY_THRESHOLD || confidence >= LEVEL_BASELINE_CONFIDENCE_THRESHOLD) {
     return 'baseline';
   }
   return 'candidate';
 }
 
 function inferMaturity(recurrenceCount: number): NonNullable<BehaviorRulePromotionDecision['maturity']> {
-  if (recurrenceCount >= 4) {
+  if (recurrenceCount >= PROMOTION_VALIDATED_RECURRENCE_THRESHOLD) {
     return 'validated';
   }
   return 'emerging';
@@ -161,7 +168,7 @@ export function evaluatePromotionCandidate(input: {
       .map((rule) => normalizeStatement(rule.statement)),
   );
 
-  if (statement.length < MIN_STATEMENT_LENGTH) {
+  if (statement.length < PROMOTION_MIN_STATEMENT_LENGTH) {
     return {
       accepted: false,
       reason: 'statement_too_short',
@@ -169,7 +176,7 @@ export function evaluatePromotionCandidate(input: {
     };
   }
 
-  if (statement.length > MAX_STATEMENT_LENGTH) {
+  if (statement.length > PROMOTION_MAX_STATEMENT_LENGTH) {
     return {
       accepted: false,
       reason: 'statement_too_long',
@@ -185,7 +192,7 @@ export function evaluatePromotionCandidate(input: {
     };
   }
 
-  if (input.reflection.evidence.confidence < MIN_CONFIDENCE) {
+  if (input.reflection.evidence.confidence < PROMOTION_MIN_CONFIDENCE) {
     return {
       accepted: false,
       reason: 'insufficient_confidence',
@@ -193,7 +200,7 @@ export function evaluatePromotionCandidate(input: {
     };
   }
 
-  if (category === 'style' && input.reflection.evidence.recurrenceCount < MIN_RECUR_FOR_STYLE) {
+  if (category === 'style' && input.reflection.evidence.recurrenceCount < PROMOTION_MIN_RECUR_FOR_STYLE) {
     return {
       accepted: false,
       reason: 'insufficient_recurrence_for_style',

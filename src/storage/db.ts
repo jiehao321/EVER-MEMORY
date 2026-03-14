@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
+import { StorageError } from '../errors.js';
 
 export interface DatabaseHandle {
   path: string;
@@ -13,15 +14,37 @@ export function resolveDatabasePath(storagePath: string): string {
 
 export function openDatabase(storagePath: string): DatabaseHandle {
   const path = resolveDatabasePath(storagePath);
-  mkdirSync(dirname(path), { recursive: true });
+  try {
+    mkdirSync(dirname(path), { recursive: true });
 
-  const connection = new Database(path);
-  connection.pragma('journal_mode = WAL');
-  connection.pragma('foreign_keys = ON');
+    const connection = new Database(path);
+    connection.pragma('journal_mode = WAL');
+    connection.pragma('foreign_keys = ON');
 
-  return { path, connection };
+    return { path, connection };
+  } catch (error) {
+    if (error instanceof StorageError) {
+      throw error;
+    }
+    throw new StorageError('Failed to open database.', {
+      code: 'STORAGE_OPEN_FAILED',
+      context: { path },
+      cause: error,
+    });
+  }
 }
 
 export function closeDatabase(handle: DatabaseHandle): void {
-  handle.connection.close();
+  try {
+    handle.connection.close();
+  } catch (error) {
+    if (error instanceof StorageError) {
+      throw error;
+    }
+    throw new StorageError('Failed to close database.', {
+      code: 'STORAGE_CLOSE_FAILED',
+      context: { path: handle.path },
+      cause: error,
+    });
+  }
 }

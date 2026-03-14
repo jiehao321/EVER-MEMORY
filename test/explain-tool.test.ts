@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 import { initializeEverMemory } from '../src/index.js';
 import { createTempDbPath } from './helpers.js';
 
-test('evermemory_explain explains write, retrieval, and rule decisions', () => {
+test('evermemory_explain explains write, retrieval, and rule decisions', async () => {
   const databasePath = createTempDbPath('explain-tool');
   const app = initializeEverMemory({ databasePath });
 
@@ -20,7 +20,7 @@ test('evermemory_explain explains write, retrieval, and rule decisions', () => {
   assert.equal(accepted.accepted, true);
   assert.equal(rejected.accepted, false);
 
-  app.evermemoryRecall({
+  await app.evermemoryRecall({
     query: '回滚',
     scope: { userId: 'u-explain-1' },
     limit: 5,

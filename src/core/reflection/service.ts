@@ -9,6 +9,20 @@ import type {
   ReflectionRunInput,
   ReflectionRunResult,
 } from '../../types.js';
+import {
+  REFLECTION_APPROVAL_BOOST,
+  REFLECTION_CONFIDENCE_BASE,
+  REFLECTION_CORRECTION_BOOST,
+  REFLECTION_EVIDENCE_BOOST_MIN_REFS,
+  REFLECTION_EVIDENCE_BOOST_VALUE,
+  REFLECTION_FULL_CONFIDENCE_THRESHOLD,
+  REFLECTION_FULL_EXPERIENCE_LIMIT,
+  REFLECTION_LIGHT_CONFIDENCE_THRESHOLD,
+  REFLECTION_LIGHT_EXPERIENCE_LIMIT,
+  REFLECTION_MAX_RECURRENCE_BOOST,
+  REFLECTION_MODE_PENALTY,
+  REFLECTION_RECURRENCE_BOOST_INCREMENT,
+} from '../../tuning.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -85,29 +99,18 @@ function computeConfidence(
   evidenceRefs: string[],
   mode: NonNullable<ReflectionRunInput['mode']>,
 ): number {
-  const base = (() => {
-    switch (triggerKind) {
-      case 'correction':
-        return 0.82;
-      case 'mistake':
-        return 0.78;
-      case 'success':
-        return 0.76;
-      case 'repeat-pattern':
-        return 0.85;
-      case 'manual-review':
-      default:
-        return 0.7;
-    }
-  })();
+  const base = REFLECTION_CONFIDENCE_BASE[triggerKind];
 
   const correctionCount = experiences.filter((item) => item.indicators.userCorrection).length;
   const approvalCount = experiences.filter((item) => item.indicators.userApproval).length;
-  const recurrenceBoost = Math.min(0.1, Math.max(0, experiences.length - 1) * 0.03);
-  const evidenceBoost = evidenceRefs.length >= 2 ? 0.05 : 0;
-  const correctionBoost = correctionCount > 0 ? 0.04 : 0;
-  const approvalBoost = approvalCount > 0 ? 0.03 : 0;
-  const modePenalty = mode === 'full' ? 0 : 0.02;
+  const recurrenceBoost = Math.min(
+    REFLECTION_MAX_RECURRENCE_BOOST,
+    Math.max(0, experiences.length - 1) * REFLECTION_RECURRENCE_BOOST_INCREMENT,
+  );
+  const evidenceBoost = evidenceRefs.length >= REFLECTION_EVIDENCE_BOOST_MIN_REFS ? REFLECTION_EVIDENCE_BOOST_VALUE : 0;
+  const correctionBoost = correctionCount > 0 ? REFLECTION_CORRECTION_BOOST : 0;
+  const approvalBoost = approvalCount > 0 ? REFLECTION_APPROVAL_BOOST : 0;
+  const modePenalty = mode === 'full' ? 0 : REFLECTION_MODE_PENALTY;
 
   return clamp01(base + recurrenceBoost + evidenceBoost + correctionBoost + approvalBoost - modePenalty);
 }
@@ -121,7 +124,7 @@ export class ReflectionService {
 
   reflect(input: ReflectionRunInput): ReflectionRunResult {
     const mode = input.mode ?? 'light';
-    const limit = mode === 'full' ? 20 : 8;
+    const limit = mode === 'full' ? REFLECTION_FULL_EXPERIENCE_LIMIT : REFLECTION_LIGHT_EXPERIENCE_LIMIT;
 
     const resolved = this.resolveExperiences(input, limit);
     const experiences = resolved.experiences;
@@ -142,7 +145,9 @@ export class ReflectionService {
     const evidenceRefs = dedupe(experiences.flatMap((item) => item.evidenceRefs));
     const analysis = summarizeAnalysis(input.triggerKind, experiences);
     const confidence = computeConfidence(input.triggerKind, experiences, evidenceRefs, mode);
-    const threshold = mode === 'full' ? 0.7 : 0.55;
+    const threshold = mode === 'full'
+      ? REFLECTION_FULL_CONFIDENCE_THRESHOLD
+      : REFLECTION_LIGHT_CONFIDENCE_THRESHOLD;
 
     if (confidence < threshold) {
       this.debugRepo?.log('reflection_skipped', undefined, {

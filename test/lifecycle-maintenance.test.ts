@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 import { initializeEverMemory } from '../src/index.js';
 import { createTempDbPath } from './helpers.js';
 
-test('lifecycle maintenance dedupes near-identical memory and archives duplicate noise', () => {
+test('lifecycle maintenance dedupes near-identical memory and archives duplicate noise', async () => {
   const databasePath = createTempDbPath('lifecycle-dedupe');
   const app = initializeEverMemory({ databasePath });
 
@@ -22,7 +22,7 @@ test('lifecycle maintenance dedupes near-identical memory and archives duplicate
   assert.equal(first.accepted, true);
   assert.equal(second.accepted, true);
 
-  const recall = app.evermemoryRecall({
+  const recall = await app.evermemoryRecall({
     query: '回滚方案',
     scope: { userId: 'u-life-1', project: 'evermemory' },
     mode: 'keyword',

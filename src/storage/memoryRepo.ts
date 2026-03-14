@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { MemoryItem, MemoryLifecycle, MemorySearchFilters, MemoryType } from '../types.js';
 import { safeJsonParse } from '../util/json.js';
 import { MEMORY_TYPES, MEMORY_LIFECYCLES } from '../constants.js';
+import { StorageError } from '../errors.js';
 
 interface MemoryItemRow {
   id: string;
@@ -151,133 +152,203 @@ function buildWhereClause(filters: MemorySearchFilters): { sql: string; params: 
   return { sql, params };
 }
 
+function resolveSearchLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return 20;
+  }
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new StorageError('Memory search limit must be a positive integer.', {
+      code: 'STORAGE_INVALID_SEARCH_LIMIT',
+      context: { limit },
+    });
+  }
+  return limit;
+}
+
 export class MemoryRepository {
   constructor(private readonly db: Database.Database) {}
 
   insert(memory: MemoryItem): void {
-    this.db.prepare(`
-      INSERT INTO memory_items (
-        id, content, type, lifecycle,
-        source_kind, source_actor, session_id, message_id, channel,
-        scope_user_id, scope_chat_id, scope_project, scope_global,
-        confidence, importance, explicitness,
-        created_at, updated_at, last_accessed_at,
-        active, archived, superseded_by,
-        evidence_excerpt, evidence_references_json,
-        tags_json, related_entities_json,
-        access_count, retrieval_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      memory.id,
-      memory.content,
-      memory.type,
-      memory.lifecycle,
-      memory.source.kind,
-      memory.source.actor ?? null,
-      memory.source.sessionId ?? null,
-      memory.source.messageId ?? null,
-      memory.source.channel ?? null,
-      memory.scope.userId ?? null,
-      memory.scope.chatId ?? null,
-      memory.scope.project ?? null,
-      memory.scope.global ? 1 : 0,
-      memory.scores.confidence,
-      memory.scores.importance,
-      memory.scores.explicitness,
-      memory.timestamps.createdAt,
-      memory.timestamps.updatedAt,
-      memory.timestamps.lastAccessedAt ?? null,
-      memory.state.active ? 1 : 0,
-      memory.state.archived ? 1 : 0,
-      memory.state.supersededBy ?? null,
-      memory.evidence.excerpt ?? null,
-      JSON.stringify(memory.evidence.references ?? []),
-      JSON.stringify(memory.tags),
-      JSON.stringify(memory.relatedEntities),
-      memory.stats.accessCount,
-      memory.stats.retrievalCount,
-    );
+    try {
+      this.db.prepare(`
+        INSERT INTO memory_items (
+          id, content, type, lifecycle,
+          source_kind, source_actor, session_id, message_id, channel,
+          scope_user_id, scope_chat_id, scope_project, scope_global,
+          confidence, importance, explicitness,
+          created_at, updated_at, last_accessed_at,
+          active, archived, superseded_by,
+          evidence_excerpt, evidence_references_json,
+          tags_json, related_entities_json,
+          access_count, retrieval_count
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        memory.id,
+        memory.content,
+        memory.type,
+        memory.lifecycle,
+        memory.source.kind,
+        memory.source.actor ?? null,
+        memory.source.sessionId ?? null,
+        memory.source.messageId ?? null,
+        memory.source.channel ?? null,
+        memory.scope.userId ?? null,
+        memory.scope.chatId ?? null,
+        memory.scope.project ?? null,
+        memory.scope.global ? 1 : 0,
+        memory.scores.confidence,
+        memory.scores.importance,
+        memory.scores.explicitness,
+        memory.timestamps.createdAt,
+        memory.timestamps.updatedAt,
+        memory.timestamps.lastAccessedAt ?? null,
+        memory.state.active ? 1 : 0,
+        memory.state.archived ? 1 : 0,
+        memory.state.supersededBy ?? null,
+        memory.evidence.excerpt ?? null,
+        JSON.stringify(memory.evidence.references ?? []),
+        JSON.stringify(memory.tags),
+        JSON.stringify(memory.relatedEntities),
+        memory.stats.accessCount,
+        memory.stats.retrievalCount,
+      );
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to insert memory item.', {
+        code: 'STORAGE_MEMORY_INSERT_FAILED',
+        context: {
+          memoryId: memory.id,
+          type: memory.type,
+          lifecycle: memory.lifecycle,
+        },
+        cause: error,
+      });
+    }
   }
 
   update(memory: MemoryItem): void {
-    this.db.prepare(`
-      UPDATE memory_items SET
-        content = ?,
-        type = ?,
-        lifecycle = ?,
-        source_kind = ?,
-        source_actor = ?,
-        session_id = ?,
-        message_id = ?,
-        channel = ?,
-        scope_user_id = ?,
-        scope_chat_id = ?,
-        scope_project = ?,
-        scope_global = ?,
-        confidence = ?,
-        importance = ?,
-        explicitness = ?,
-        created_at = ?,
-        updated_at = ?,
-        last_accessed_at = ?,
-        active = ?,
-        archived = ?,
-        superseded_by = ?,
-        evidence_excerpt = ?,
-        evidence_references_json = ?,
-        tags_json = ?,
-        related_entities_json = ?,
-        access_count = ?,
-        retrieval_count = ?
-      WHERE id = ?
-    `).run(
-      memory.content,
-      memory.type,
-      memory.lifecycle,
-      memory.source.kind,
-      memory.source.actor ?? null,
-      memory.source.sessionId ?? null,
-      memory.source.messageId ?? null,
-      memory.source.channel ?? null,
-      memory.scope.userId ?? null,
-      memory.scope.chatId ?? null,
-      memory.scope.project ?? null,
-      memory.scope.global ? 1 : 0,
-      memory.scores.confidence,
-      memory.scores.importance,
-      memory.scores.explicitness,
-      memory.timestamps.createdAt,
-      memory.timestamps.updatedAt,
-      memory.timestamps.lastAccessedAt ?? null,
-      memory.state.active ? 1 : 0,
-      memory.state.archived ? 1 : 0,
-      memory.state.supersededBy ?? null,
-      memory.evidence.excerpt ?? null,
-      JSON.stringify(memory.evidence.references ?? []),
-      JSON.stringify(memory.tags),
-      JSON.stringify(memory.relatedEntities),
-      memory.stats.accessCount,
-      memory.stats.retrievalCount,
-      memory.id,
-    );
+    try {
+      this.db.prepare(`
+        UPDATE memory_items SET
+          content = ?,
+          type = ?,
+          lifecycle = ?,
+          source_kind = ?,
+          source_actor = ?,
+          session_id = ?,
+          message_id = ?,
+          channel = ?,
+          scope_user_id = ?,
+          scope_chat_id = ?,
+          scope_project = ?,
+          scope_global = ?,
+          confidence = ?,
+          importance = ?,
+          explicitness = ?,
+          created_at = ?,
+          updated_at = ?,
+          last_accessed_at = ?,
+          active = ?,
+          archived = ?,
+          superseded_by = ?,
+          evidence_excerpt = ?,
+          evidence_references_json = ?,
+          tags_json = ?,
+          related_entities_json = ?,
+          access_count = ?,
+          retrieval_count = ?
+        WHERE id = ?
+      `).run(
+        memory.content,
+        memory.type,
+        memory.lifecycle,
+        memory.source.kind,
+        memory.source.actor ?? null,
+        memory.source.sessionId ?? null,
+        memory.source.messageId ?? null,
+        memory.source.channel ?? null,
+        memory.scope.userId ?? null,
+        memory.scope.chatId ?? null,
+        memory.scope.project ?? null,
+        memory.scope.global ? 1 : 0,
+        memory.scores.confidence,
+        memory.scores.importance,
+        memory.scores.explicitness,
+        memory.timestamps.createdAt,
+        memory.timestamps.updatedAt,
+        memory.timestamps.lastAccessedAt ?? null,
+        memory.state.active ? 1 : 0,
+        memory.state.archived ? 1 : 0,
+        memory.state.supersededBy ?? null,
+        memory.evidence.excerpt ?? null,
+        JSON.stringify(memory.evidence.references ?? []),
+        JSON.stringify(memory.tags),
+        JSON.stringify(memory.relatedEntities),
+        memory.stats.accessCount,
+        memory.stats.retrievalCount,
+        memory.id,
+      );
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to update memory item.', {
+        code: 'STORAGE_MEMORY_UPDATE_FAILED',
+        context: {
+          memoryId: memory.id,
+          type: memory.type,
+          lifecycle: memory.lifecycle,
+        },
+        cause: error,
+      });
+    }
   }
 
   findById(id: string): MemoryItem | null {
-    const row = this.db.prepare('SELECT * FROM memory_items WHERE id = ? LIMIT 1').get(id) as MemoryItemRow | undefined;
-    return row ? toMemoryItem(row) : null;
+    try {
+      const row = this.db.prepare('SELECT * FROM memory_items WHERE id = ? LIMIT 1').get(id) as MemoryItemRow | undefined;
+      return row ? toMemoryItem(row) : null;
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to load memory item.', {
+        code: 'STORAGE_MEMORY_LOOKUP_FAILED',
+        context: { memoryId: id },
+        cause: error,
+      });
+    }
   }
 
   search(filters: MemorySearchFilters = {}): MemoryItem[] {
-    const { sql, params } = buildWhereClause(filters);
-    const limit = filters.limit ?? 20;
-    const rows = this.db.prepare(`
-      SELECT * FROM memory_items
-      ${sql}
-      ORDER BY updated_at DESC
-      LIMIT ?
-    `).all(...params, limit) as MemoryItemRow[];
+    const limit = resolveSearchLimit(filters.limit);
+    try {
+      const { sql, params } = buildWhereClause(filters);
+      const rows = this.db.prepare(`
+        SELECT * FROM memory_items
+        ${sql}
+        ORDER BY updated_at DESC
+        LIMIT ?
+      `).all(...params, limit) as MemoryItemRow[];
 
-    return rows.map(toMemoryItem);
+      return rows.map(toMemoryItem);
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to search memory items.', {
+        code: 'STORAGE_MEMORY_SEARCH_FAILED',
+        context: {
+          hasQuery: Boolean(filters.query),
+          limit,
+          typeCount: filters.types?.length ?? 0,
+          lifecycleCount: filters.lifecycles?.length ?? 0,
+        },
+        cause: error,
+      });
+    }
   }
 
   listRecent(scope: MemorySearchFilters['scope'], limit = 10): MemoryItem[] {
@@ -301,13 +372,24 @@ export class MemoryRepository {
     }
 
     const placeholders = unique.map(() => '?').join(', ');
-    this.db.prepare(`
-      UPDATE memory_items
-      SET retrieval_count = retrieval_count + 1,
-          updated_at = updated_at,
-          last_accessed_at = CURRENT_TIMESTAMP
-      WHERE id IN (${placeholders})
-    `).run(...unique);
+    try {
+      this.db.prepare(`
+        UPDATE memory_items
+        SET retrieval_count = retrieval_count + 1,
+            updated_at = updated_at,
+            last_accessed_at = CURRENT_TIMESTAMP
+        WHERE id IN (${placeholders})
+      `).run(...unique);
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to update retrieval statistics.', {
+        code: 'STORAGE_MEMORY_RETRIEVAL_INCREMENT_FAILED',
+        context: { memoryIds: unique },
+        cause: error,
+      });
+    }
   }
 
   count(filters: MemorySearchFilters = {}): number {

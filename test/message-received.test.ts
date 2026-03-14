@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 import { initializeEverMemory } from '../src/index.js';
 import { createTempDbPath } from './helpers.js';
 
-test('messageReceived performs intent-guided recall and updates interaction runtime context', () => {
+test('messageReceived performs intent-guided recall and updates interaction runtime context', async () => {
   const databasePath = createTempDbPath('message-received');
   const app = initializeEverMemory({ databasePath });
 
@@ -19,7 +19,7 @@ test('messageReceived performs intent-guided recall and updates interaction runt
     type: 'constraint',
   });
 
-  const result = app.messageReceived({
+  const result = await app.messageReceived({
     sessionId: 'session-message-1',
     messageId: 'msg-1',
     text: '结合之前的项目计划，继续推进下一步。',
@@ -30,7 +30,7 @@ test('messageReceived performs intent-guided recall and updates interaction runt
   assert.ok(result.intent.signals.memoryNeed === 'deep' || result.intent.signals.memoryNeed === 'targeted');
   assert.ok(result.recall.total >= 1);
 
-  const statusResult = app.messageReceived({
+  const statusResult = await app.messageReceived({
     sessionId: 'session-message-1',
     messageId: 'msg-1-status',
     text: '现在项目进展到哪了？请给我当前阶段状态。',
@@ -50,7 +50,7 @@ test('messageReceived performs intent-guided recall and updates interaction runt
   const processedEvents = app.debugRepo.listRecent('interaction_processed', 20);
   assert.ok(processedEvents.length >= 1);
 
-  const noneResult = app.messageReceived({
+  const noneResult = await app.messageReceived({
     sessionId: 'session-message-1',
     messageId: 'msg-2',
     text: 'ok',

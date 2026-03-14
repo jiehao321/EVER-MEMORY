@@ -6,20 +6,30 @@ import type {
   BehaviorRuleMaturity,
   BehaviorRuleStaleness,
 } from '../../types.js';
+import {
+  BEHAVIOR_AGING_AFTER_DAYS,
+  BEHAVIOR_APPLY_DECAY_RECOVERY,
+  BEHAVIOR_DECAY_FROM_AGING,
+  BEHAVIOR_DECAY_FROM_EXPIRED,
+  BEHAVIOR_DECAY_FROM_STALE,
+  BEHAVIOR_DECAY_PER_CONTRADICTION,
+  BEHAVIOR_EXPIRED_AFTER_DAYS,
+  BEHAVIOR_EXPIRES_AFTER_DAYS,
+  BEHAVIOR_MATURITY_INSTITUTIONALIZED_THRESHOLD,
+  BEHAVIOR_MATURITY_VALIDATED_THRESHOLD,
+  BEHAVIOR_MAX_CONTRADICTIONS_BEFORE_DISABLE,
+  BEHAVIOR_MIN_PRIORITY,
+  BEHAVIOR_PRIORITY_CORRECTION_PENALTY,
+  BEHAVIOR_PRIORITY_DECAY_STEP,
+  BEHAVIOR_STALE_AFTER_DAYS,
+  BEHAVIOR_STALE_VALIDATED_THRESHOLD,
+  LEVEL_BASELINE_CONFIDENCE_THRESHOLD,
+  LEVEL_BASELINE_PRIORITY_THRESHOLD,
+  LEVEL_CRITICAL_CONFIDENCE_THRESHOLD,
+  LEVEL_CRITICAL_PRIORITY_THRESHOLD,
+} from '../../tuning.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const AGING_AFTER_DAYS = 14;
-const STALE_AFTER_DAYS = 30;
-const EXPIRED_AFTER_DAYS = 60;
-const EXPIRES_AFTER_DAYS = 120;
-const DECAY_FROM_AGING = 0.12;
-const DECAY_FROM_STALE = 0.32;
-const DECAY_FROM_EXPIRED = 0.62;
-const DECAY_PER_CONTRADICTION = 0.18;
-const MAX_CONTRADICTIONS_BEFORE_DISABLE = 2;
-const MIN_PRIORITY = 10;
-const PRIORITY_DECAY_STEP = 10;
-const PRIORITY_CORRECTION_PENALTY = 14;
 
 function parseTimestamp(value?: string): number | null {
   if (!value) {
@@ -45,20 +55,20 @@ function deduceMaturity(applyCount: number, contradictionCount: number): Behavio
   if (contradictionCount > 0) {
     return 'frozen';
   }
-  if (applyCount >= 6) {
+  if (applyCount >= BEHAVIOR_MATURITY_INSTITUTIONALIZED_THRESHOLD) {
     return 'institutionalized';
   }
-  if (applyCount >= 2) {
+  if (applyCount >= BEHAVIOR_MATURITY_VALIDATED_THRESHOLD) {
     return 'validated';
   }
   return 'emerging';
 }
 
 function deduceLevel(priority: number, confidence: number): BehaviorRuleLevel {
-  if (priority >= 90 || confidence >= 0.92) {
+  if (priority >= LEVEL_CRITICAL_PRIORITY_THRESHOLD || confidence >= LEVEL_CRITICAL_CONFIDENCE_THRESHOLD) {
     return 'critical';
   }
-  if (priority >= 70 || confidence >= 0.8) {
+  if (priority >= LEVEL_BASELINE_PRIORITY_THRESHOLD || confidence >= LEVEL_BASELINE_CONFIDENCE_THRESHOLD) {
     return 'baseline';
   }
   return 'candidate';
@@ -94,7 +104,7 @@ export function evaluateBehaviorLifecycle(rule: BehaviorRule, now = new Date()):
 
   let staleness: BehaviorRuleStaleness = 'fresh';
   let stale = false;
-  let decayScore = rule.lifecycle.contradictionCount * DECAY_PER_CONTRADICTION;
+  let decayScore = rule.lifecycle.contradictionCount * BEHAVIOR_DECAY_PER_CONTRADICTION;
   let expiresAt = rule.lifecycle.expiresAt;
   let active = rule.state.active;
   let deprecated = rule.state.deprecated;
@@ -104,25 +114,25 @@ export function evaluateBehaviorLifecycle(rule: BehaviorRule, now = new Date()):
   let level = rule.lifecycle.level;
   let priority = rule.priority;
 
-  if (inactivityDays >= EXPIRED_AFTER_DAYS) {
+  if (inactivityDays >= BEHAVIOR_EXPIRED_AFTER_DAYS) {
     staleness = 'expired';
     stale = true;
-    decayScore += DECAY_FROM_EXPIRED;
-  } else if (inactivityDays >= STALE_AFTER_DAYS) {
+    decayScore += BEHAVIOR_DECAY_FROM_EXPIRED;
+  } else if (inactivityDays >= BEHAVIOR_STALE_AFTER_DAYS) {
     staleness = 'stale';
     stale = true;
-    decayScore += DECAY_FROM_STALE;
-  } else if (inactivityDays >= AGING_AFTER_DAYS) {
+    decayScore += BEHAVIOR_DECAY_FROM_STALE;
+  } else if (inactivityDays >= BEHAVIOR_AGING_AFTER_DAYS) {
     staleness = 'aging';
-    decayScore += DECAY_FROM_AGING;
+    decayScore += BEHAVIOR_DECAY_FROM_AGING;
   }
 
   if (!expiresAt) {
     const baseTs = parseTimestamp(rule.createdAt) ?? nowTs;
-    expiresAt = new Date(baseTs + EXPIRES_AFTER_DAYS * MS_PER_DAY).toISOString();
+    expiresAt = new Date(baseTs + BEHAVIOR_EXPIRES_AFTER_DAYS * MS_PER_DAY).toISOString();
   }
 
-  if (rule.lifecycle.contradictionCount >= MAX_CONTRADICTIONS_BEFORE_DISABLE) {
+  if (rule.lifecycle.contradictionCount >= BEHAVIOR_MAX_CONTRADICTIONS_BEFORE_DISABLE) {
     active = false;
     deprecated = true;
     frozenAt = frozenAt ?? (rule.lifecycle.lastContradictedAt ?? nowIso);
@@ -137,7 +147,7 @@ export function evaluateBehaviorLifecycle(rule: BehaviorRule, now = new Date()):
     maturity = 'frozen';
     level = 'candidate';
   } else if (staleness === 'expired') {
-    priority = Math.max(MIN_PRIORITY, priority - PRIORITY_DECAY_STEP * 2);
+    priority = Math.max(BEHAVIOR_MIN_PRIORITY, priority - BEHAVIOR_PRIORITY_DECAY_STEP * 2);
     if (rule.lifecycle.applyCount === 0) {
       active = false;
       deprecated = true;
@@ -147,12 +157,16 @@ export function evaluateBehaviorLifecycle(rule: BehaviorRule, now = new Date()):
       level = 'candidate';
     } else {
       maturity = rule.lifecycle.contradictionCount > 0 ? 'frozen' : 'validated';
-      level = priority >= 70 ? 'baseline' : 'candidate';
+      level = priority >= LEVEL_BASELINE_PRIORITY_THRESHOLD ? 'baseline' : 'candidate';
     }
   } else if (staleness === 'stale') {
-    priority = Math.max(MIN_PRIORITY, priority - PRIORITY_DECAY_STEP);
-    maturity = rule.lifecycle.contradictionCount > 0 ? 'frozen' : rule.lifecycle.applyCount >= 4 ? 'validated' : 'emerging';
-    level = priority >= 70 ? 'baseline' : 'candidate';
+    priority = Math.max(BEHAVIOR_MIN_PRIORITY, priority - BEHAVIOR_PRIORITY_DECAY_STEP);
+    maturity = rule.lifecycle.contradictionCount > 0
+      ? 'frozen'
+      : rule.lifecycle.applyCount >= BEHAVIOR_STALE_VALIDATED_THRESHOLD
+        ? 'validated'
+        : 'emerging';
+    level = priority >= LEVEL_BASELINE_PRIORITY_THRESHOLD ? 'baseline' : 'candidate';
   } else {
     maturity = rule.lifecycle.freezeReason ? 'frozen' : deduceMaturity(rule.lifecycle.applyCount, rule.lifecycle.contradictionCount);
     level = deduceLevel(priority, rule.evidence.confidence);
@@ -195,7 +209,7 @@ export function markBehaviorRuleApplied(rule: BehaviorRule, now = new Date()): B
         lastAppliedAt: nowIso,
         stale: false,
         staleness: 'fresh',
-        decayScore: Math.max(0, rule.lifecycle.decayScore - 0.08),
+        decayScore: Math.max(0, rule.lifecycle.decayScore - BEHAVIOR_APPLY_DECAY_RECOVERY),
         lastReviewedAt: nowIso,
         maturity: deduceMaturity(applyCount, rule.lifecycle.contradictionCount),
       },
@@ -211,12 +225,13 @@ export function markBehaviorRuleContradicted(
   const now = input.now ?? new Date();
   const nowIso = now.toISOString();
   const contradictionCount = rule.lifecycle.contradictionCount + 1;
-  const freezeReason = input.reason ?? (contradictionCount >= MAX_CONTRADICTIONS_BEFORE_DISABLE ? 'contradiction_threshold' : 'correction');
+  const freezeReason = input.reason
+    ?? (contradictionCount >= BEHAVIOR_MAX_CONTRADICTIONS_BEFORE_DISABLE ? 'contradiction_threshold' : 'correction');
 
   return evaluateBehaviorLifecycle(
     {
       ...rule,
-      priority: Math.max(MIN_PRIORITY, rule.priority - PRIORITY_CORRECTION_PENALTY),
+      priority: Math.max(BEHAVIOR_MIN_PRIORITY, rule.priority - BEHAVIOR_PRIORITY_CORRECTION_PENALTY),
       updatedAt: nowIso,
       lifecycle: {
         ...rule.lifecycle,

@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 import { initializeEverMemory } from '../src/index.js';
 import { createTempDbPath } from './helpers.js';
 
-test('recall, briefing, and status return structured outputs with improved status counts', () => {
+test('recall, briefing, and status return structured outputs with improved status counts', async () => {
   const databasePath = createTempDbPath('tools');
   const app = initializeEverMemory({ databasePath });
 
@@ -18,7 +18,7 @@ test('recall, briefing, and status return structured outputs with improved statu
     scope: { userId: 'user-2' },
   });
 
-  const recall = app.evermemoryRecall({
+  const recall = await app.evermemoryRecall({
     query: '中文',
     scope: { userId: 'user-2' },
   });

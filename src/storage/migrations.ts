@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { StorageError } from '../errors.js';
 
 export const PHASE1_SCHEMA_VERSION = 1;
 export const PHASE2_SCHEMA_VERSION = 2;
@@ -7,7 +8,8 @@ export const PHASE4_SCHEMA_VERSION = 4;
 export const PHASE5_SCHEMA_VERSION = 5;
 export const PHASE5_PROFILE_SCHEMA_VERSION = 6;
 export const PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION = 7;
-export const CURRENT_SCHEMA_VERSION = PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION;
+export const PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION = 8;
+export const CURRENT_SCHEMA_VERSION = PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION;
 
 const CREATE_PHASE1_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS schema_version (\n    version INTEGER NOT NULL\n  )`,
@@ -90,6 +92,20 @@ const CREATE_PHASE6_BEHAVIOR_LIFECYCLE_SQL = [
   'CREATE INDEX IF NOT EXISTS idx_behavior_rules_level ON behavior_rules(level)',
 ] as const;
 
+const CREATE_PHASE6_SEMANTIC_VECTOR_SQL = [
+  'ALTER TABLE memory_items ADD COLUMN embedding_blob BLOB',
+  'ALTER TABLE memory_items ADD COLUMN embedding_dim INTEGER DEFAULT 0',
+  "ALTER TABLE memory_items ADD COLUMN embedding_model TEXT DEFAULT ''",
+  `CREATE TABLE IF NOT EXISTS embedding_meta (
+    memory_id TEXT PRIMARY KEY,
+    model TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (memory_id) REFERENCES memory_items(id) ON DELETE CASCADE
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_embedding_meta_model ON embedding_meta(model)',
+] as const;
+
 function ensureSchemaVersionTable(db: Database.Database): void {
   db.prepare(CREATE_PHASE1_SCHEMA_SQL[0]).run();
 
@@ -108,112 +124,146 @@ function runStatementsIgnoreDuplicateColumns(db: Database.Database, statements: 
       if (/duplicate column name/i.test(message)) {
         continue;
       }
-      throw error;
+      throw new StorageError('Failed to apply migration statement.', {
+        code: 'STORAGE_MIGRATION_STATEMENT_FAILED',
+        context: { sql },
+        cause: error,
+      });
     }
   }
 }
 
 export function getSchemaVersion(db: Database.Database): number {
-  ensureSchemaVersionTable(db);
-  const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as { version: number };
-  return row.version;
+  try {
+    ensureSchemaVersionTable(db);
+    const row = db.prepare('SELECT version FROM schema_version LIMIT 1').get() as { version: number };
+    return row.version;
+  } catch (error) {
+    if (error instanceof StorageError) {
+      throw error;
+    }
+    throw new StorageError('Failed to read schema version.', {
+      code: 'STORAGE_SCHEMA_VERSION_READ_FAILED',
+      cause: error,
+    });
+  }
 }
 
 export function runMigrations(db: Database.Database): number {
-  ensureSchemaVersionTable(db);
+  let currentVersion = 0;
+  try {
+    ensureSchemaVersionTable(db);
 
-  let currentVersion = getSchemaVersion(db);
-  if (currentVersion >= CURRENT_SCHEMA_VERSION) {
+    currentVersion = getSchemaVersion(db);
+    if (currentVersion >= CURRENT_SCHEMA_VERSION) {
+      return currentVersion;
+    }
+
+    const phase1Tx = db.transaction(() => {
+      for (const sql of CREATE_PHASE1_SCHEMA_SQL.slice(1)) {
+        db.prepare(sql).run();
+      }
+
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE1_SCHEMA_VERSION);
+    });
+
+    const phase2Tx = db.transaction(() => {
+      for (const sql of CREATE_PHASE2_SCHEMA_SQL) {
+        db.prepare(sql).run();
+      }
+
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE2_SCHEMA_VERSION);
+    });
+
+    const phase3Tx = db.transaction(() => {
+      for (const sql of CREATE_PHASE3_SCHEMA_SQL) {
+        db.prepare(sql).run();
+      }
+
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE3_SCHEMA_VERSION);
+    });
+
+    const phase4Tx = db.transaction(() => {
+      for (const sql of CREATE_PHASE4_SCHEMA_SQL) {
+        db.prepare(sql).run();
+      }
+
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE4_SCHEMA_VERSION);
+    });
+
+    const phase5Tx = db.transaction(() => {
+      for (const sql of CREATE_PHASE5_SCHEMA_SQL) {
+        db.prepare(sql).run();
+      }
+
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE5_SCHEMA_VERSION);
+    });
+
+    const phase5ProfileTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE5_PROFILE_SCHEMA_SQL) {
+        db.prepare(sql).run();
+      }
+
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE5_PROFILE_SCHEMA_VERSION);
+    });
+
+    const phase6BehaviorLifecycleTx = db.transaction(() => {
+      runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE6_BEHAVIOR_LIFECYCLE_SQL);
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION);
+    });
+    const phase6SemanticVectorTx = db.transaction(() => {
+      runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE6_SEMANTIC_VECTOR_SQL);
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION);
+    });
+
+    if (currentVersion < PHASE1_SCHEMA_VERSION) {
+      phase1Tx();
+      currentVersion = PHASE1_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE2_SCHEMA_VERSION) {
+      phase2Tx();
+      currentVersion = PHASE2_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE3_SCHEMA_VERSION) {
+      phase3Tx();
+      currentVersion = PHASE3_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE4_SCHEMA_VERSION) {
+      phase4Tx();
+      currentVersion = PHASE4_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE5_SCHEMA_VERSION) {
+      phase5Tx();
+      currentVersion = PHASE5_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE5_PROFILE_SCHEMA_VERSION) {
+      phase5ProfileTx();
+      currentVersion = PHASE5_PROFILE_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION) {
+      phase6BehaviorLifecycleTx();
+      currentVersion = PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION) {
+      phase6SemanticVectorTx();
+      currentVersion = PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION;
+    }
+
     return currentVersion;
-  }
-
-  const phase1Tx = db.transaction(() => {
-    for (const sql of CREATE_PHASE1_SCHEMA_SQL.slice(1)) {
-      db.prepare(sql).run();
+  } catch (error) {
+    if (error instanceof StorageError) {
+      throw error;
     }
-
-    db.prepare('UPDATE schema_version SET version = ?').run(PHASE1_SCHEMA_VERSION);
-  });
-
-  const phase2Tx = db.transaction(() => {
-    for (const sql of CREATE_PHASE2_SCHEMA_SQL) {
-      db.prepare(sql).run();
-    }
-
-    db.prepare('UPDATE schema_version SET version = ?').run(PHASE2_SCHEMA_VERSION);
-  });
-
-  const phase3Tx = db.transaction(() => {
-    for (const sql of CREATE_PHASE3_SCHEMA_SQL) {
-      db.prepare(sql).run();
-    }
-
-    db.prepare('UPDATE schema_version SET version = ?').run(PHASE3_SCHEMA_VERSION);
-  });
-
-  const phase4Tx = db.transaction(() => {
-    for (const sql of CREATE_PHASE4_SCHEMA_SQL) {
-      db.prepare(sql).run();
-    }
-
-    db.prepare('UPDATE schema_version SET version = ?').run(PHASE4_SCHEMA_VERSION);
-  });
-
-  const phase5Tx = db.transaction(() => {
-    for (const sql of CREATE_PHASE5_SCHEMA_SQL) {
-      db.prepare(sql).run();
-    }
-
-    db.prepare('UPDATE schema_version SET version = ?').run(PHASE5_SCHEMA_VERSION);
-  });
-
-  const phase5ProfileTx = db.transaction(() => {
-    for (const sql of CREATE_PHASE5_PROFILE_SCHEMA_SQL) {
-      db.prepare(sql).run();
-    }
-
-    db.prepare('UPDATE schema_version SET version = ?').run(PHASE5_PROFILE_SCHEMA_VERSION);
-  });
-
-  const phase6BehaviorLifecycleTx = db.transaction(() => {
-    runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE6_BEHAVIOR_LIFECYCLE_SQL);
-    db.prepare('UPDATE schema_version SET version = ?').run(PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION);
-  });
-
-  if (currentVersion < PHASE1_SCHEMA_VERSION) {
-    phase1Tx();
-    currentVersion = PHASE1_SCHEMA_VERSION;
+    throw new StorageError('Failed to run database migrations.', {
+      code: 'STORAGE_MIGRATION_FAILED',
+      context: { currentVersion },
+      cause: error,
+    });
   }
-
-  if (currentVersion < PHASE2_SCHEMA_VERSION) {
-    phase2Tx();
-    currentVersion = PHASE2_SCHEMA_VERSION;
-  }
-
-  if (currentVersion < PHASE3_SCHEMA_VERSION) {
-    phase3Tx();
-    currentVersion = PHASE3_SCHEMA_VERSION;
-  }
-
-  if (currentVersion < PHASE4_SCHEMA_VERSION) {
-    phase4Tx();
-    currentVersion = PHASE4_SCHEMA_VERSION;
-  }
-
-  if (currentVersion < PHASE5_SCHEMA_VERSION) {
-    phase5Tx();
-    currentVersion = PHASE5_SCHEMA_VERSION;
-  }
-
-  if (currentVersion < PHASE5_PROFILE_SCHEMA_VERSION) {
-    phase5ProfileTx();
-    currentVersion = PHASE5_PROFILE_SCHEMA_VERSION;
-  }
-
-  if (currentVersion < PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION) {
-    phase6BehaviorLifecycleTx();
-    currentVersion = PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION;
-  }
-
-  return currentVersion;
 }

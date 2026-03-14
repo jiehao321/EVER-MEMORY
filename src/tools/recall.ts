@@ -1,7 +1,7 @@
 import type { RetrievalService } from '../retrieval/service.js';
 import type { EverMemoryRecallToolInput } from '../types.js';
 
-export function evermemoryRecall(
+export async function evermemoryRecall(
   retrievalService: RetrievalService,
   input: EverMemoryRecallToolInput,
 ) {

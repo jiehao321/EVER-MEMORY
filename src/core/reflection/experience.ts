@@ -14,12 +14,21 @@ import {
   REPEAT_CUE_EN_REGEX,
   REPEAT_CUE_ZH_REGEX,
 } from './patterns.js';
+import {
+  EXPERIENCE_CORRECTION_SIGNAL_THRESHOLD,
+  EXPERIENCE_PREFERENCE_APPROVAL_THRESHOLD,
+  EXPERIENCE_SUMMARY_MAX_LENGTH,
+} from '../../tuning.js';
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-function summarizeText(text: string | undefined, fallback: string, maxLength = 240): string {
+function summarizeText(
+  text: string | undefined,
+  fallback: string,
+  maxLength = EXPERIENCE_SUMMARY_MAX_LENGTH,
+): string {
   const value = (text ?? '').trim();
   if (!value) {
     return fallback;
@@ -35,13 +44,13 @@ function inferIndicators(input: ExperienceLogInput): ExperienceIndicators {
   const correctionSignal = input.intent?.signals.correctionSignal ?? 0;
   const preferenceSignal = input.intent?.signals.preferenceRelevance ?? 0;
 
-  const userCorrection = correctionSignal >= 0.6
+  const userCorrection = correctionSignal >= EXPERIENCE_CORRECTION_SIGNAL_THRESHOLD
     || CORRECTION_CUE_ZH_REGEX.test(input.inputText ?? '')
     || CORRECTION_CUE_EN_REGEX.test(normalizedInput);
 
   const userApproval = APPROVAL_CUE_ZH_REGEX.test(input.outcomeSummary ?? '')
     || APPROVAL_CUE_EN_REGEX.test(normalizedOutcome)
-    || preferenceSignal >= 0.7;
+    || preferenceSignal >= EXPERIENCE_PREFERENCE_APPROVAL_THRESHOLD;
 
   const hesitation = HESITATION_CUE_ZH_REGEX.test(input.inputText ?? '')
     || HESITATION_CUE_EN_REGEX.test(normalizedInput);
@@ -97,7 +106,7 @@ export class ExperienceService {
       createdAt: nowIso(),
       inputSummary: summarizeText(input.inputText, 'No input summary.'),
       actionSummary: summarizeText(input.actionSummary, 'No action summary.'),
-      outcomeSummary: summarizeText(input.outcomeSummary, '', 240) || undefined,
+      outcomeSummary: summarizeText(input.outcomeSummary, '') || undefined,
       indicators,
       evidenceRefs: input.evidenceRefs ?? [],
     };

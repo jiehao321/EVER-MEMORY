@@ -7,16 +7,21 @@ import {
   shouldMigrateToEpisodic,
   shouldMigrateToSemantic,
 } from './decay.js';
-
-const DEFAULT_DEDUPE_SCAN_LIMIT = 60;
-const DEFAULT_STALE_EPISODIC_DAYS = 30;
-const DEFAULT_STALE_SCAN_LIMIT = 120;
-const NEAR_DUPLICATE_THRESHOLD = 0.9;
-const CONSOLIDATION_LIMITS: Record<ConsolidationMode, number> = {
-  light: 20,
-  daily: 60,
-  deep: 120,
-};
+import {
+  CONSOLIDATION_LIMITS,
+  DEFAULT_DEDUPE_SCAN_LIMIT,
+  DEFAULT_STALE_EPISODIC_DAYS,
+  DEFAULT_STALE_SCAN_LIMIT,
+  LIFECYCLE_MIGRATION_LIMIT_DAILY,
+  LIFECYCLE_MIGRATION_LIMIT_DEEP,
+  NEAR_DUPLICATE_THRESHOLD,
+  QUALITY_TEXT_LENGTH_NORM,
+  QUALITY_TIE_THRESHOLD,
+  QUALITY_WEIGHT_CONFIDENCE,
+  QUALITY_WEIGHT_EXPLICITNESS,
+  QUALITY_WEIGHT_IMPORTANCE,
+  QUALITY_WEIGHT_TEXT,
+} from '../../tuning.js';
 
 interface LifecycleMaintenanceOptions {
   dedupeScanLimit?: number;
@@ -116,19 +121,19 @@ function nearDuplicateScore(left: string, right: string): number {
 }
 
 function qualityScore(memory: MemoryItem): number {
-  const textWeight = Math.min(1, normalize(memory.content).length / 200);
+  const textWeight = Math.min(1, normalize(memory.content).length / QUALITY_TEXT_LENGTH_NORM);
   return (
-    memory.scores.importance * 0.4
-    + memory.scores.confidence * 0.3
-    + memory.scores.explicitness * 0.2
-    + textWeight * 0.1
+    memory.scores.importance * QUALITY_WEIGHT_IMPORTANCE
+    + memory.scores.confidence * QUALITY_WEIGHT_CONFIDENCE
+    + memory.scores.explicitness * QUALITY_WEIGHT_EXPLICITNESS
+    + textWeight * QUALITY_WEIGHT_TEXT
   );
 }
 
 function shouldPreferLeft(left: MemoryItem, right: MemoryItem): boolean {
   const leftQuality = qualityScore(left);
   const rightQuality = qualityScore(right);
-  if (Math.abs(leftQuality - rightQuality) > 0.02) {
+  if (Math.abs(leftQuality - rightQuality) > QUALITY_TIE_THRESHOLD) {
     return leftQuality > rightQuality;
   }
 
@@ -348,7 +353,7 @@ export class MemoryLifecycleService {
       migratedToSemantic: number;
       archivedByDecay: number;
     } {
-    const limit = mode === 'deep' ? 200 : 100;
+    const limit = mode === 'deep' ? LIFECYCLE_MIGRATION_LIMIT_DEEP : LIFECYCLE_MIGRATION_LIMIT_DAILY;
     const candidates = this.memoryRepo.search({
       scope,
       activeOnly: true,

@@ -3,11 +3,28 @@ import { DEFAULT_BOOT_TOKEN_BUDGET } from '../../constants.js';
 import type { BriefingRepository } from '../../storage/briefingRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { BootBriefing, MemoryItem, MemoryScope } from '../../types.js';
+import { PROJECT_STATUS_PATTERNS } from '../../patterns.js';
+import {
+  BRIEFING_ACTIVE_PROJECT_LIMIT,
+  BRIEFING_CLIP_DEFAULT,
+  BRIEFING_CLIP_PROJECT_SUMMARY,
+  BRIEFING_CLIP_SHORT,
+  BRIEFING_COMMITMENT_LIMIT,
+  BRIEFING_CONSTRAINT_LIMIT,
+  BRIEFING_CONTINUITY_LIMIT,
+  BRIEFING_DECISION_LIMIT,
+  BRIEFING_IDENTITY_LIMIT,
+  BRIEFING_MAX_ACTIVE_PROJECTS,
+  BRIEFING_PICK_COMMITMENTS,
+  BRIEFING_PICK_CONSTRAINTS,
+  BRIEFING_PICK_CONTINUITY,
+  BRIEFING_PICK_CONTINUITY_OUTPUT,
+  BRIEFING_PICK_DECISIONS,
+  BRIEFING_PICK_IDENTITY,
+  BRIEFING_SUMMARY_LIMIT,
+} from '../../tuning.js';
+import { BriefingError } from '../../errors.js';
 
-const PROJECT_STATUS_PATTERNS = [
-  /\b(status|progress|phase|stage|milestone|roadmap|batch)\b/i,
-  /(状态|进展|阶段|里程碑|路线图|批次|当前阶段)/u,
-];
 const PROJECT_SUMMARY_REGEX = /^项目连续性摘要（(?<projectName>[^）]+)）：状态：(?<status>.*?)；关键约束：(?<keyConstraint>.*?)；最近决策：(?<recentDecision>.*?)；下一步：(?<nextStep>.*)$/u;
 const SUMMARY_PLACEHOLDER_VALUES = new Set(['待补充', '待确认', '待更新']);
 
@@ -15,7 +32,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function clip(value: string, max = 220): string {
+function clip(value: string, max = BRIEFING_CLIP_DEFAULT): string {
   const normalized = value.trim().replace(/\s+/g, ' ');
   if (normalized.length <= max) {
     return normalized;
@@ -45,7 +62,7 @@ function firstContent(memories: MemoryItem[], fallback = ''): string {
   if (memories.length === 0) {
     return fallback;
   }
-  return clip(memories[0].content, 120);
+  return clip(memories[0].content, BRIEFING_CLIP_SHORT);
 }
 
 function stripKnownLabel(content: string): string {
@@ -123,10 +140,10 @@ function pickProjectStatus(projectMemories: MemoryItem[], summaryStatus: string)
     .map((memory) => stripKnownLabel(memory.content))
     .find((content) => content && hasProjectStatusSignal(content));
   if (explicitStatus) {
-    return clip(explicitStatus, 120);
+    return clip(explicitStatus, BRIEFING_CLIP_SHORT);
   }
   if (summaryStatus) {
-    return clip(summaryStatus, 120);
+    return clip(summaryStatus, BRIEFING_CLIP_SHORT);
   }
   return stripKnownLabel(firstContent(projectMemories));
 }
@@ -159,7 +176,7 @@ function composeProjectSummary(input: {
 
   return clip(
     `项目连续性摘要（${input.projectName ?? 'current'}）：状态：${status || '待补充'}；关键约束：${keyConstraint || '待补充'}；最近决策：${recentDecision || '待补充'}；下一步：${nextStep || '待补充'}`,
-    300,
+    BRIEFING_CLIP_PROJECT_SUMMARY,
   );
 }
 
@@ -175,7 +192,7 @@ function composeActiveProjects(
   const projectNames = gatherProjectNames(scope, projectSummaries, projectMemories, decisions, commitments);
 
   for (const projectName of projectNames) {
-    if (entries.length >= 5) {
+    if (entries.length >= BRIEFING_MAX_ACTIVE_PROJECTS) {
       break;
     }
     const summary = composeProjectSummary({
@@ -211,7 +228,7 @@ function composeActiveProjects(
   return dedupe([
     ...entries,
     ...unstructuredSummaryEntries,
-  ]).slice(0, 5);
+  ]).slice(0, BRIEFING_MAX_ACTIVE_PROJECTS);
 }
 
 function composeRecentContinuity(
@@ -220,10 +237,10 @@ function composeRecentContinuity(
   commitments: MemoryItem[],
 ): string[] {
   return dedupe([
-    ...pickContent(decisions, 3).map((content) => withPrefix('决策：', stripKnownLabel(content))),
-    ...pickContent(commitments, 2).map((content) => withPrefix('下一步：', stripKnownLabel(content))),
-    ...pickContent(recentContinuity, 6),
-  ]).slice(0, 5);
+    ...pickContent(decisions, BRIEFING_PICK_DECISIONS).map((content) => withPrefix('决策：', stripKnownLabel(content))),
+    ...pickContent(commitments, BRIEFING_PICK_COMMITMENTS).map((content) => withPrefix('下一步：', stripKnownLabel(content))),
+    ...pickContent(recentContinuity, BRIEFING_PICK_CONTINUITY),
+  ]).slice(0, BRIEFING_PICK_CONTINUITY_OUTPUT);
 }
 
 type BriefingSectionKey = keyof BootBriefing['sections'];
@@ -240,6 +257,19 @@ function approxTokens(sections: BootBriefing['sections']): number {
 
 function normalizeSectionValue(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function resolveTokenTarget(tokenTarget: number | undefined): number {
+  if (tokenTarget === undefined) {
+    return DEFAULT_BOOT_TOKEN_BUDGET;
+  }
+  if (!Number.isInteger(tokenTarget) || tokenTarget <= 0) {
+    throw new BriefingError('Briefing token target must be a positive integer.', {
+      code: 'BRIEFING_INVALID_TOKEN_TARGET',
+      context: { tokenTarget },
+    });
+  }
+  return tokenTarget;
 }
 
 function optimizeSections(
@@ -312,92 +342,107 @@ export class BriefingService {
   ) {}
 
   build(scope: MemoryScope, options?: { sessionId?: string; tokenTarget?: number }): BootBriefing {
-    const identity = this.memoryRepo.search({
-      scope,
-      types: ['identity'],
-      activeOnly: true,
-      archived: false,
-      limit: 5,
-    });
-
-    const constraints = this.memoryRepo.search({
-      scope,
-      types: ['constraint'],
-      activeOnly: true,
-      archived: false,
-      limit: 5,
-    });
-
-    const recentContinuity = this.memoryRepo.search({
-      scope,
-      lifecycles: ['semantic', 'episodic'],
-      activeOnly: true,
-      archived: false,
-      limit: 8,
-    });
-
-    const decisions = this.memoryRepo.search({
-      scope,
-      types: ['decision'],
-      activeOnly: true,
-      archived: false,
-      limit: 8,
-    });
-
-    const commitments = this.memoryRepo.search({
-      scope,
-      types: ['commitment'],
-      activeOnly: true,
-      archived: false,
-      limit: 8,
-    });
-
-    const activeProjects = this.memoryRepo.search({
-      scope,
-      types: ['project'],
-      activeOnly: true,
-      archived: false,
-      limit: 10,
-    });
-
-    const summaryMemories = this.memoryRepo.search({
-      scope,
-      types: ['summary'],
-      activeOnly: true,
-      archived: false,
-      limit: 12,
-    });
-    const projectSummaries = summaryMemories.filter((memory) => includesProjectSummaryTag(memory));
-
-    const tokenTarget = options?.tokenTarget ?? DEFAULT_BOOT_TOKEN_BUDGET;
-    const rawSections: BootBriefing['sections'] = {
-      identity: pickContent(identity, 3),
-      constraints: pickContent(constraints, 5),
-      recentContinuity: composeRecentContinuity(recentContinuity, decisions, commitments),
-      activeProjects: composeActiveProjects(
+    try {
+      const identity = this.memoryRepo.search({
         scope,
-        projectSummaries,
-        activeProjects,
-        constraints,
-        decisions,
-        commitments,
-      ),
-    };
-    const optimized = optimizeSections(rawSections, tokenTarget);
+        types: ['identity'],
+        activeOnly: true,
+        archived: false,
+        limit: BRIEFING_IDENTITY_LIMIT,
+      });
 
-    const briefing: BootBriefing = {
-      id: randomUUID(),
-      sessionId: options?.sessionId,
-      userId: scope.userId,
-      generatedAt: nowIso(),
-      sections: optimized.sections,
-      tokenTarget,
-      actualApproxTokens: 0,
-      optimization: optimized.stats,
-    };
+      const constraints = this.memoryRepo.search({
+        scope,
+        types: ['constraint'],
+        activeOnly: true,
+        archived: false,
+        limit: BRIEFING_CONSTRAINT_LIMIT,
+      });
 
-    briefing.actualApproxTokens = approxTokens(briefing.sections);
-    this.briefingRepo.save(briefing);
-    return briefing;
+      const recentContinuity = this.memoryRepo.search({
+        scope,
+        lifecycles: ['semantic', 'episodic'],
+        activeOnly: true,
+        archived: false,
+        limit: BRIEFING_CONTINUITY_LIMIT,
+      });
+
+      const decisions = this.memoryRepo.search({
+        scope,
+        types: ['decision'],
+        activeOnly: true,
+        archived: false,
+        limit: BRIEFING_DECISION_LIMIT,
+      });
+
+      const commitments = this.memoryRepo.search({
+        scope,
+        types: ['commitment'],
+        activeOnly: true,
+        archived: false,
+        limit: BRIEFING_COMMITMENT_LIMIT,
+      });
+
+      const activeProjects = this.memoryRepo.search({
+        scope,
+        types: ['project'],
+        activeOnly: true,
+        archived: false,
+        limit: BRIEFING_ACTIVE_PROJECT_LIMIT,
+      });
+
+      const summaryMemories = this.memoryRepo.search({
+        scope,
+        types: ['summary'],
+        activeOnly: true,
+        archived: false,
+        limit: BRIEFING_SUMMARY_LIMIT,
+      });
+      const projectSummaries = summaryMemories.filter((memory) => includesProjectSummaryTag(memory));
+
+      const tokenTarget = resolveTokenTarget(options?.tokenTarget);
+      const rawSections: BootBriefing['sections'] = {
+        identity: pickContent(identity, BRIEFING_PICK_IDENTITY),
+        constraints: pickContent(constraints, BRIEFING_PICK_CONSTRAINTS),
+        recentContinuity: composeRecentContinuity(recentContinuity, decisions, commitments),
+        activeProjects: composeActiveProjects(
+          scope,
+          projectSummaries,
+          activeProjects,
+          constraints,
+          decisions,
+          commitments,
+        ),
+      };
+      const optimized = optimizeSections(rawSections, tokenTarget);
+
+      const briefing: BootBriefing = {
+        id: randomUUID(),
+        sessionId: options?.sessionId,
+        userId: scope.userId,
+        generatedAt: nowIso(),
+        sections: optimized.sections,
+        tokenTarget,
+        actualApproxTokens: 0,
+        optimization: optimized.stats,
+      };
+
+      briefing.actualApproxTokens = approxTokens(briefing.sections);
+      this.briefingRepo.save(briefing);
+      return briefing;
+    } catch (error) {
+      if (error instanceof BriefingError) {
+        throw error;
+      }
+      throw new BriefingError('Failed to build boot briefing.', {
+        code: 'BRIEFING_BUILD_FAILED',
+        context: {
+          userId: scope.userId,
+          sessionId: options?.sessionId,
+          tokenTarget: options?.tokenTarget,
+        },
+        cause: error,
+      });
+    }
   }
 }

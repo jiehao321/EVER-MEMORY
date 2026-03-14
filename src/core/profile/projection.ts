@@ -23,11 +23,16 @@ import {
   VALUE_STYLE_STRUCTURED_REGEX,
   WORK_PATTERN_RULES,
 } from './patterns.js';
-
-const EXPLICIT_THRESHOLD = 0.75;
-const MAX_PROFILE_MEMORY_SCAN = 300;
-const MAX_DERIVED_ITEMS = 3;
-const MAX_BEHAVIOR_HINTS = 8;
+import {
+  PROFILE_EXPLICIT_THRESHOLD,
+  PROFILE_MAX_BEHAVIOR_HINTS,
+  PROFILE_MAX_DERIVED_ITEMS,
+  PROFILE_MAX_MEMORY_SCAN,
+  PROFILE_WEIGHT_CONFIDENCE,
+  PROFILE_WEIGHT_EXPLICITNESS,
+  PROFILE_WEIGHT_IMPORTANCE,
+} from '../../tuning.js';
+import { ProfileError } from '../../errors.js';
 
 interface DerivedAccumulator {
   score: number;
@@ -86,14 +91,14 @@ function extractTimezone(content: string): string | undefined {
 
 function memoryWeight(memory: MemoryItem): number {
   return (
-    memory.scores.importance * 0.4
-    + memory.scores.confidence * 0.35
-    + memory.scores.explicitness * 0.25
+    memory.scores.importance * PROFILE_WEIGHT_IMPORTANCE
+    + memory.scores.confidence * PROFILE_WEIGHT_CONFIDENCE
+    + memory.scores.explicitness * PROFILE_WEIGHT_EXPLICITNESS
   );
 }
 
 function isExplicit(memory: MemoryItem): boolean {
-  return memory.source.kind !== 'inference' && memory.scores.explicitness >= EXPLICIT_THRESHOLD;
+  return memory.source.kind !== 'inference' && memory.scores.explicitness >= PROFILE_EXPLICIT_THRESHOLD;
 }
 
 function sanitizePreferenceKey(raw: string): string | undefined {
@@ -233,7 +238,7 @@ function collectLikelyInterests(
       }
       return left[0].localeCompare(right[0]);
     })
-    .slice(0, MAX_DERIVED_ITEMS);
+    .slice(0, PROFILE_MAX_DERIVED_ITEMS);
 
   const maxScore = sorted[0]?.[1].score ?? 1;
   return sorted.map(([value, item]) => createDerivedField(
@@ -275,7 +280,7 @@ function collectWorkPatterns(
       }
       return left[0].localeCompare(right[0]);
     })
-    .slice(0, MAX_DERIVED_ITEMS);
+    .slice(0, PROFILE_MAX_DERIVED_ITEMS);
 
   const maxScore = sorted[0]?.[1].score ?? 1;
   return sorted.map(([value, item]) => createDerivedField(
@@ -347,7 +352,7 @@ export class ProfileProjectionService {
     private readonly debugRepo?: DebugRepository,
     options: ProfileProjectionServiceOptions = {},
   ) {
-    this.maxMemoryScan = options.maxMemoryScan ?? MAX_PROFILE_MEMORY_SCAN;
+    this.maxMemoryScan = options.maxMemoryScan ?? PROFILE_MAX_MEMORY_SCAN;
   }
 
   recomputeForUser(userId: string): ProjectedProfile | null {
@@ -355,155 +360,182 @@ export class ProfileProjectionService {
     if (!normalizedUserId) {
       return null;
     }
+    try {
+      const memories = this.memoryRepo.search({
+        scope: { userId: normalizedUserId },
+        activeOnly: true,
+        archived: false,
+        limit: this.maxMemoryScan,
+      });
+      const explicitMemories = memories.filter(isExplicit)
+        .sort((left, right) => {
+          const scoreGap = memoryWeight(right) - memoryWeight(left);
+          if (Math.abs(scoreGap) > 0.0001) {
+            return scoreGap;
+          }
+          return right.timestamps.updatedAt.localeCompare(left.timestamps.updatedAt);
+        });
 
-    const memories = this.memoryRepo.search({
-      scope: { userId: normalizedUserId },
-      activeOnly: true,
-      archived: false,
-      limit: this.maxMemoryScan,
-    });
-    const explicitMemories = memories.filter(isExplicit)
-      .sort((left, right) => {
-        const scoreGap = memoryWeight(right) - memoryWeight(left);
-        if (Math.abs(scoreGap) > 0.0001) {
-          return scoreGap;
+      const explicitPreferences: Record<string, ProfileStableField> = {};
+      const explicitConstraints: Array<ProfileStableField> = [];
+      let displayName: ProfileStableField | undefined;
+      let preferredAddress: ProfileStableField | undefined;
+      let timezone: ProfileStableField | undefined;
+
+      for (const memory of explicitMemories) {
+        if (!displayName) {
+          const value = extractDisplayName(memory.content);
+          if (value) {
+            displayName = createStableField(value, [memory.id]);
+          }
         }
-        return right.timestamps.updatedAt.localeCompare(left.timestamps.updatedAt);
+        if (!preferredAddress) {
+          const value = extractPreferredAddress(memory.content);
+          if (value) {
+            preferredAddress = createStableField(value, [memory.id]);
+          }
+        }
+        if (!timezone) {
+          const value = extractTimezone(memory.content);
+          if (value) {
+            timezone = createStableField(value, [memory.id]);
+          }
+        }
+
+        if (memory.type === 'constraint' && shouldKeepConstraint(memory.content)) {
+          explicitConstraints.push(createStableField(memory.content.trim(), [memory.id]));
+        }
+
+        if (memory.type === 'preference' || memory.type === 'style' || memory.type === 'identity') {
+          const key = detectPreferenceKey(memory);
+          if (key && explicitPreferences[key] === undefined) {
+            explicitPreferences[key] = createStableField(detectPreferenceValue(key, memory.content), [memory.id]);
+          }
+        }
+      }
+
+      if (!timezone && explicitPreferences.timezone) {
+        timezone = explicitPreferences.timezone;
+      }
+
+      const communicationStyle = explicitPreferences.communication_style
+        ? undefined
+        : collectCommunicationStyle(memories);
+
+      const likelyInterests = collectLikelyInterests(memories, explicitPreferences, explicitConstraints);
+      const workPatterns = collectWorkPatterns(memories, explicitConstraints);
+      const behaviorHints = dedupeStrings(
+        this.behaviorRepo
+          .listActiveCandidates({ userId: normalizedUserId, limit: PROFILE_MAX_BEHAVIOR_HINTS })
+          .map((rule) => rule.statement),
+      ).slice(0, PROFILE_MAX_BEHAVIOR_HINTS);
+
+      const profile: ProjectedProfile = {
+        userId: normalizedUserId,
+        updatedAt: nowIso(),
+        stable: {
+          displayName,
+          preferredAddress,
+          timezone,
+          explicitPreferences,
+          explicitConstraints,
+        },
+        derived: {
+          communicationStyle,
+          likelyInterests,
+          workPatterns,
+        },
+        behaviorHints,
+      };
+
+      this.profileRepo.upsert(profile);
+      this.debugRepo?.log('profile_recomputed', normalizedUserId, {
+        userId: normalizedUserId,
+        memoryCount: memories.length,
+        stable: {
+          displayName: profile.stable.displayName?.value,
+          preferredAddress: profile.stable.preferredAddress?.value,
+          timezone: profile.stable.timezone?.value,
+          explicitPreferences: Object.fromEntries(
+            Object.entries(explicitPreferences).map(([key, value]) => [key, {
+              value: value.value,
+              source: value.source,
+              canonical: value.canonical,
+              evidenceRefs: value.evidenceRefs,
+            }]),
+          ),
+          explicitConstraints: profile.stable.explicitConstraints.map((item) => ({
+            value: item.value,
+            source: item.source,
+            canonical: item.canonical,
+            evidenceRefs: item.evidenceRefs,
+          })),
+        },
+        derived: {
+          communicationStyle: profile.derived.communicationStyle
+            ? {
+                tendency: profile.derived.communicationStyle.tendency,
+                confidence: profile.derived.communicationStyle.confidence,
+                evidenceRefs: profile.derived.communicationStyle.evidenceRefs,
+                source: profile.derived.communicationStyle.source,
+                guardrail: profile.derived.communicationStyle.guardrail,
+                canonical: profile.derived.communicationStyle.canonical,
+              }
+            : null,
+          likelyInterests: profile.derived.likelyInterests.map((item) => ({
+            value: item.value,
+            confidence: item.confidence,
+            evidenceRefs: item.evidenceRefs,
+            source: item.source,
+            guardrail: item.guardrail,
+            canonical: item.canonical,
+          })),
+          workPatterns: profile.derived.workPatterns.map((item) => ({
+            value: item.value,
+            confidence: item.confidence,
+            evidenceRefs: item.evidenceRefs,
+            source: item.source,
+            guardrail: item.guardrail,
+            canonical: item.canonical,
+          })),
+        },
+        behaviorHints: behaviorHints.length,
       });
 
-    const explicitPreferences: Record<string, ProfileStableField> = {};
-    const explicitConstraints: Array<ProfileStableField> = [];
-    let displayName: ProfileStableField | undefined;
-    let preferredAddress: ProfileStableField | undefined;
-    let timezone: ProfileStableField | undefined;
-
-    for (const memory of explicitMemories) {
-      if (!displayName) {
-        const value = extractDisplayName(memory.content);
-        if (value) {
-          displayName = createStableField(value, [memory.id]);
-        }
+      return profile;
+    } catch (error) {
+      if (error instanceof ProfileError) {
+        throw error;
       }
-      if (!preferredAddress) {
-        const value = extractPreferredAddress(memory.content);
-        if (value) {
-          preferredAddress = createStableField(value, [memory.id]);
-        }
-      }
-      if (!timezone) {
-        const value = extractTimezone(memory.content);
-        if (value) {
-          timezone = createStableField(value, [memory.id]);
-        }
-      }
-
-      if (memory.type === 'constraint' && shouldKeepConstraint(memory.content)) {
-        explicitConstraints.push(createStableField(memory.content.trim(), [memory.id]));
-      }
-
-      if (memory.type === 'preference' || memory.type === 'style' || memory.type === 'identity') {
-        const key = detectPreferenceKey(memory);
-        if (key && explicitPreferences[key] === undefined) {
-          explicitPreferences[key] = createStableField(detectPreferenceValue(key, memory.content), [memory.id]);
-        }
-      }
+      throw new ProfileError('Failed to recompute projected profile.', {
+        code: 'PROFILE_RECOMPUTE_FAILED',
+        context: {
+          userId: normalizedUserId,
+          maxMemoryScan: this.maxMemoryScan,
+        },
+        cause: error,
+      });
     }
-
-    if (!timezone && explicitPreferences.timezone) {
-      timezone = explicitPreferences.timezone;
-    }
-
-    const communicationStyle = explicitPreferences.communication_style
-      ? undefined
-      : collectCommunicationStyle(memories);
-
-    const likelyInterests = collectLikelyInterests(memories, explicitPreferences, explicitConstraints);
-    const workPatterns = collectWorkPatterns(memories, explicitConstraints);
-    const behaviorHints = dedupeStrings(
-      this.behaviorRepo
-        .listActiveCandidates({ userId: normalizedUserId, limit: MAX_BEHAVIOR_HINTS })
-        .map((rule) => rule.statement),
-    ).slice(0, MAX_BEHAVIOR_HINTS);
-
-    const profile: ProjectedProfile = {
-      userId: normalizedUserId,
-      updatedAt: nowIso(),
-      stable: {
-        displayName,
-        preferredAddress,
-        timezone,
-        explicitPreferences,
-        explicitConstraints,
-      },
-      derived: {
-        communicationStyle,
-        likelyInterests,
-        workPatterns,
-      },
-      behaviorHints,
-    };
-
-    this.profileRepo.upsert(profile);
-    this.debugRepo?.log('profile_recomputed', normalizedUserId, {
-      userId: normalizedUserId,
-      memoryCount: memories.length,
-      stable: {
-        displayName: profile.stable.displayName?.value,
-        preferredAddress: profile.stable.preferredAddress?.value,
-        timezone: profile.stable.timezone?.value,
-        explicitPreferences: Object.fromEntries(
-          Object.entries(explicitPreferences).map(([key, value]) => [key, {
-            value: value.value,
-            source: value.source,
-            canonical: value.canonical,
-            evidenceRefs: value.evidenceRefs,
-          }]),
-        ),
-        explicitConstraints: profile.stable.explicitConstraints.map((item) => ({
-          value: item.value,
-          source: item.source,
-          canonical: item.canonical,
-          evidenceRefs: item.evidenceRefs,
-        })),
-      },
-      derived: {
-        communicationStyle: profile.derived.communicationStyle
-          ? {
-              tendency: profile.derived.communicationStyle.tendency,
-              confidence: profile.derived.communicationStyle.confidence,
-              evidenceRefs: profile.derived.communicationStyle.evidenceRefs,
-              source: profile.derived.communicationStyle.source,
-              guardrail: profile.derived.communicationStyle.guardrail,
-              canonical: profile.derived.communicationStyle.canonical,
-            }
-          : null,
-        likelyInterests: profile.derived.likelyInterests.map((item) => ({
-          value: item.value,
-          confidence: item.confidence,
-          evidenceRefs: item.evidenceRefs,
-          source: item.source,
-          guardrail: item.guardrail,
-          canonical: item.canonical,
-        })),
-        workPatterns: profile.derived.workPatterns.map((item) => ({
-          value: item.value,
-          confidence: item.confidence,
-          evidenceRefs: item.evidenceRefs,
-          source: item.source,
-          guardrail: item.guardrail,
-          canonical: item.canonical,
-        })),
-      },
-      behaviorHints: behaviorHints.length,
-    });
-
-    return profile;
   }
 
   getByUserId(userId: string, recompute = false): ProjectedProfile | null {
-    if (recompute) {
-      return this.recomputeForUser(userId);
+    try {
+      if (recompute) {
+        return this.recomputeForUser(userId);
+      }
+      return this.profileRepo.getByUserId(userId);
+    } catch (error) {
+      if (error instanceof ProfileError) {
+        throw error;
+      }
+      throw new ProfileError('Failed to load projected profile.', {
+        code: 'PROFILE_LOOKUP_FAILED',
+        context: {
+          userId,
+          recompute,
+        },
+        cause: error,
+      });
     }
-    return this.profileRepo.getByUserId(userId);
   }
 }

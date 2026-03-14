@@ -1,4 +1,14 @@
 import type { BehaviorRule, BehaviorRuleLookupInput } from '../../types.js';
+import {
+  APPLICABILITY_CHANNEL_MATCH_BONUS,
+  APPLICABILITY_CONTEXT_MATCH_BONUS,
+  APPLICABILITY_GLOBAL_SCOPE_BONUS,
+  APPLICABILITY_INTENT_MATCH_BONUS,
+  APPLICABILITY_NO_CHANNEL_BONUS,
+  APPLICABILITY_NO_CONTEXT_BONUS,
+  APPLICABILITY_NO_INTENT_BONUS,
+  APPLICABILITY_USER_SCOPE_MATCH_BONUS,
+} from '../../tuning.js';
 
 export interface BehaviorRuleApplicability {
   applicable: boolean;
@@ -43,10 +53,10 @@ export function evaluateRuleApplicability(
         reasons: ['user_scope_mismatch'],
       };
     }
-    score += 1;
+    score += APPLICABILITY_USER_SCOPE_MATCH_BONUS;
     reasons.push('user_scope_match');
   } else {
-    score += 0.4;
+    score += APPLICABILITY_GLOBAL_SCOPE_BONUS;
     reasons.push('global_scope');
   }
 
@@ -58,10 +68,10 @@ export function evaluateRuleApplicability(
         reasons: ['channel_mismatch'],
       };
     }
-    score += 0.7;
+    score += APPLICABILITY_CHANNEL_MATCH_BONUS;
     reasons.push('channel_match');
   } else {
-    score += 0.2;
+    score += APPLICABILITY_NO_CHANNEL_BONUS;
   }
 
   if (rule.appliesTo.intentTypes && rule.appliesTo.intentTypes.length > 0) {
@@ -72,10 +82,10 @@ export function evaluateRuleApplicability(
         reasons: ['intent_mismatch'],
       };
     }
-    score += 0.6;
+    score += APPLICABILITY_INTENT_MATCH_BONUS;
     reasons.push('intent_match');
   } else {
-    score += 0.2;
+    score += APPLICABILITY_NO_INTENT_BONUS;
   }
 
   if (rule.appliesTo.contexts && rule.appliesTo.contexts.length > 0) {
@@ -93,10 +103,10 @@ export function evaluateRuleApplicability(
         reasons: ['context_mismatch'],
       };
     }
-    score += 0.4;
+    score += APPLICABILITY_CONTEXT_MATCH_BONUS;
     reasons.push('context_match');
   } else {
-    score += 0.1;
+    score += APPLICABILITY_NO_CONTEXT_BONUS;
   }
 
   return {

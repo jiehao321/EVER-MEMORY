@@ -14,6 +14,13 @@ import { rankBehaviorRules } from './ranking.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { BehaviorRepository } from '../../storage/behaviorRepo.js';
 import type { ReflectionRepository } from '../../storage/reflectionRepo.js';
+import {
+  BEHAVIOR_CANDIDATE_FETCH_MULTIPLIER,
+  BEHAVIOR_DEFAULT_ACTIVE_RULES_LIMIT,
+  BEHAVIOR_DEFAULT_RECENT_RULES_LIMIT,
+  BEHAVIOR_MIN_CANDIDATE_FETCH,
+  BEHAVIOR_PROMOTION_CANDIDATE_LIMIT,
+} from '../../tuning.js';
 import type {
   BehaviorRule,
   BehaviorRuleLookupInput,
@@ -62,7 +69,7 @@ export class BehaviorService {
     const existingRules = this.behaviorRepo.listActiveCandidates({
       userId: input.appliesTo?.userId,
       channel: input.appliesTo?.channel,
-      limit: 200,
+      limit: BEHAVIOR_PROMOTION_CANDIDATE_LIMIT,
     });
 
     const promotedRules: BehaviorRule[] = [];
@@ -187,11 +194,11 @@ export class BehaviorService {
   }
 
   getActiveRules(input: BehaviorRuleLookupInput = {}): BehaviorRule[] {
-    const limit = input.limit ?? 8;
+    const limit = input.limit ?? BEHAVIOR_DEFAULT_ACTIVE_RULES_LIMIT;
     const candidates = this.behaviorRepo.listActiveCandidates({
       userId: input.scope?.userId,
       channel: input.channel,
-      limit: Math.max(60, limit * 5),
+      limit: Math.max(BEHAVIOR_MIN_CANDIDATE_FETCH, limit * BEHAVIOR_CANDIDATE_FETCH_MULTIPLIER),
       includeInactive: input.includeInactive,
       includeDeprecated: input.includeDeprecated,
       includeFrozen: input.includeFrozen,
@@ -395,7 +402,7 @@ export class BehaviorService {
     };
   }
 
-  listRecentRules(limit = 20): BehaviorRule[] {
+  listRecentRules(limit = BEHAVIOR_DEFAULT_RECENT_RULES_LIMIT): BehaviorRule[] {
     return this.behaviorRepo.listRecent(limit);
   }
 

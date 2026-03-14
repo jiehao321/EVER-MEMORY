@@ -9,13 +9,13 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export function handleMessageReceived(
+export async function handleMessageReceived(
   input: MessageReceivedInput,
   intentService: IntentService,
   behaviorService: BehaviorService,
   retrievalService: RetrievalService,
   debugRepo?: DebugRepository,
-): MessageReceivedResult {
+): Promise<MessageReceivedResult> {
   const intent = intentService.analyze({
     text: input.text,
     sessionId: input.sessionId,
@@ -23,7 +23,7 @@ export function handleMessageReceived(
     scope: input.scope,
   });
 
-  const recall = retrievalService.recallForIntent({
+  const recall = await retrievalService.recallForIntent({
     intent,
     scope: input.scope,
     query: input.text,

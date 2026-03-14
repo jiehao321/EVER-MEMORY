@@ -79,6 +79,8 @@ import type {
   SessionStartResult,
 } from './types.js';
 
+export * from './errors.js';
+
 export interface InitializeEverMemoryOptions {
   intentLLMAnalyzer?: IntentLLMAnalyzer;
 }
@@ -191,7 +193,7 @@ export function initializeEverMemory(
     evermemoryStore(input: EverMemoryStoreToolInput) {
       return evermemoryStore(memoryService, input);
     },
-    evermemoryRecall(input: EverMemoryRecallToolInput) {
+    async evermemoryRecall(input: EverMemoryRecallToolInput) {
       return evermemoryRecall(retrievalService, input);
     },
     evermemoryBriefing(input: EverMemoryBriefingToolInput = {}) {
@@ -200,7 +202,7 @@ export function initializeEverMemory(
     analyzeIntent(input: IntentAnalyzeInput): IntentRecord {
       return intentService.analyze(input);
     },
-    messageReceived(input: MessageReceivedInput): MessageReceivedResult {
+    async messageReceived(input: MessageReceivedInput): Promise<MessageReceivedResult> {
       return handleMessageReceived(input, intentService, behaviorService, retrievalService, debugRepo);
     },
     sessionEnd(input: SessionEndInput): SessionEndResult {

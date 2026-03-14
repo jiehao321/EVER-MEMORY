@@ -85,7 +85,7 @@ test('runtime validation: preference memory is written and remains isolated with
   cleanup(databasePath, app);
 });
 
-test('runtime validation: project continuity uses prior project memories during message replay', () => {
+test('runtime validation: project continuity uses prior project memories during message replay', async () => {
   const databasePath = createTempDbPath('runtime-validation-project');
   const app = initializeEverMemory({ databasePath });
 
@@ -102,7 +102,7 @@ test('runtime validation: project continuity uses prior project memories during 
     source: { kind: 'manual', actor: 'user' },
   });
 
-  const replay = app.messageReceived({
+  const replay = await app.messageReceived({
     sessionId: 'session-proj-1',
     messageId: 'msg-proj-1',
     text: '结合之前项目计划，继续推进下一阶段。',
@@ -218,7 +218,7 @@ test('runtime validation: false rule suppression rejects vague promotion candida
   cleanup(databasePath, app);
 });
 
-test('runtime validation: scope isolation prevents cross-user and cross-project leakage', () => {
+test('runtime validation: scope isolation prevents cross-user and cross-project leakage', async () => {
   const databasePath = createTempDbPath('runtime-validation-scope-isolation');
   const app = initializeEverMemory({ databasePath });
 
@@ -251,7 +251,7 @@ test('runtime validation: scope isolation prevents cross-user and cross-project 
   assert.ok(userAMemories.some((item) => item.content.includes('中文')));
   assert.ok(!userAMemories.some((item) => item.content.includes('英文')));
 
-  const alpha = app.evermemoryRecall({
+  const alpha = await app.evermemoryRecall({
     query: '回滚窗口',
     scope: { userId: 'u-scope-a', project: 'alpha' },
     limit: 10,
@@ -263,7 +263,7 @@ test('runtime validation: scope isolation prevents cross-user and cross-project 
   cleanup(databasePath, app);
 });
 
-test('runtime validation: channel-neutral memories replay consistently while channel-scoped rules stay isolated', () => {
+test('runtime validation: channel-neutral memories replay consistently while channel-scoped rules stay isolated', async () => {
   const databasePath = createTempDbPath('runtime-validation-channel-neutrality');
   const app = initializeEverMemory({ databasePath });
 
@@ -284,14 +284,14 @@ test('runtime validation: channel-neutral memories replay consistently while cha
   });
   app.behaviorRepo.insert(feishuRule);
 
-  const feishuReplay = app.messageReceived({
+  const feishuReplay = await app.messageReceived({
     sessionId: 'session-channel-feishu',
     messageId: 'msg-channel-feishu',
     text: '请记住我的回答偏好，保持简洁直接。',
     scope: { userId: 'u-channel-1' },
     channel: 'feishu',
   });
-  const discordReplay = app.messageReceived({
+  const discordReplay = await app.messageReceived({
     sessionId: 'session-channel-discord',
     messageId: 'msg-channel-discord',
     text: '请记住我的回答偏好，保持简洁直接。',

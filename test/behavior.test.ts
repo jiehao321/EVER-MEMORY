@@ -118,7 +118,7 @@ test('behavior promotion writes lifecycle governance metadata and rejects duplic
   rmSync(databasePath, { force: true });
 });
 
-test('sessionStart/messageReceived inject matching behavior rules and increment apply counters', () => {
+test('sessionStart/messageReceived inject matching behavior rules and increment apply counters', async () => {
   const databasePath = createTempDbPath('behavior-runtime');
   const app = initializeEverMemory({ databasePath });
 
@@ -162,7 +162,7 @@ test('sessionStart/messageReceived inject matching behavior rules and increment 
   const runtime = app.getRuntimeSessionContext('session-runtime-1');
   assert.ok(runtime?.activeBehaviorRules);
 
-  const messageResult = app.messageReceived({
+  const messageResult = await app.messageReceived({
     sessionId: 'session-runtime-1',
     messageId: 'msg-runtime-1',
     text: '请给我下一阶段计划，继续推进。',

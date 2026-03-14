@@ -1,4 +1,5 @@
 import type { ExperienceLog, ReflectionRecord } from '../../types.js';
+import { REFLECTION_MAX_CANDIDATE_RULES } from '../../tuning.js';
 
 function uniqueNonEmpty(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter((value) => value.length > 0)));
@@ -28,5 +29,5 @@ export function generateCandidateRules(
     rules.push(reflection.analysis.nextTimeRecommendation);
   }
 
-  return uniqueNonEmpty(rules).slice(0, 5);
+  return uniqueNonEmpty(rules).slice(0, REFLECTION_MAX_CANDIDATE_RULES);
 }
