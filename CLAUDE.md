@@ -43,3 +43,21 @@ npm run test:openclaw:continuity
 - 全局覆盖率要求 ≥80%，对存储层/策略层的关键路径需有回归用例。
 - 数据库迁移必须幂等，推荐在 `.openclaw/memory/evermemory/store/evermemory.db` 上做干净环境测试。
 - 提交前默认执行 `npm run validate`，门禁（`teams:dev`/`teams:release`）作为质量闸门，确保确定性和可观测性。
+
+## 项目阶段与当前状态
+
+Phase 1-7 + Phase A 已完成。当前质量基线：
+- 测试：99/99 通过
+- recall benchmark accuracy：1.0（基线 0.95）
+- teams:dev：PASS，耗时 ~17s（优化后）
+
+**Phase A 完成内容**（2026-03-14）：
+- T-005：auto-capture 质量强化，project_summary 按字段密度评分，消除占位符
+- T-006：规则治理压测，freeze/deprecate/rollback/conflict 四场景覆盖
+- T-007：构建指纹缓存 + 增量编译，teams:dev 37s→17.5s(-53%)
+- T-008：5 轮跨 session 连续性验证矩阵，已入 release gate
+
+**待推进（Phase B：治理产品化）**：
+- 规则 explainability 输出标准化
+- import/export/review/restore 流程稳定化
+- operator 可独立完成 review/rollback 的端到端验证
