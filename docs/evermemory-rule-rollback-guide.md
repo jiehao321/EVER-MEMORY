@@ -130,6 +130,7 @@ app.evermemoryRules({
 - 已确认旧规则错误
 - 已有更准确的新规则替代
 - 需要清晰记录“被谁替代、为何回滚”
+- 没有 `replacementRuleId` 时，不允许执行 rollback
 
 ```ts
 app.evermemoryRules({
@@ -169,6 +170,7 @@ app.evermemoryReview({
 
 - `ruleReview.rule`
 - `ruleReview.reflection`
+- `ruleReview.replacementRule`
 - `ruleReview.sourceTrace`
 
 重点字段：
@@ -181,6 +183,8 @@ app.evermemoryReview({
 - `sourceTrace.promotedReason`
 - `sourceTrace.statusReason`
 - `sourceTrace.statusSourceReflectionId`
+- `replacementRule.id`
+- `replacementRule.statement`
 - `sourceTrace.deactivatedByRuleId`
 - `sourceTrace.deactivatedReason`
 - `sourceTrace.reviewSourceRefs`
@@ -238,11 +242,13 @@ app.evermemoryExplain({
 ## 注意事项 / 当前边界
 
 - 当前 rollback 是 **by rule**，不会自动批量回滚整个 reflection 产出的所有规则。
+- rollback 必须显式提供 `replacementRuleId`，避免“无替代规则的假回滚”。
 - frozen rule 默认不会参与 runtime 注入；如要查看，需要显式传 `includeFrozen`。
 - deprecate / rollback 都会让规则退出 active 集合，但语义不同：
   - freeze = 暂停使用，等待复核
   - deprecate = 明确废弃
   - rollback = 被证明有误，并被回退/替代
+- 对已冻结 / 已废弃 / 已按同一替代规则回滚的规则，重复 mutation 会返回幂等 no-op，而不是继续改写状态。
 - review 目前优先追踪 promotion reflection 与最近状态变更 reflection；不会构建更复杂的多跳因果图。
 
 这已经能满足日常 rule governance、人工排障与证据追溯。 

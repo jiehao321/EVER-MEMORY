@@ -211,15 +211,24 @@ test('behavior lifecycle decays stale rules and freezes contradicted/conflicting
   assert.equal(refreshed!.lifecycle.staleness, 'expired');
   assert.ok(refreshed!.priority < staleRule.priority);
 
+  const replacementForStaleRule = makeRule({
+    statement: '高风险老旧规则被回滚时，必须由新规则显式接替。',
+    category: 'safety',
+    priority: 94,
+  });
+  app.behaviorRepo.insert(replacementForStaleRule);
+
   const contradicted = app.behaviorService.mutateRule({
     action: 'rollback',
     ruleId: refreshed!.id,
     reason: '用户明确纠正旧规则',
     reflectionId: 'reflection-rollback-1',
+    replacementRuleId: replacementForStaleRule.id,
   });
   assert.equal(contradicted.changed, true);
   assert.ok((contradicted.rule?.lifecycle.contradictionCount ?? 0) >= 1);
   assert.equal(contradicted.rule?.state.frozen, true);
+  assert.equal(contradicted.rule?.state.supersededBy, replacementForStaleRule.id);
 
   const existingRule = makeRule({
     statement: '高风险动作无需确认，直接执行。',

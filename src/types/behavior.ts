@@ -141,6 +141,15 @@ export interface BehaviorRuleReviewRecord {
     evidenceRefs: string[];
     reviewedAt?: string;
   };
+  replacementRule?: {
+    id: string;
+    statement: string;
+    category: BehaviorRuleCategory;
+    priority: number;
+    active: boolean;
+    deprecated: boolean;
+    frozen?: boolean;
+  };
   sourceTrace: {
     promotedFromReflectionId?: string;
     promotedReason?: string;

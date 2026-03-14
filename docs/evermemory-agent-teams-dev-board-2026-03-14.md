@@ -62,7 +62,7 @@
 ### Batch B1
 - Owner: Team B
 - 任务：规则冲突与回滚压测
-- 状态：待开始
+- 状态：已完成
 - 边界：
   - 不改变既有 rule category 模型
   - 只加强 mutation / conflict / rollback 路径

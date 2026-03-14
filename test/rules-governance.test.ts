@@ -159,6 +159,13 @@ test('rules tool supports freeze/deprecate/rollback and excludes frozen rules fr
   assert.equal(rollbackResult.mutation?.rule?.state.supersededBy, replacement.id);
   assert.equal(rollbackResult.mutation?.rule?.trace?.deactivatedByRuleId, replacement.id);
 
+  const ruleReview = app.evermemoryReview({
+    ruleId: rule.id,
+  });
+  assert.equal(ruleReview.ruleReview?.replacementRule?.id, replacement.id);
+  assert.equal(ruleReview.ruleReview?.replacementRule?.statement, replacement.statement);
+  assert.equal(ruleReview.ruleReview?.sourceTrace.deactivatedByRuleId, replacement.id);
+
   const deprecated = app.evermemoryRules({
     action: 'deprecate',
     ruleId: replacement.id,
@@ -170,6 +177,95 @@ test('rules tool supports freeze/deprecate/rollback and excludes frozen rules fr
   });
   assert.equal(deprecated.mutation?.changed, true);
   assert.equal(deprecated.mutation?.rule?.state.deprecated, true);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('rules rollback requires a valid replacement rule and repeat mutations are idempotent', () => {
+  const databasePath = createTempDbPath('rules-governance-boundary');
+  const app = initializeEverMemory({ databasePath });
+
+  const rule = makeRule({
+    statement: '生产变更允许直接执行。',
+    category: 'execution',
+    priority: 78,
+    appliesTo: { userId: 'user-governance-2', intentTypes: ['instruction'], contexts: [] },
+  });
+  const replacement = makeRule({
+    statement: '生产变更必须先确认目标、风险和回滚方案。',
+    category: 'safety',
+    priority: 96,
+    appliesTo: { userId: 'user-governance-2', intentTypes: ['instruction'], contexts: [] },
+  });
+  app.behaviorRepo.insert(rule);
+  app.behaviorRepo.insert(replacement);
+
+  const missingReplacement = app.evermemoryRules({
+    action: 'rollback',
+    ruleId: rule.id,
+    reason: '没有替代规则时不允许回滚。',
+    includeInactive: true,
+    includeDeprecated: true,
+    includeFrozen: true,
+  });
+  assert.equal(missingReplacement.mutation?.changed, false);
+  assert.equal(missingReplacement.mutation?.reason, 'replacement_rule_required');
+
+  const selfReplacement = app.evermemoryRules({
+    action: 'rollback',
+    ruleId: rule.id,
+    replacementRuleId: rule.id,
+    reason: '自身不能作为替代规则。',
+    includeInactive: true,
+    includeDeprecated: true,
+    includeFrozen: true,
+  });
+  assert.equal(selfReplacement.mutation?.changed, false);
+  assert.equal(selfReplacement.mutation?.reason, 'replacement_rule_invalid');
+
+  const firstFreeze = app.evermemoryRules({
+    action: 'freeze',
+    ruleId: rule.id,
+    reason: '先冻结等待复核。',
+    includeFrozen: true,
+    includeInactive: true,
+  });
+  assert.equal(firstFreeze.mutation?.changed, true);
+
+  const secondFreeze = app.evermemoryRules({
+    action: 'freeze',
+    ruleId: rule.id,
+    reason: '重复冻结不应再次改写状态。',
+    includeFrozen: true,
+    includeInactive: true,
+  });
+  assert.equal(secondFreeze.mutation?.changed, false);
+  assert.equal(secondFreeze.mutation?.reason, 'already_frozen');
+
+  const rollback = app.evermemoryRules({
+    action: 'rollback',
+    ruleId: rule.id,
+    replacementRuleId: replacement.id,
+    reason: '由更安全的新规则替代。',
+    includeInactive: true,
+    includeDeprecated: true,
+    includeFrozen: true,
+  });
+  assert.equal(rollback.mutation?.changed, true);
+  assert.equal(rollback.mutation?.rule?.state.supersededBy, replacement.id);
+
+  const rollbackAgain = app.evermemoryRules({
+    action: 'rollback',
+    ruleId: rule.id,
+    replacementRuleId: replacement.id,
+    reason: '重复回滚应为幂等。',
+    includeInactive: true,
+    includeDeprecated: true,
+    includeFrozen: true,
+  });
+  assert.equal(rollbackAgain.mutation?.changed, false);
+  assert.equal(rollbackAgain.mutation?.reason, 'already_rolled_back');
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

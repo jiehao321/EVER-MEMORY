@@ -218,6 +218,60 @@ export class BehaviorService {
       };
     }
 
+    const replacementRule = input.replacementRuleId
+      ? this.behaviorRepo.findById(input.replacementRuleId)
+      : null;
+    if (input.action === 'rollback') {
+      if (!input.replacementRuleId) {
+        return {
+          action: input.action,
+          rule,
+          changed: false,
+          reason: 'replacement_rule_required',
+        };
+      }
+      if (input.replacementRuleId === rule.id) {
+        return {
+          action: input.action,
+          rule,
+          changed: false,
+          reason: 'replacement_rule_invalid',
+        };
+      }
+      if (!replacementRule) {
+        return {
+          action: input.action,
+          rule,
+          changed: false,
+          reason: 'replacement_rule_not_found',
+        };
+      }
+      if (rule.state.deprecated && rule.state.supersededBy === input.replacementRuleId) {
+        return {
+          action: input.action,
+          rule,
+          changed: false,
+          reason: 'already_rolled_back',
+        };
+      }
+    }
+    if (input.action === 'freeze' && rule.state.frozen && !rule.state.deprecated) {
+      return {
+        action: input.action,
+        rule,
+        changed: false,
+        reason: 'already_frozen',
+      };
+    }
+    if (input.action === 'deprecate' && rule.state.deprecated) {
+      return {
+        action: input.action,
+        rule,
+        changed: false,
+        reason: 'already_deprecated',
+      };
+    }
+
     let updatedRule: BehaviorRule;
     if (input.action === 'freeze') {
       updatedRule = freezeBehaviorRule(rule, 'manual');
@@ -294,6 +348,9 @@ export class BehaviorService {
 
     const reflectionId = rule.trace?.promotedFromReflectionId ?? rule.state.statusSourceReflectionId;
     const reflection = reflectionId ? this.reflectionRepo.findById(reflectionId) : null;
+    const replacementRule = rule.state.supersededBy
+      ? this.behaviorRepo.findById(rule.state.supersededBy)
+      : null;
 
     return {
       rule,
@@ -306,6 +363,17 @@ export class BehaviorService {
             recurrenceCount: reflection.evidence.recurrenceCount,
             evidenceRefs: reflection.evidence.refs,
             reviewedAt: reflection.state.reviewedAt,
+          }
+        : undefined,
+      replacementRule: replacementRule
+        ? {
+            id: replacementRule.id,
+            statement: replacementRule.statement,
+            category: replacementRule.category,
+            priority: replacementRule.priority,
+            active: replacementRule.state.active,
+            deprecated: replacementRule.state.deprecated,
+            frozen: replacementRule.state.frozen,
           }
         : undefined,
       sourceTrace: {
