@@ -145,11 +145,12 @@ function pipelineForMode(mode) {
       { name: 'test:recall:benchmark', command: 'node', args: ['./scripts/recall-benchmark.mjs'] },
     ];
   }
-  return [
+  const releasePipeline = [
     { name: 'doctor', command: 'npm', args: ['run', 'doctor'] },
     { name: 'quality:gate:openclaw', command: 'npm', args: ['run', 'quality:gate:openclaw', '--', '--skip-doctor'] },
-    { name: 'test:recall:benchmark', command: 'node', args: ['./scripts/recall-benchmark.mjs'] },
+    { name: 'stability:check', command: 'npm', args: ['run', 'stability:check:full'] },
   ];
+  return releasePipeline;
 }
 
 function recommendations(mode, git) {

@@ -15,6 +15,7 @@ function parseArgs(argv) {
   let withContinuity = false;
   let withSecurity = false;
   let withFeishuQgent = false;
+  let withSoak = false;
   let skipDoctor = false;
   let reportPath;
 
@@ -34,6 +35,10 @@ function parseArgs(argv) {
     }
     if (arg === '--with-feishu-qgent') {
       withFeishuQgent = true;
+      continue;
+    }
+    if (arg === '--with-soak') {
+      withSoak = true;
       continue;
     }
     if (arg === '--skip-doctor') {
@@ -57,6 +62,7 @@ function parseArgs(argv) {
     withContinuity,
     withSecurity,
     withFeishuQgent,
+    withSoak,
     skipDoctor,
     reportPath,
   };
@@ -119,6 +125,9 @@ if (parsed.withFeishuQgent) {
 if (parsed.withSecurity) {
   steps.push({ name: 'test:openclaw:security', command: 'npm', args: ['run', 'test:openclaw:security'] });
 }
+if (parsed.withSoak) {
+  steps.push({ name: 'test:openclaw:soak', command: 'npm', args: ['run', 'test:openclaw:soak'] });
+}
 
 const summarySteps = [];
 let ok = true;
@@ -138,6 +147,7 @@ const report = {
   withContinuity: parsed.withContinuity,
   withSecurity: parsed.withSecurity,
   withFeishuQgent: parsed.withFeishuQgent,
+  withSoak: parsed.withSoak,
   skipDoctor: parsed.skipDoctor,
   ok,
   nodeVersion: process.version,
@@ -161,6 +171,7 @@ recordEvidence({
   withContinuity: parsed.withContinuity,
   withSecurity: parsed.withSecurity,
   withFeishuQgent: parsed.withFeishuQgent,
+  withSoak: parsed.withSoak,
   skipDoctor: parsed.skipDoctor,
   stepCount: summarySteps.length,
 });

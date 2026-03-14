@@ -44,6 +44,7 @@
     "quality:gate": "node ./scripts/quality-gate.mjs",
     "quality:gate:openclaw": "node ./scripts/quality-gate.mjs --with-openclaw --with-continuity --with-security",
     "quality:gate:feishu-qgent": "node ./scripts/quality-gate.mjs --with-openclaw --with-continuity --with-feishu-qgent --with-security",
+    "quality:gate:full": "node ./scripts/quality-gate.mjs --with-openclaw --with-continuity --with-security --with-soak",
     "test:openclaw:feishu-qgent": "node ./scripts/openclaw-feishu-qgent-e2e.mjs",
     "test:openclaw:continuity": "node ./scripts/openclaw-continuity-e2e.mjs",
     "test:openclaw:continuity:matrix": "node ./scripts/openclaw-continuity-matrix.mjs --runs=3",
@@ -52,6 +53,7 @@
     "test:openclaw:security": "node ./scripts/openclaw-security-gate.mjs",
     "test:openclaw:soak": "node ./scripts/openclaw-real-soak.mjs --iterations=6 --security-every=2",
     "test:openclaw:soak:feishu": "node ./scripts/openclaw-real-soak.mjs --iterations=4 --security-every=2 --with-feishu",
+    "test:openclaw:soak:release": "node ./scripts/openclaw-real-soak.mjs --iterations=2 --security-every=1 --without-continuity",
     "test:recall:benchmark": "node ./scripts/build-if-needed.mjs && node ./scripts/recall-benchmark.mjs",
     "test:recall:benchmark:baseline": "node ./scripts/build-if-needed.mjs && node ./scripts/recall-benchmark.mjs --update-baseline",
     "release:evaluate": "node ./scripts/release-evaluate.mjs",
@@ -60,7 +62,11 @@
     "release:0.0.1:pack": "node ./scripts/release-pack.mjs --version 0.0.1",
     "test:unit": "npm run build:test && node --test dist-test/test/*.test.js",
     "test": "npm run test:unit",
-    "validate": "npm run doctor && npm run check && npm run test:unit"
+    "validate": "npm run doctor && npm run check && npm run test:unit",
+    "kpi:track": "node ./scripts/kpi-tracker.mjs",
+    "kpi:update": "node ./scripts/kpi-tracker.mjs --update-baseline",
+    "stability:check": "node ./scripts/stability-check.mjs",
+    "stability:check:full": "node ./scripts/stability-check.mjs --with-soak"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
