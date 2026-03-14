@@ -320,7 +320,7 @@ Run before any release:
 npm run teams:release
 ```
 
-This gate covers typecheck/build/tests/OpenClaw smoke/OpenClaw security/benchmark/release pack.
+This gate covers typecheck/build/tests/OpenClaw smoke/OpenClaw continuity/OpenClaw security/benchmark/release pack.
 
 ### 9. Key Paths
 

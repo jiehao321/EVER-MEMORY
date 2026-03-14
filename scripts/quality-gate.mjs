@@ -12,6 +12,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   let withOpenClaw = false;
+  let withContinuity = false;
   let withSecurity = false;
   let withFeishuQgent = false;
   let reportPath;
@@ -20,6 +21,10 @@ function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '--with-openclaw') {
       withOpenClaw = true;
+      continue;
+    }
+    if (arg === '--with-continuity') {
+      withContinuity = true;
       continue;
     }
     if (arg === '--with-security') {
@@ -42,7 +47,7 @@ function parseArgs(argv) {
     fail(`unsupported argument: ${arg}`);
   }
 
-  return { withOpenClaw, withSecurity, withFeishuQgent, reportPath };
+  return { withOpenClaw, withContinuity, withSecurity, withFeishuQgent, reportPath };
 }
 
 function resolveDefaultReportPath() {
@@ -90,6 +95,9 @@ const steps = [
 if (parsed.withOpenClaw) {
   steps.push({ name: 'test:openclaw:smoke', command: 'npm', args: ['run', 'test:openclaw:smoke'] });
 }
+if (parsed.withContinuity) {
+  steps.push({ name: 'test:openclaw:continuity', command: 'npm', args: ['run', 'test:openclaw:continuity'] });
+}
 if (parsed.withFeishuQgent) {
   steps.push({ name: 'test:openclaw:feishu-qgent', command: 'npm', args: ['run', 'test:openclaw:feishu-qgent'] });
 }
@@ -112,6 +120,7 @@ for (const step of steps) {
 const report = {
   generatedAt: new Date().toISOString(),
   withOpenClaw: parsed.withOpenClaw,
+  withContinuity: parsed.withContinuity,
   withSecurity: parsed.withSecurity,
   withFeishuQgent: parsed.withFeishuQgent,
   ok,
@@ -129,8 +138,11 @@ recordEvidence({
   runner: 'quality-gate',
   ok,
   reportPath,
-  mode: parsed.withOpenClaw ? (parsed.withFeishuQgent ? 'openclaw-feishu' : 'openclaw') : 'core',
+  mode: parsed.withOpenClaw
+    ? (parsed.withFeishuQgent ? 'openclaw-feishu' : (parsed.withContinuity ? 'openclaw-continuity' : 'openclaw'))
+    : 'core',
   withOpenClaw: parsed.withOpenClaw,
+  withContinuity: parsed.withContinuity,
   withSecurity: parsed.withSecurity,
   withFeishuQgent: parsed.withFeishuQgent,
   stepCount: summarySteps.length,

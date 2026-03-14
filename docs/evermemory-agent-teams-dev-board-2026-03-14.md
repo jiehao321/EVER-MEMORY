@@ -25,7 +25,7 @@
 ### Batch A1
 - Owner: Team A
 - 任务：自动沉淀策略强化
-- 状态：进行中
+- 状态：已完成
 - 输入：
   - `src/hooks/sessionEnd.ts`
   - `test/session-end.test.ts`
@@ -40,7 +40,7 @@
 ### Batch A2
 - Owner: Team A
 - 任务：project continuity summary 强化
-- 状态：待开始
+- 状态：进行中
 - 边界：
   - 只增强项目摘要质量
   - 不同时改 rule promotion 逻辑
@@ -51,7 +51,7 @@
 ### Batch A3
 - Owner: Team A
 - 任务：长周期 continuity 验证矩阵
-- 状态：待开始
+- 状态：进行中
 - 边界：
   - 以验证脚本和基线为主
   - 不在本批做大规模业务改造
@@ -77,6 +77,7 @@
 - 边界：
   - 不降低门禁强度
   - 只优化执行顺序、缓存、产物稳定性
+  - 优先解决 `teams:dev` / `teams:release` 并行时对 `dist` / `dist-test` 的产物竞争
 - DoD：
   - `teams:release` 平均耗时下降
   - 输出报告不减少
@@ -92,9 +93,9 @@
 ## 5. 当前决策
 
 当前正式启动：
-- `Batch A1` 自动沉淀策略强化
+- `Batch A2` project continuity summary 强化
+- `Batch A3` continuity 验证接入 release gate
 
-待 `Batch A1` 完成并验证后，再进入：
-- `Batch A2`
+待 `Batch A2/A3` 收口后，再进入：
 - `Batch B1`
 - `Batch C1`
