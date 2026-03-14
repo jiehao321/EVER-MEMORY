@@ -103,3 +103,116 @@ test('evermemory_export and evermemory_import provide reviewed import baseline',
   rmSync(sourceDb, { force: true });
   rmSync(targetDb, { force: true });
 });
+
+test('evermemory_import rejected detail highlights invalid confidence score', () => {
+  const sourceDb = createTempDbPath('invalid-confidence-source');
+  const targetDb = createTempDbPath('invalid-confidence-target');
+  const source = initializeEverMemory({ databasePath: sourceDb });
+  const target = initializeEverMemory({ databasePath: targetDb });
+
+  source.evermemoryStore({
+    content: 'Source memory for invalid confidence test',
+    type: 'preference',
+    scope: { userId: 'u-invalid-confidence' },
+  });
+
+  const snapshot = source.evermemoryExport({
+    scope: { userId: 'u-invalid-confidence' },
+    includeArchived: false,
+  }).snapshot;
+
+  const mutatedSnapshot = JSON.parse(JSON.stringify(snapshot)) as EverMemorySnapshotV1;
+  mutatedSnapshot.items[0].scores.confidence = 1.5;
+
+  const review = target.evermemoryImport({
+    snapshot: mutatedSnapshot,
+  });
+
+  const invalidScoreRejection = review.rejected.find((item) => item.reason === 'invalid_scores');
+  assert.ok(invalidScoreRejection, 'expected invalid_scores rejection');
+  assert.ok(invalidScoreRejection?.detail?.includes('confidence=1.5'));
+  assert.equal(invalidScoreRejection?.hint, 'Clamp confidence to range 0-1');
+  assert.equal(review.summary.rejectedByReason.invalid_scores, 1);
+
+  source.database.connection.close();
+  target.database.connection.close();
+  rmSync(sourceDb, { force: true });
+  rmSync(targetDb, { force: true });
+});
+
+test('evermemory_import rejected hint guides empty content fixes', () => {
+  const sourceDb = createTempDbPath('invalid-content-source');
+  const targetDb = createTempDbPath('invalid-content-target');
+  const source = initializeEverMemory({ databasePath: sourceDb });
+  const target = initializeEverMemory({ databasePath: targetDb });
+
+  source.evermemoryStore({
+    content: 'Valid memory before mutation',
+    type: 'constraint',
+    scope: { userId: 'u-invalid-content' },
+  });
+
+  const snapshot = source.evermemoryExport({
+    scope: { userId: 'u-invalid-content' },
+  }).snapshot;
+
+  const mutatedSnapshot = JSON.parse(JSON.stringify(snapshot)) as EverMemorySnapshotV1;
+  mutatedSnapshot.items[0].content = '  ';
+
+  const review = target.evermemoryImport({
+    snapshot: mutatedSnapshot,
+  });
+
+  const invalidContentRejection = review.rejected.find((item) => item.reason === 'invalid_content');
+  assert.ok(invalidContentRejection, 'expected invalid_content rejection');
+  assert.equal(invalidContentRejection?.detail, 'content is empty string');
+  assert.equal(invalidContentRejection?.hint, 'Provide non-empty content with at least 3 characters');
+
+  source.database.connection.close();
+  target.database.connection.close();
+  rmSync(sourceDb, { force: true });
+  rmSync(targetDb, { force: true });
+});
+
+test('evermemory_import summary reports accepted counts by type', () => {
+  const sourceDb = createTempDbPath('summary-source');
+  const targetDb = createTempDbPath('summary-target');
+  const source = initializeEverMemory({ databasePath: sourceDb });
+  const target = initializeEverMemory({ databasePath: targetDb });
+
+  source.evermemoryStore({
+    content: 'Preference item 1',
+    type: 'preference',
+    scope: { userId: 'u-summary' },
+  });
+  source.evermemoryStore({
+    content: 'Preference item 2',
+    type: 'preference',
+    scope: { userId: 'u-summary' },
+  });
+  source.evermemoryStore({
+    content: 'Constraint item',
+    type: 'constraint',
+    scope: { userId: 'u-summary' },
+  });
+
+  const snapshot = source.evermemoryExport({
+    scope: { userId: 'u-summary' },
+    includeArchived: false,
+  }).snapshot;
+
+  const review = target.evermemoryImport({
+    snapshot,
+  });
+
+  assert.equal(review.summary.totalRequested, 3);
+  assert.equal(review.summary.accepted, 3);
+  assert.equal(review.summary.rejected, 0);
+  assert.equal(review.summary.acceptedByType.preference, 2);
+  assert.equal(review.summary.acceptedByType.constraint, 1);
+
+  source.database.connection.close();
+  target.database.connection.close();
+  rmSync(sourceDb, { force: true });
+  rmSync(targetDb, { force: true });
+});

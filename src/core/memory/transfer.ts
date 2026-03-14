@@ -43,6 +43,43 @@ interface ImportCandidate {
   exists: boolean;
 }
 
+type ImportRejectedItem = EverMemoryImportToolResult['rejected'][number];
+
+function pushRejection(target: EverMemoryImportToolResult, rejection: ImportRejectedItem): void {
+  target.rejected.push(rejection);
+  target.summary.rejected += 1;
+  target.summary.rejectedByReason[rejection.reason] =
+    (target.summary.rejectedByReason[rejection.reason] ?? 0) + 1;
+}
+
+function formatValue(value: unknown): string {
+  if (value === undefined) {
+    return 'undefined';
+  }
+  if (value === null) {
+    return 'null';
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.length > 120 ? `${value.slice(0, 117)}...` : value;
+    return `"${trimmed}"`;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function describeType(value: unknown): string {
+  if (Array.isArray(value)) {
+    return 'array';
+  }
+  if (value === null) {
+    return 'null';
+  }
+  return typeof value;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -120,57 +157,191 @@ function cloneMemory(item: MemoryItem): MemoryItem {
   };
 }
 
-function validateImportMemory(memory: MemoryItem): string | null {
-  if (!memory.id || memory.id.trim().length === 0) {
-    return 'invalid_id';
+type ImportValidationFailure = Omit<ImportRejectedItem, 'id'>;
+
+function validationFailure(reason: string, detail: string, hint?: string): ImportValidationFailure {
+  return { reason, detail, hint };
+}
+
+function validateScore(name: 'confidence' | 'importance' | 'explicitness', value: unknown): ImportValidationFailure | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return validationFailure(
+      'invalid_scores',
+      `${name}=${formatValue(value)} is not a finite number`,
+      'Provide numeric scores between 0 and 1',
+    );
   }
 
-  if (!memory.content || memory.content.trim().length < 3) {
-    return 'invalid_content';
+  if (value < 0) {
+    return validationFailure(
+      'invalid_scores',
+      `${name}=${value} is below the allowed range [0,1]`,
+      `Clamp ${name} to range 0-1`,
+    );
+  }
+
+  if (value > 1) {
+    return validationFailure(
+      'invalid_scores',
+      `${name}=${value} exceeds the allowed range [0,1]`,
+      `Clamp ${name} to range 0-1`,
+    );
+  }
+
+  return null;
+}
+
+function validateImportMemory(memory: MemoryItem): ImportValidationFailure | null {
+  const trimmedId = memory.id?.trim() ?? '';
+  if (trimmedId.length === 0) {
+    return validationFailure(
+      'invalid_id',
+      memory.id ? 'id is empty after trimming whitespace' : 'id is missing',
+      'Provide a stable non-empty id for each memory item',
+    );
+  }
+
+  const trimmedContent = memory.content?.trim() ?? '';
+  if (trimmedContent.length < 3) {
+    return validationFailure(
+      'invalid_content',
+      trimmedContent.length === 0
+        ? 'content is empty string'
+        : `content length ${trimmedContent.length} is shorter than minimum 3 characters`,
+      'Provide non-empty content with at least 3 characters',
+    );
   }
 
   if (!MEMORY_TYPES.includes(memory.type)) {
-    return 'invalid_type';
+    return validationFailure(
+      'invalid_type',
+      `type=${formatValue(memory.type)} is not supported`,
+      `Use one of: ${MEMORY_TYPES.join(', ')}`,
+    );
   }
 
   if (!MEMORY_LIFECYCLES.includes(memory.lifecycle)) {
-    return 'invalid_lifecycle';
+    return validationFailure(
+      'invalid_lifecycle',
+      `lifecycle=${formatValue(memory.lifecycle)} is not supported`,
+      `Use one of: ${MEMORY_LIFECYCLES.join(', ')}`,
+    );
   }
 
   if (!ALLOWED_SOURCE_KINDS.includes(memory.source.kind)) {
-    return 'invalid_source_kind';
+    return validationFailure(
+      'invalid_source_kind',
+      `source.kind=${formatValue(memory.source.kind)} is not allowed`,
+      `Use one of: ${ALLOWED_SOURCE_KINDS.join(', ')}`,
+    );
   }
 
   if (memory.source.actor && !ALLOWED_SOURCE_ACTORS.includes(memory.source.actor)) {
-    return 'invalid_source_actor';
+    return validationFailure(
+      'invalid_source_actor',
+      `source.actor=${formatValue(memory.source.actor)} must be one of ${ALLOWED_SOURCE_ACTORS.join(', ')}`,
+      `Choose actor from: ${ALLOWED_SOURCE_ACTORS.join(', ')}`,
+    );
   }
 
-  if (!isFiniteNumber(memory.scores.confidence) || !isFiniteNumber(memory.scores.importance) || !isFiniteNumber(memory.scores.explicitness)) {
-    return 'invalid_scores';
+  const invalidScore =
+    validateScore('confidence', memory.scores.confidence) ??
+    validateScore('importance', memory.scores.importance) ??
+    validateScore('explicitness', memory.scores.explicitness);
+  if (invalidScore) {
+    return invalidScore;
   }
 
-  if (!isValidIso(memory.timestamps.createdAt) || !isValidIso(memory.timestamps.updatedAt)) {
-    return 'invalid_timestamps';
+  if (!isValidIso(memory.timestamps.createdAt)) {
+    return validationFailure(
+      'invalid_timestamps',
+      `timestamps.createdAt=${formatValue(memory.timestamps.createdAt)} is not a valid ISO-8601 timestamp`,
+      'Provide ISO-8601 timestamps such as 2024-01-01T00:00:00.000Z',
+    );
+  }
+
+  if (!isValidIso(memory.timestamps.updatedAt)) {
+    return validationFailure(
+      'invalid_timestamps',
+      `timestamps.updatedAt=${formatValue(memory.timestamps.updatedAt)} is not a valid ISO-8601 timestamp`,
+      'Provide ISO-8601 timestamps such as 2024-01-01T00:00:00.000Z',
+    );
   }
 
   if (memory.timestamps.lastAccessedAt && !isValidIso(memory.timestamps.lastAccessedAt)) {
-    return 'invalid_last_accessed_at';
+    return validationFailure(
+      'invalid_last_accessed_at',
+      `timestamps.lastAccessedAt=${formatValue(memory.timestamps.lastAccessedAt)} is not a valid ISO-8601 timestamp`,
+      'Remove the field or provide a valid ISO-8601 timestamp',
+    );
   }
 
-  if (!isFiniteNumber(memory.stats.accessCount) || !isFiniteNumber(memory.stats.retrievalCount)) {
-    return 'invalid_stats';
+  if (!isFiniteNumber(memory.stats.accessCount)) {
+    return validationFailure(
+      'invalid_stats',
+      `stats.accessCount=${formatValue(memory.stats.accessCount)} is not a finite number`,
+      'Provide numeric accessCount values',
+    );
   }
 
-  if (!Array.isArray(memory.tags) || !memory.tags.every((item) => typeof item === 'string')) {
-    return 'invalid_tags';
+  if (!isFiniteNumber(memory.stats.retrievalCount)) {
+    return validationFailure(
+      'invalid_stats',
+      `stats.retrievalCount=${formatValue(memory.stats.retrievalCount)} is not a finite number`,
+      'Provide numeric retrievalCount values',
+    );
   }
 
-  if (!Array.isArray(memory.relatedEntities) || !memory.relatedEntities.every((item) => typeof item === 'string')) {
-    return 'invalid_related_entities';
+  if (!Array.isArray(memory.tags)) {
+    return validationFailure(
+      'invalid_tags',
+      `tags must be an array, received ${describeType(memory.tags)}`,
+      'Provide tags as an array of strings',
+    );
   }
 
-  if (!Array.isArray(memory.evidence.references ?? []) || !(memory.evidence.references ?? []).every((item) => typeof item === 'string')) {
-    return 'invalid_evidence_references';
+  const invalidTagIndex = memory.tags.findIndex((item) => typeof item !== 'string');
+  if (invalidTagIndex >= 0) {
+    return validationFailure(
+      'invalid_tags',
+      `tags[${invalidTagIndex}]=${formatValue(memory.tags[invalidTagIndex])} is not a string`,
+      'Ensure every tag is a string value',
+    );
+  }
+
+  if (!Array.isArray(memory.relatedEntities)) {
+    return validationFailure(
+      'invalid_related_entities',
+      `relatedEntities must be an array, received ${describeType(memory.relatedEntities)}`,
+      'Provide relatedEntities as an array of strings',
+    );
+  }
+
+  const invalidEntityIndex = memory.relatedEntities.findIndex((item) => typeof item !== 'string');
+  if (invalidEntityIndex >= 0) {
+    return validationFailure(
+      'invalid_related_entities',
+      `relatedEntities[${invalidEntityIndex}]=${formatValue(memory.relatedEntities[invalidEntityIndex])} is not a string`,
+      'Ensure every related entity id is a string',
+    );
+  }
+
+  const references = memory.evidence.references ?? [];
+  if (!Array.isArray(references)) {
+    return validationFailure(
+      'invalid_evidence_references',
+      `evidence.references must be an array, received ${describeType(references)}`,
+      'Provide evidence references as an array of strings',
+    );
+  }
+
+  const invalidReferenceIndex = references.findIndex((item) => typeof item !== 'string');
+  if (invalidReferenceIndex >= 0) {
+    return validationFailure(
+      'invalid_evidence_references',
+      `evidence.references[${invalidReferenceIndex}]=${formatValue(references[invalidReferenceIndex])} is not a string`,
+      'Ensure every evidence reference is a string identifier',
+    );
   }
 
   return null;
@@ -218,6 +389,13 @@ function emptyImportResult(mode: EverMemoryImportMode, approved: boolean): EverM
     imported: 0,
     updated: 0,
     rejected: [],
+    summary: {
+      totalRequested: 0,
+      accepted: 0,
+      rejected: 0,
+      acceptedByType: {},
+      rejectedByReason: {},
+    },
   };
 }
 
@@ -275,7 +453,11 @@ export class MemoryTransferService {
     const base = emptyImportResult(mode, approved);
 
     if (!input.snapshot || input.snapshot.format !== SNAPSHOT_FORMAT) {
-      base.rejected.push({ reason: 'invalid_snapshot_format' });
+      pushRejection(base, {
+        reason: 'invalid_snapshot_format',
+        detail: `snapshot.format=${formatValue(input.snapshot?.format)} is not ${SNAPSHOT_FORMAT}`,
+        hint: 'Provide a snapshot exported via evermemoryExport',
+      });
       this.debugRepo?.log('memory_import_reviewed', undefined, {
         mode,
         approved,
@@ -286,7 +468,11 @@ export class MemoryTransferService {
     }
 
     if (!Array.isArray(input.snapshot.items)) {
-      base.rejected.push({ reason: 'invalid_snapshot_items' });
+      pushRejection(base, {
+        reason: 'invalid_snapshot_items',
+        detail: `snapshot.items must be an array, received ${describeType(input.snapshot.items)}`,
+        hint: 'Ensure the snapshot includes an items array from evermemoryExport',
+      });
       this.debugRepo?.log('memory_import_reviewed', undefined, {
         mode,
         approved,
@@ -296,29 +482,37 @@ export class MemoryTransferService {
       return base;
     }
 
+    base.summary.totalRequested = input.snapshot.items.length;
     const rawItems = input.snapshot.items.slice(0, MAX_IMPORT_ITEMS);
     if (input.snapshot.items.length > MAX_IMPORT_ITEMS) {
-      base.rejected.push({ reason: 'snapshot_truncated_by_limit' });
+      pushRejection(base, {
+        reason: 'snapshot_truncated_by_limit',
+        detail: `snapshot has ${input.snapshot.items.length} items, limit is ${MAX_IMPORT_ITEMS}`,
+        hint: `Split the import into batches of at most ${MAX_IMPORT_ITEMS} items`,
+      });
     }
 
     const allowOverwrite = input.allowOverwrite ?? false;
     const candidates: ImportCandidate[] = [];
+    const acceptedByTypeCounter: Record<string, number> = {};
     for (const raw of rawItems) {
-      const normalized = sanitizeImportMemory(raw, input.scopeOverride);
-      const invalidReason = validateImportMemory(normalized);
+      const invalidReason = validateImportMemory(raw);
       if (invalidReason) {
-        base.rejected.push({
+        pushRejection(base, {
           id: raw.id,
-          reason: invalidReason,
+          ...invalidReason,
         });
         continue;
       }
 
+      const normalized = sanitizeImportMemory(raw, input.scopeOverride);
       const existing = this.memoryRepo.findById(normalized.id);
       if (existing && !allowOverwrite) {
-        base.rejected.push({
+        pushRejection(base, {
           id: normalized.id,
           reason: 'duplicate_id',
+          detail: `memory id ${normalized.id} already exists and allowOverwrite=false`,
+          hint: 'Enable allowOverwrite or provide unique ids to avoid duplicates',
         });
         continue;
       }
@@ -327,7 +521,10 @@ export class MemoryTransferService {
         memory: normalized,
         exists: Boolean(existing),
       });
+      acceptedByTypeCounter[normalized.type] = (acceptedByTypeCounter[normalized.type] ?? 0) + 1;
     }
+    base.summary.accepted = candidates.length;
+    base.summary.acceptedByType = acceptedByTypeCounter;
 
     const toCreate = candidates.filter((item) => !item.exists).length;
     const toUpdate = candidates.filter((item) => item.exists).length;
@@ -343,13 +540,15 @@ export class MemoryTransferService {
         imported: 0,
         updated: 0,
         rejected: base.rejected,
+        summary: base.summary,
       };
 
       if (mode === 'apply' && !approved) {
-        result.rejected = [
-          ...result.rejected,
-          { reason: 'approval_required_for_apply' },
-        ];
+        pushRejection(result, {
+          reason: 'approval_required_for_apply',
+          detail: 'mode="apply" requires approved=true',
+          hint: 'Run a review first, then re-run in apply mode with approved=true',
+        });
       }
 
       this.debugRepo?.log('memory_import_reviewed', undefined, {
@@ -402,6 +601,7 @@ export class MemoryTransferService {
       imported,
       updated,
       rejected: base.rejected,
+      summary: base.summary,
     };
 
     this.debugRepo?.log('memory_import_applied', undefined, {

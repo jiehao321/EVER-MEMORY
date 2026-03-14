@@ -122,6 +122,21 @@ export interface EverMemoryImportToolInput {
   scopeOverride?: MemoryScope;
 }
 
+export interface EverMemoryImportRejectedItem {
+  id?: string;
+  reason: string;
+  detail?: string;
+  hint?: string;
+}
+
+export interface EverMemoryImportSummary {
+  totalRequested: number;
+  accepted: number;
+  rejected: number;
+  acceptedByType: Record<string, number>;
+  rejectedByReason: Record<string, number>;
+}
+
 export interface EverMemoryImportToolResult {
   mode: EverMemoryImportMode;
   approved: boolean;
@@ -131,10 +146,8 @@ export interface EverMemoryImportToolResult {
   toUpdate: number;
   imported: number;
   updated: number;
-  rejected: Array<{
-    id?: string;
-    reason: string;
-  }>;
+  rejected: EverMemoryImportRejectedItem[];
+  summary: EverMemoryImportSummary;
 }
 
 export interface EverMemoryReviewToolInput {
