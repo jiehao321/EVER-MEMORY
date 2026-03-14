@@ -36,6 +36,7 @@ export const PROJECT_PROGRESS_ROUTE_PATTERNS: RegExp[] = [
 /** Current stage route patterns (explicitly match phase/stage phrases). */
 export const PROJECT_STAGE_ROUTE_PATTERNS: RegExp[] = [
   /\b(current\s+(phase|stage)|which\s+phase|what\s+stage|phase\s+status|stage\s+status|current\s+milestone|current\s+batch)\b/i,
+  /(当前\s*(phase|stage)|现在\s*(phase|stage)|第几\s*(phase|stage))/i,
   /(当前阶段|现在阶段|阶段状态|第几阶段|第几期|第几批|阶段进度|现在在第|处于第|当前批次)/,
 ];
 
@@ -116,6 +117,7 @@ export const WRITE_DECISION_PATTERNS: RegExp[] = [
 /** Next-step cues used in session-end auto-capture. */
 export const NEXT_STEP_PATTERNS: RegExp[] = [
   /\b(next step|follow up|todo|to do|then)\b/i,
+  /\b(next\s+(action|milestone|task)|what'?s?\s+next|what\s+should\s+(i|we)\s+(do|work\s+on)\s+next)\b/i,
   /(下一步|接下来|后续|待办|跟进)/,
 ];
 

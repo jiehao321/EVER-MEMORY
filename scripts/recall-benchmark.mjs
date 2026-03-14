@@ -239,7 +239,7 @@ try {
     const intentType = sample.intentType
       ? String(sample.intentType)
       : (String(sample.category ?? '') === 'next_step' ? 'planning' : 'status_update');
-    const recallResult = app.retrievalService.recallForIntent({
+    const recallResult = await app.retrievalService.recallForIntent({
       query: '',
       scope: {
         userId: scope.userId,
