@@ -103,6 +103,7 @@ OpenClaw Runtime
 
 - 完成 0.0.1 发布基线（代码、文档、门禁、回滚流程）。
 - 完成 recall 路由与排序增强（项目连续性、下一步/进度/决策等查询优化）。
+- 完成 project continuity summary 强化：启动摘要会优先复用已有项目摘要，并用更新的决策/下一步/约束字段覆盖旧值。
 - 完成质量体系脚本化：
   - `teams:status` / `teams:dev` / `teams:release`
   - `quality:gate:openclaw`
@@ -164,6 +165,7 @@ npm run teams:release
 该命令会串联：
 - 类型检查 / 构建 / 单测
 - OpenClaw smoke
+- OpenClaw continuity
 - OpenClaw security gate
 - recall benchmark
 - release pack
@@ -278,6 +280,7 @@ Registered by default:
 
 - Release 0.0.1 baseline (code + docs + gates + rollback procedure).
 - Retrieval routing/ranking improvements for project continuity queries.
+- Project continuity summary composition now reuses stored project summaries and refreshes newer decision/next-step/constraint fields at boot.
 - Scripted quality system (teams/dev/release, OpenClaw smoke/security, recall benchmark).
 - Distribution pipeline completed:
   - npm package published

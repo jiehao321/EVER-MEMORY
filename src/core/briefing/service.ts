@@ -4,6 +4,13 @@ import type { BriefingRepository } from '../../storage/briefingRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { BootBriefing, MemoryItem, MemoryScope } from '../../types.js';
 
+const PROJECT_STATUS_PATTERNS = [
+  /\b(status|progress|phase|stage|milestone|roadmap|batch)\b/i,
+  /(状态|进展|阶段|里程碑|路线图|批次|当前阶段)/u,
+];
+const PROJECT_SUMMARY_REGEX = /^项目连续性摘要（(?<projectName>[^）]+)）：状态：(?<status>.*?)；关键约束：(?<keyConstraint>.*?)；最近决策：(?<recentDecision>.*?)；下一步：(?<nextStep>.*)$/u;
+const SUMMARY_PLACEHOLDER_VALUES = new Set(['待补充', '待确认', '待更新']);
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -51,6 +58,14 @@ function withPrefix(prefix: string, content: string): string {
   return content.startsWith(prefix) ? content : `${prefix}${content}`;
 }
 
+interface ParsedProjectSummary {
+  projectName?: string;
+  status: string;
+  keyConstraint: string;
+  recentDecision: string;
+  nextStep: string;
+}
+
 function includesProjectSummaryTag(memory: MemoryItem): boolean {
   return memory.tags.includes('active_project_summary') || memory.tags.includes('project_continuity');
 }
@@ -77,17 +92,67 @@ function byProject(memories: MemoryItem[], projectName?: string): MemoryItem[] {
   return memories.filter((item) => item.scope.project === projectName);
 }
 
+function normalizeSummaryField(value: string | undefined): string {
+  const normalized = (value ?? '').trim();
+  if (!normalized || SUMMARY_PLACEHOLDER_VALUES.has(normalized)) {
+    return '';
+  }
+  return normalized;
+}
+
+function parseProjectSummary(content: string): ParsedProjectSummary | null {
+  const match = PROJECT_SUMMARY_REGEX.exec(content.trim());
+  if (!match?.groups) {
+    return null;
+  }
+  return {
+    projectName: normalizeSummaryField(match.groups.projectName),
+    status: normalizeSummaryField(match.groups.status),
+    keyConstraint: normalizeSummaryField(match.groups.keyConstraint),
+    recentDecision: normalizeSummaryField(match.groups.recentDecision),
+    nextStep: normalizeSummaryField(match.groups.nextStep),
+  };
+}
+
+function hasProjectStatusSignal(content: string): boolean {
+  return PROJECT_STATUS_PATTERNS.some((pattern) => pattern.test(content));
+}
+
+function pickProjectStatus(projectMemories: MemoryItem[], summaryStatus: string): string {
+  const explicitStatus = projectMemories
+    .map((memory) => stripKnownLabel(memory.content))
+    .find((content) => content && hasProjectStatusSignal(content));
+  if (explicitStatus) {
+    return clip(explicitStatus, 120);
+  }
+  if (summaryStatus) {
+    return clip(summaryStatus, 120);
+  }
+  return stripKnownLabel(firstContent(projectMemories));
+}
+
 function composeProjectSummary(input: {
   projectName?: string;
+  projectSummaries: MemoryItem[];
   projectMemories: MemoryItem[];
   constraints: MemoryItem[];
   decisions: MemoryItem[];
   commitments: MemoryItem[];
 }): string | null {
-  const status = stripKnownLabel(firstContent(input.projectMemories));
-  const keyConstraint = stripKnownLabel(firstContent(input.constraints));
-  const recentDecision = stripKnownLabel(firstContent(input.decisions));
-  const nextStep = stripKnownLabel(firstContent(input.commitments));
+  const parsedSummaries = input.projectSummaries
+    .map((memory) => parseProjectSummary(memory.content))
+    .filter((item): item is ParsedProjectSummary => Boolean(item));
+  const latestParsedSummary = parsedSummaries[0];
+  const status = pickProjectStatus(input.projectMemories, latestParsedSummary?.status ?? '');
+  const keyConstraint = stripKnownLabel(firstContent(input.constraints))
+    || latestParsedSummary?.keyConstraint
+    || '';
+  const recentDecision = stripKnownLabel(firstContent(input.decisions))
+    || latestParsedSummary?.recentDecision
+    || '';
+  const nextStep = stripKnownLabel(firstContent(input.commitments))
+    || latestParsedSummary?.nextStep
+    || '';
   if (!status && !keyConstraint && !recentDecision && !nextStep) {
     return null;
   }
@@ -106,7 +171,7 @@ function composeActiveProjects(
   decisions: MemoryItem[],
   commitments: MemoryItem[],
 ): string[] {
-  const entries = dedupe(projectSummaries.map((memory) => memory.content));
+  const entries: string[] = [];
   const projectNames = gatherProjectNames(scope, projectSummaries, projectMemories, decisions, commitments);
 
   for (const projectName of projectNames) {
@@ -115,6 +180,7 @@ function composeActiveProjects(
     }
     const summary = composeProjectSummary({
       projectName,
+      projectSummaries: byProject(projectSummaries, projectName),
       projectMemories: byProject(projectMemories, projectName),
       constraints: byProject(constraints, projectName),
       decisions: byProject(decisions, projectName),
@@ -127,6 +193,7 @@ function composeActiveProjects(
 
   if (entries.length === 0) {
     const globalFallback = composeProjectSummary({
+      projectSummaries: byProject(projectSummaries),
       projectMemories: byProject(projectMemories),
       constraints: byProject(constraints),
       decisions: byProject(decisions),
@@ -137,7 +204,14 @@ function composeActiveProjects(
     }
   }
 
-  return entries.slice(0, 5);
+  const unstructuredSummaryEntries = projectSummaries
+    .filter((memory) => !parseProjectSummary(memory.content))
+    .map((memory) => memory.content);
+
+  return dedupe([
+    ...entries,
+    ...unstructuredSummaryEntries,
+  ]).slice(0, 5);
 }
 
 function composeRecentContinuity(

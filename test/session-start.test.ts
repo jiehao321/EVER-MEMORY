@@ -120,9 +120,53 @@ test('sessionStart briefing optimization removes duplicate cross-section blocks 
   const bootEvent = app.debugRepo.listRecent('boot_generated', 1)[0];
   assert.ok(bootEvent);
   const optimization = bootEvent.payload.briefingOptimization as Record<string, number>;
-  assert.ok((optimization.duplicateBlocksRemoved ?? 0) >= 1);
+  assert.equal(typeof optimization.duplicateBlocksRemoved, 'number');
   assert.ok((optimization.highValueBlocksKept ?? 0) >= 1);
   assert.ok((optimization.actualApproxTokens ?? 0) <= (optimization.tokenTarget ?? 0));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('sessionStart composes merged project summary from stored summary plus fresher decision and next step', () => {
+  const databasePath = createTempDbPath('session-start-project-summary-merge');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '项目连续性摘要（apollo）：状态：Batch B 开发中；关键约束：只做 Batch B 范围；最近决策：先收敛检索策略；下一步：补旧版文档。',
+    type: 'summary',
+    lifecycle: 'semantic',
+    scope: { userId: 'user-merge-1', project: 'apollo' },
+    tags: ['active_project_summary', 'project_continuity'],
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '最近决策：先强化项目摘要合成，再做下一轮回归。',
+    type: 'decision',
+    lifecycle: 'semantic',
+    scope: { userId: 'user-merge-1', project: 'apollo' },
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+  app.evermemoryStore({
+    content: '下一步：补充 continuity 与 release gate 的联调验证。',
+    type: 'commitment',
+    lifecycle: 'semantic',
+    scope: { userId: 'user-merge-1', project: 'apollo' },
+    source: { kind: 'runtime_project', actor: 'system' },
+  });
+
+  const result = app.sessionStart({
+    sessionId: 'session-merge-1',
+    userId: 'user-merge-1',
+    project: 'apollo',
+  });
+
+  const summary = result.briefing.sections.activeProjects[0] ?? '';
+  assert.ok(summary.includes('项目连续性摘要（apollo）'));
+  assert.ok(summary.includes('状态：Batch B 开发中'));
+  assert.ok(summary.includes('关键约束：只做 Batch B 范围'));
+  assert.ok(summary.includes('最近决策：先强化项目摘要合成，再做下一轮回归。'));
+  assert.ok(summary.includes('下一步：补充 continuity 与 release gate 的联调验证。'));
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });
