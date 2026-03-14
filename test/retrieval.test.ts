@@ -52,18 +52,18 @@ function createMemory(input: {
   };
 }
 
-test('retrieval respects scope and returns empty results without throwing', () => {
+test('retrieval respects scope and returns empty results without throwing', async () => {
   const databasePath = createTempDbPath('retrieval');
   const app = initializeEverMemory({ databasePath });
 
   app.evermemoryStore({ content: '我偏好中文输出。', scope: { userId: 'u1' } });
   app.evermemoryStore({ content: '我偏好英文输出。', scope: { userId: 'u2' } });
 
-  const scoped = app.evermemoryRecall({ query: '中文', scope: { userId: 'u1' } });
+  const scoped = await app.evermemoryRecall({ query: '中文', scope: { userId: 'u1' } });
   assert.equal(scoped.total, 1);
   assert.equal(scoped.items[0]?.scope.userId, 'u1');
 
-  const empty = app.evermemoryRecall({ query: '不存在的记忆', scope: { userId: 'u1' } });
+  const empty = await app.evermemoryRecall({ query: '不存在的记忆', scope: { userId: 'u1' } });
   assert.equal(empty.total, 0);
   assert.deepEqual(empty.items, []);
 
@@ -71,7 +71,7 @@ test('retrieval respects scope and returns empty results without throwing', () =
   rmSync(databasePath, { force: true });
 });
 
-test('retrieval increments retrievalCount and lastAccessedAt for recalled memories', () => {
+test('retrieval increments retrievalCount and lastAccessedAt for recalled memories', async () => {
   const databasePath = createTempDbPath('retrieval-feedback');
   const app = initializeEverMemory({ databasePath });
 
@@ -87,7 +87,7 @@ test('retrieval increments retrievalCount and lastAccessedAt for recalled memori
   assert.equal(before?.stats.retrievalCount, 0);
   assert.equal(before?.timestamps.lastAccessedAt, undefined);
 
-  const recall = app.evermemoryRecall({
+  const recall = await app.evermemoryRecall({
     query: '质量门禁',
     scope: { userId: 'u-retrieval-feedback', project: 'evermemory' },
     mode: 'keyword',
@@ -103,7 +103,7 @@ test('retrieval increments retrievalCount and lastAccessedAt for recalled memori
   rmSync(databasePath, { force: true });
 });
 
-test('retrieval scope isolation keeps project/user/global records separated', () => {
+test('retrieval scope isolation keeps project/user/global records separated', async () => {
   const databasePath = createTempDbPath('retrieval-scope-isolation');
   const app = initializeEverMemory({ databasePath });
 
@@ -123,7 +123,7 @@ test('retrieval scope isolation keeps project/user/global records separated', ()
     scope: { global: true },
   });
 
-  const projectA = app.evermemoryRecall({
+  const projectA = await app.evermemoryRecall({
     query: '发布窗口',
     scope: { userId: 'u-scope-1', project: 'project-a' },
     mode: 'keyword',
@@ -132,7 +132,7 @@ test('retrieval scope isolation keeps project/user/global records separated', ()
   assert.equal(projectA.total, 1);
   assert.equal(projectA.items[0]?.scope.project, 'project-a');
 
-  const projectB = app.evermemoryRecall({
+  const projectB = await app.evermemoryRecall({
     query: '发布窗口',
     scope: { userId: 'u-scope-1', project: 'project-b' },
     mode: 'keyword',
@@ -141,7 +141,7 @@ test('retrieval scope isolation keeps project/user/global records separated', ()
   assert.equal(projectB.total, 1);
   assert.equal(projectB.items[0]?.scope.project, 'project-b');
 
-  const global = app.evermemoryRecall({
+  const global = await app.evermemoryRecall({
     query: '高风险动作',
     scope: { global: true },
     mode: 'keyword',
@@ -154,7 +154,7 @@ test('retrieval scope isolation keeps project/user/global records separated', ()
   rmSync(databasePath, { force: true });
 });
 
-test('retrieval enforces configured maxRecall across direct recall and intent recall', () => {
+test('retrieval enforces configured maxRecall across direct recall and intent recall', async () => {
   const databasePath = createTempDbPath('retrieval-max-recall');
   const app = initializeEverMemory({
     databasePath,
@@ -177,7 +177,7 @@ test('retrieval enforces configured maxRecall across direct recall and intent re
     type: 'project',
   });
 
-  const direct = app.evermemoryRecall({
+  const direct = await app.evermemoryRecall({
     query: '发布计划',
     scope: { userId: 'u-max-recall', project: 'evermemory' },
     mode: 'keyword',
@@ -211,7 +211,7 @@ test('retrieval enforces configured maxRecall across direct recall and intent re
     },
   };
 
-  const fromIntent = app.retrievalService.recallForIntent({
+  const fromIntent = await app.retrievalService.recallForIntent({
     query: '',
     scope: { userId: 'u-max-recall', project: 'evermemory' },
     intent: deepIntent,
@@ -228,7 +228,7 @@ test('retrieval enforces configured maxRecall across direct recall and intent re
   rmSync(databasePath, { force: true });
 });
 
-test('retrieval ranking prefers broader keyword coverage and stronger quality signals', () => {
+test('retrieval ranking prefers broader keyword coverage and stronger quality signals', async () => {
   const databasePath = createTempDbPath('retrieval-ranking');
   const app = initializeEverMemory({ databasePath });
 
@@ -271,7 +271,7 @@ test('retrieval ranking prefers broader keyword coverage and stronger quality si
   app.memoryRepo.insert(staleCoverage);
   app.memoryRepo.insert(highCoverage);
 
-  const result = app.evermemoryRecall({
+  const result = await app.evermemoryRecall({
     query: '检索 排序',
     scope: { userId: 'u-rank-1' },
     limit: 5,
@@ -289,7 +289,7 @@ test('retrieval ranking prefers broader keyword coverage and stronger quality si
   rmSync(databasePath, { force: true });
 });
 
-test('retrieval ranking respects type priority order when request defines types', () => {
+test('retrieval ranking respects type priority order when request defines types', async () => {
   const databasePath = createTempDbPath('retrieval-type-priority');
   const app = initializeEverMemory({ databasePath });
   const timestamp = new Date().toISOString();
@@ -316,7 +316,7 @@ test('retrieval ranking respects type priority order when request defines types'
   app.memoryRepo.insert(projectMemory);
   app.memoryRepo.insert(constraintMemory);
 
-  const result = app.retrievalService.recall({
+  const result = await app.retrievalService.recall({
     query: '确认',
     scope: { userId: 'u-rank-2' },
     types: ['constraint', 'project'],
@@ -331,7 +331,7 @@ test('retrieval ranking respects type priority order when request defines types'
   rmSync(databasePath, { force: true });
 });
 
-test('retrieval keyword ranking weights are configurable via config', () => {
+test('retrieval keyword ranking weights are configurable via config', async () => {
   const defaultDbPath = createTempDbPath('retrieval-weight-default');
   const weightedDbPath = createTempDbPath('retrieval-weight-custom');
   const defaultApp = initializeEverMemory({ databasePath: defaultDbPath });
@@ -385,8 +385,8 @@ test('retrieval keyword ranking weights are configurable via config', () => {
     limit: 5,
   };
 
-  const defaultResult = defaultApp.evermemoryRecall(request);
-  const weightedResult = weightedApp.evermemoryRecall(request);
+  const defaultResult = await defaultApp.evermemoryRecall(request);
+  const weightedResult = await weightedApp.evermemoryRecall(request);
 
   assert.equal(defaultResult.items[0]?.type, 'project');
   assert.equal(weightedResult.items[0]?.type, 'constraint');
@@ -397,7 +397,7 @@ test('retrieval keyword ranking weights are configurable via config', () => {
   rmSync(weightedDbPath, { force: true });
 });
 
-test('structured mode ignores keyword query and returns filter-matched memories', () => {
+test('structured mode ignores keyword query and returns filter-matched memories', async () => {
   const databasePath = createTempDbPath('retrieval-structured-mode');
   const app = initializeEverMemory({ databasePath });
 
@@ -412,7 +412,7 @@ test('structured mode ignores keyword query and returns filter-matched memories'
     type: 'constraint',
   });
 
-  const keyword = app.evermemoryRecall({
+  const keyword = await app.evermemoryRecall({
     query: '完全不存在的关键词',
     scope: { userId: 'u-rank-3' },
     mode: 'keyword',
@@ -420,7 +420,7 @@ test('structured mode ignores keyword query and returns filter-matched memories'
   });
   assert.equal(keyword.total, 0);
 
-  const structured = app.evermemoryRecall({
+  const structured = await app.evermemoryRecall({
     query: '完全不存在的关键词',
     scope: { userId: 'u-rank-3' },
     mode: 'structured',
@@ -432,7 +432,7 @@ test('structured mode ignores keyword query and returns filter-matched memories'
   rmSync(databasePath, { force: true });
 });
 
-test('hybrid mode falls back to keyword when semantic sidecar is disabled', () => {
+test('hybrid mode falls back to keyword when semantic sidecar is disabled', async () => {
   const databasePath = createTempDbPath('retrieval-hybrid-fallback');
   const app = initializeEverMemory({ databasePath });
 
@@ -442,7 +442,7 @@ test('hybrid mode falls back to keyword when semantic sidecar is disabled', () =
     type: 'constraint',
   });
 
-  const result = app.evermemoryRecall({
+  const result = await app.evermemoryRecall({
     query: '确认',
     scope: { userId: 'u-rank-4' },
     mode: 'hybrid',
@@ -460,7 +460,7 @@ test('hybrid mode falls back to keyword when semantic sidecar is disabled', () =
   rmSync(databasePath, { force: true });
 });
 
-test('hybrid mode uses semantic sidecar hits when enabled', () => {
+test('hybrid mode uses semantic sidecar hits when enabled', async () => {
   const databasePath = createTempDbPath('retrieval-hybrid-enabled');
   const app = initializeEverMemory({
     databasePath,
@@ -482,7 +482,7 @@ test('hybrid mode uses semantic sidecar hits when enabled', () => {
     type: 'style',
   });
 
-  const result = app.evermemoryRecall({
+  const result = await app.evermemoryRecall({
     query: '回滚 发布',
     scope: { userId: 'u-rank-5', project: 'evermemory' },
     mode: 'hybrid',
@@ -502,7 +502,7 @@ test('hybrid mode uses semantic sidecar hits when enabled', () => {
   rmSync(databasePath, { force: true });
 });
 
-test('hybrid retrieval weights are normalized and emitted in debug payload', () => {
+test('hybrid retrieval weights are normalized and emitted in debug payload', async () => {
   const databasePath = createTempDbPath('retrieval-hybrid-weights');
   const app = initializeEverMemory({
     databasePath,
@@ -526,7 +526,7 @@ test('hybrid retrieval weights are normalized and emitted in debug payload', () 
     type: 'constraint',
   });
 
-  const result = app.evermemoryRecall({
+  const result = await app.evermemoryRecall({
     query: '部署 回滚',
     scope: { userId: 'u-rank-hybrid-weights', project: 'evermemory' },
     mode: 'hybrid',
@@ -545,7 +545,7 @@ test('hybrid retrieval weights are normalized and emitted in debug payload', () 
   rmSync(databasePath, { force: true });
 });
 
-test('recallForIntent deep mode derives non-empty focused query', () => {
+test('recallForIntent deep mode derives non-empty focused query', async () => {
   const databasePath = createTempDbPath('retrieval-deep-query');
   const app = initializeEverMemory({ databasePath });
 
@@ -580,7 +580,7 @@ test('recallForIntent deep mode derives non-empty focused query', () => {
     },
   };
 
-  const result = app.retrievalService.recallForIntent({
+  const result = await app.retrievalService.recallForIntent({
     query: '',
     scope: { userId: 'u-rank-6', project: 'evermemory' },
     intent: deepIntent,
@@ -596,7 +596,7 @@ test('recallForIntent deep mode derives non-empty focused query', () => {
   rmSync(databasePath, { force: true });
 });
 
-test('recallForIntent deep mode ignores timestamp prefix numeric noise and keeps semantic token', () => {
+test('recallForIntent deep mode ignores timestamp prefix numeric noise and keeps semantic token', async () => {
   const databasePath = createTempDbPath('retrieval-deep-query-timestamp');
   const app = initializeEverMemory({ databasePath });
   const tag = 'RDLPROG-TST-20260313';
@@ -632,7 +632,7 @@ test('recallForIntent deep mode ignores timestamp prefix numeric noise and keeps
     },
   };
 
-  const result = app.retrievalService.recallForIntent({
+  const result = await app.retrievalService.recallForIntent({
     query: '',
     scope: { userId: 'u-rank-7', project: 'evermemory' },
     intent: deepIntent,
@@ -648,7 +648,7 @@ test('recallForIntent deep mode ignores timestamp prefix numeric noise and keeps
   rmSync(databasePath, { force: true });
 });
 
-test('project-oriented recall routes project progress/current stage/next step/last decision queries with debug evidence', () => {
+test('project-oriented recall routes project progress/current stage/next step/last decision queries with debug evidence', async () => {
   const databasePath = createTempDbPath('retrieval-project-routes');
   const app = initializeEverMemory({ databasePath });
 
@@ -680,7 +680,7 @@ test('project-oriented recall routes project progress/current stage/next step/la
     source: { kind: 'runtime_project', actor: 'system' },
   });
 
-  const progress = app.messageReceived({
+  const progress = await app.messageReceived({
     sessionId: 'session-route-1',
     messageId: 'msg-route-progress',
     text: '项目进展到哪里了？',
@@ -688,7 +688,7 @@ test('project-oriented recall routes project progress/current stage/next step/la
   });
   assert.ok(progress.recall.total >= 1);
 
-  const stage = app.messageReceived({
+  const stage = await app.messageReceived({
     sessionId: 'session-route-1',
     messageId: 'msg-route-stage',
     text: '当前阶段是什么？',
@@ -696,7 +696,7 @@ test('project-oriented recall routes project progress/current stage/next step/la
   });
   assert.ok(stage.recall.total >= 1);
 
-  const nextStep = app.messageReceived({
+  const nextStep = await app.messageReceived({
     sessionId: 'session-route-1',
     messageId: 'msg-route-next',
     text: '下一步做什么？',
@@ -704,7 +704,7 @@ test('project-oriented recall routes project progress/current stage/next step/la
   });
   assert.ok(nextStep.recall.total >= 1);
 
-  const decision = app.messageReceived({
+  const decision = await app.messageReceived({
     sessionId: 'session-route-1',
     messageId: 'msg-route-decision',
     text: '上次最后决策是什么？',
@@ -724,7 +724,7 @@ test('project-oriented recall routes project progress/current stage/next step/la
   rmSync(databasePath, { force: true });
 });
 
-test('project route does not trigger on generic next-step question without project context', () => {
+test('project route does not trigger on generic next-step question without project context', async () => {
   const databasePath = createTempDbPath('retrieval-route-gating');
   const app = initializeEverMemory({ databasePath });
 
@@ -735,7 +735,7 @@ test('project route does not trigger on generic next-step question without proje
     source: { kind: 'manual', actor: 'system' },
   });
 
-  const result = app.evermemoryRecall({
+  const result = await app.evermemoryRecall({
     query: '下一步做什么？',
     scope: { userId: 'u-route-gating-1' },
     mode: 'keyword',
@@ -752,7 +752,7 @@ test('project route does not trigger on generic next-step question without proje
   rmSync(databasePath, { force: true });
 });
 
-test('project-oriented recall suppresses test samples when runtime memories are sufficient', () => {
+test('project-oriented recall suppresses test samples when runtime memories are sufficient', async () => {
   const databasePath = createTempDbPath('retrieval-test-pollution');
   const app = initializeEverMemory({ databasePath });
 
@@ -784,7 +784,7 @@ test('project-oriented recall suppresses test samples when runtime memories are 
     tags: ['smoke'],
   });
 
-  const result = app.evermemoryRecall({
+  const result = await app.evermemoryRecall({
     query: '项目进展',
     scope: { userId: 'u-pollution-1', project: 'evermemory' },
     mode: 'keyword',
@@ -807,7 +807,7 @@ test('project-oriented recall suppresses test samples when runtime memories are 
   rmSync(databasePath, { force: true });
 });
 
-test('project-oriented recall suppresses low-value runtime noise and records policy evidence', () => {
+test('project-oriented recall suppresses low-value runtime noise and records policy evidence', async () => {
   const databasePath = createTempDbPath('retrieval-low-value-noise');
   const app = initializeEverMemory({ databasePath });
 
@@ -839,7 +839,7 @@ test('project-oriented recall suppresses low-value runtime noise and records pol
     source: { kind: 'runtime_project', actor: 'system' },
   });
 
-  const result = app.evermemoryRecall({
+  const result = await app.evermemoryRecall({
     query: '项目进展',
     scope: { userId: 'u-low-noise-1', project: 'evermemory' },
     mode: 'keyword',
@@ -864,7 +864,7 @@ test('project-oriented recall suppresses low-value runtime noise and records pol
   rmSync(databasePath, { force: true });
 });
 
-test('project-oriented ranking boosts summary/project/decision over non-project constraint blocks', () => {
+test('project-oriented ranking boosts summary/project/decision over non-project constraint blocks', async () => {
   const databasePath = createTempDbPath('retrieval-project-priority');
   const app = initializeEverMemory({ databasePath });
   const now = new Date().toISOString();
@@ -913,7 +913,7 @@ test('project-oriented ranking boosts summary/project/decision over non-project 
   app.memoryRepo.insert(projectState);
   app.memoryRepo.insert(decision);
 
-  const result = app.evermemoryRecall({
+  const result = await app.evermemoryRecall({
     query: '项目进展',
     scope: { userId: 'u-priority-1', project: 'evermemory' },
     mode: 'keyword',

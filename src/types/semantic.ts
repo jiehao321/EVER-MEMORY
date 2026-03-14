@@ -11,3 +11,14 @@ export interface SemanticSearchHit {
   score: number;
   matchedTokens: string[];
 }
+
+export interface SemanticEmbeddingRecord {
+  values: Float32Array;
+  model: string;
+  dimensions: number;
+}
+
+export interface SemanticEmbeddingSearchHit {
+  memoryId: string;
+  score: number;
+}
