@@ -93,8 +93,8 @@ test('sessionEnd auto memory extraction prefers intent raw text and skips operat
     messageId: 'session-end-noise-msg-1',
     scope: { userId: 'u-session-end-noise', project: 'evermemory' },
     inputText: 'Skills store policy (operator configured): Do not claim exclusivity.',
-    actionSummary: '[[reply_to_current]] 确认：项目代号CLEANMEM-1，顺序先保存后衰减。',
-    outcomeSummary: 'run_success',
+    actionSummary: '[[reply_to_current]] 确认：项目代号CLEANMEM-1，当前阶段：Batch 1；最近决策：先保存后衰减；下一步：把 auto capture 保护规则跑一遍。',
+    outcomeSummary: '状态：Batch 1 smoke 完成，关键约束：上线前先跑一次 regression。',
     evidenceRefs: ['session-end-noise-msg-1'],
   });
 
@@ -198,6 +198,61 @@ test('project continuity recall stays stable across sessions for progress/stage/
     const optimization = event.payload.recallOptimization as { routeAnchorItemsSelected?: number } | undefined;
     return (optimization?.routeAnchorItemsSelected ?? 0) >= 1;
   }));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('sessionEnd auto capture maintains accept rate and blocks placeholder summaries', async () => {
+  const databasePath = createTempDbPath('session-end-accept-rate');
+  const app = initializeEverMemory({ databasePath });
+
+  await app.messageReceived({
+    sessionId: 'session-accept-rate-1',
+    messageId: 'msg-accept-rate-0',
+    text: '项目 Titan 进入 Stage 3，需要把记忆路由与策略增强落地。',
+    scope: { userId: 'u-accept-rate', project: 'titan' },
+  });
+
+  const quality = app.sessionEnd({
+    sessionId: 'session-accept-rate-1',
+    messageId: 'msg-accept-rate-1',
+    scope: { userId: 'u-accept-rate', project: 'titan' },
+    inputText: '项目状态：Stage 3，关键约束是先验证 autoMemory，再推广。',
+    actionSummary: '最近决策：我们先做 auto_capture 强化，再开放下一批测试。',
+    outcomeSummary: '下一步：安排回归测试并固化项目摘要模版。',
+    evidenceRefs: ['msg-accept-rate-1'],
+  });
+
+  assert.ok(quality.autoMemory);
+  assert.ok((quality.autoMemory?.generated ?? 0) >= 1);
+  const acceptRate = (quality.autoMemory?.accepted ?? 0) / (quality.autoMemory?.generated ?? 1);
+  assert.ok(acceptRate >= 0.7);
+  assert.ok((quality.autoMemory?.acceptedByKind?.project_summary ?? 0) >= 1);
+  const titanMemories = app.memoryRepo.search({
+    scope: { userId: 'u-accept-rate', project: 'titan' },
+    types: ['summary'],
+    archived: false,
+    activeOnly: true,
+    limit: 10,
+  });
+  const titanSummary = titanMemories.find((item) => item.tags.includes('active_project_summary'));
+  assert.ok(titanSummary);
+  assert.ok(!titanSummary?.content.includes('待补充'));
+  assert.ok(!titanSummary?.content.includes('待确认'));
+
+  const placeholder = app.sessionEnd({
+    sessionId: 'session-accept-rate-2',
+    messageId: 'msg-accept-rate-2',
+    scope: { userId: 'u-accept-rate', project: 'titan' },
+    inputText: '项目状态：待补充，等下再说。',
+    actionSummary: '继续推进当前事项，下一步：待确认。',
+    outcomeSummary: 'run_success',
+    evidenceRefs: ['msg-accept-rate-2'],
+  });
+
+  assert.equal(placeholder.autoMemory?.generatedByKind?.project_summary ?? 0, 0);
+  assert.equal(placeholder.autoMemory?.acceptedByKind?.project_summary ?? 0, 0);
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

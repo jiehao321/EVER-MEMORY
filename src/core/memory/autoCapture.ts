@@ -125,12 +125,29 @@ function normalizeAssistantOutput(value: string | undefined): string {
 function buildProjectSummaryContent(input: {
   projectName?: string;
   status: string;
-  keyConstraint: string;
-  recentDecision: string;
-  nextStep: string;
+  keyConstraint?: string;
+  recentDecision?: string;
+  nextStep?: string;
 }): string {
   const projectName = input.projectName ?? 'current';
-  return `项目连续性摘要（${projectName}）：状态：${input.status}；关键约束：${input.keyConstraint}；最近决策：${input.recentDecision}；下一步：${input.nextStep}`;
+  const parts = [`项目连续性摘要（${projectName}）`];
+  const status = input.status?.trim();
+  if (status) {
+    parts.push(`状态：${status}`);
+  }
+  const keyConstraint = input.keyConstraint?.trim();
+  if (keyConstraint && !keyConstraint.includes('确保关键')) {
+    parts.push(`关键约束：${keyConstraint}`);
+  }
+  const recentDecision = input.recentDecision?.trim();
+  if (recentDecision && recentDecision !== '待补充') {
+    parts.push(`最近决策：${recentDecision}`);
+  }
+  const nextStep = input.nextStep?.trim();
+  if (nextStep && nextStep !== '待确认') {
+    parts.push(`下一步：${nextStep}`);
+  }
+  return parts.join('；');
 }
 
 function deriveNextStep(
@@ -182,10 +199,44 @@ function hasProjectStatusSignal(value: string): boolean {
   return containsAny(value, PROJECT_STATUS_PATTERNS);
 }
 
+function extractSummaryField(content: string, label: string): string {
+  const start = content.indexOf(label);
+  if (start === -1) {
+    return '';
+  }
+  const valueStart = start + label.length;
+  const delimiterIndex = content.indexOf('；', valueStart);
+  const raw = delimiterIndex === -1 ? content.slice(valueStart) : content.slice(valueStart, delimiterIndex);
+  return raw.trim();
+}
+
+function isPlaceholderFieldValue(value: string): boolean {
+  if (!value) {
+    return true;
+  }
+  const normalized = value.trim();
+  return !normalized
+    || normalized.startsWith('待')
+    || normalized.includes('待补充')
+    || normalized.includes('待确认')
+    || normalized.startsWith('确保关键');
+}
+
 function evaluateCandidateQuality(candidate: AutoMemoryCandidate): number {
-  const contentLength = candidate.memory.content.trim().length;
-  if (contentLength < AUTO_CAPTURE_MIN_CONTENT_LENGTH) {
+  const content = candidate.memory.content.trim();
+  if (content.length < AUTO_CAPTURE_MIN_CONTENT_LENGTH) {
     return 0;
+  }
+  if (candidate.kind === 'project_summary') {
+    if (content.includes('待补充') && content.includes('待确认')) {
+      return 0;
+    }
+    const summaryFields = ['状态：', '关键约束：', '最近决策：', '下一步：'];
+    const filled = summaryFields.filter((field) => {
+      const value = extractSummaryField(content, field);
+      return value && !isPlaceholderFieldValue(value);
+    });
+    return filled.length >= 3 ? 1 : 0;
   }
   return 1;
 }
@@ -266,7 +317,9 @@ function buildAutoMemoryCandidates(
       || (constraintHint ? '先复述修正点并确认，再继续执行。' : ''),
     AUTO_CAPTURE_CLIP_OUTCOME,
   );
-  const recentDecision = decisionHint ? clip(actionSummary || inputText, AUTO_CAPTURE_CLIP_OUTCOME) : '';
+  const fallbackDecisionSource = outcomeSummary && !isGenericOutcome(outcomeSummary) ? outcomeSummary : '';
+  const recentDecisionSource = decisionHint ? (actionSummary || inputText) : fallbackDecisionSource;
+  const recentDecision = recentDecisionSource ? clip(recentDecisionSource, AUTO_CAPTURE_CLIP_OUTCOME) : '';
   const projectStatusSource = [
     inputText && hasProjectStatusSignal(inputText) ? inputText : '',
     actionSummary && hasProjectStatusSignal(actionSummary) ? actionSummary : '',
@@ -389,9 +442,9 @@ function buildAutoMemoryCandidates(
         content: buildProjectSummaryContent({
           projectName,
           status: projectStatus,
-          keyConstraint: keyConstraint || '确保关键约束先确认',
-          recentDecision: recentDecision || '待补充',
-          nextStep: nextStep || '待确认',
+          keyConstraint: keyConstraint || undefined,
+          recentDecision: recentDecision || undefined,
+          nextStep: nextStep || undefined,
         }),
         type: 'summary',
         lifecycle: 'semantic',
