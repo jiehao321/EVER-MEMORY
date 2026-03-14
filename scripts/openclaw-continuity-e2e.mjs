@@ -6,6 +6,14 @@ import { cleanupOpenClawTestArtifacts } from './openclaw-test-cleanup.mjs';
 
 const DEFAULT_DB_PATH = '/root/.openclaw/memory/evermemory/store/evermemory.db';
 const DEFAULT_AGENT_ID = process.env.EVERMEMORY_AGENT_ID ?? 'main';
+const RETRYABLE_TURN_PATTERNS = [
+  'agent returned empty payload text',
+  'agent run: empty output',
+  'agent run: output is not valid JSON',
+  'openclaw command failed: openclaw agent',
+];
+const OPENCLAW_RETRY_ATTEMPTS = 3;
+const OPENCLAW_RETRY_DELAY_MS = 750;
 
 function fail(message, detail) {
   const error = new Error(message);
@@ -49,6 +57,12 @@ function parseLooseJson(raw, context) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
+}
+
 function runTurn(agentId, sessionId, message) {
   const raw = runOpenClaw([
     'agent',
@@ -81,6 +95,27 @@ function runTurn(agentId, sessionId, message) {
     text,
     sessionId: actualSessionId,
   };
+}
+
+function isRetryableTurnError(error) {
+  const detail = error instanceof Error ? `${error.message} ${String(error.cause ?? '')}` : String(error);
+  return RETRYABLE_TURN_PATTERNS.some((pattern) => detail.includes(pattern));
+}
+
+async function runTurnWithRetry(agentId, sessionId, message) {
+  let lastError;
+  for (let attempt = 1; attempt <= OPENCLAW_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return runTurn(agentId, sessionId, message);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= OPENCLAW_RETRY_ATTEMPTS || !isRetryableTurnError(error)) {
+        throw error;
+      }
+      await sleep(OPENCLAW_RETRY_DELAY_MS);
+    }
+  }
+  throw lastError;
 }
 
 function sqlMinutesAgo(minutes) {
@@ -193,19 +228,19 @@ try {
     fail('evermemory plugin is not loaded');
   }
 
-  const t1 = runTurn(
+  const t1 = await runTurnWithRetry(
     agentId,
     sessionId,
     `项目${tag}：当前阶段是 Batch-B 收口，关键约束是不能扩大范围，最近决策是先做真实回归，下一步是完成连续性验证报告。`,
   );
   trackedSessionIds.add(t1.sessionId);
-  const t2 = runTurn(
+  const t2 = await runTurnWithRetry(
     agentId,
     t1.sessionId,
     `请汇报 ${tag} 的当前阶段和下一步。`,
   );
   trackedSessionIds.add(t2.sessionId);
-  const t3 = runTurn(
+  const t3 = await runTurnWithRetry(
     agentId,
     t2.sessionId,
     `再复述一下 ${tag} 的关键约束和最近决策。`,

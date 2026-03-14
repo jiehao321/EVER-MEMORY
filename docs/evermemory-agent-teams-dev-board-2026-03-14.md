@@ -73,7 +73,7 @@
 ### Batch C1
 - Owner: Team C
 - 任务：release 流水线提速
-- 状态：待开始
+- 状态：进行中
 - 边界：
   - 不降低门禁强度
   - 只优化执行顺序、缓存、产物稳定性
@@ -95,7 +95,9 @@
 当前正式启动：
 - `Batch A2` project continuity summary 强化
 - `Batch A3` continuity 验证接入 release gate
+- `Batch C1` agent-teams 协调锁与流水线稳定性增强
 
-待 `Batch A2/A3` 收口后，再进入：
-- `Batch B1`
+下一批收口重点：
+- `Batch A2`
+- `Batch A3`
 - `Batch C1`

@@ -1,11 +1,14 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { recordEvidence } from './report-evidence.mjs';
 
 const SUPPORTED_MODES = new Set(['status', 'dev', 'release']);
+const COORDINATION_LOCK_NAME = 'artifact-workspace';
+const COORDINATION_LOCK_WAIT_MS = 250;
+const COORDINATION_LOCK_STALE_MS = 30 * 60 * 1000;
 
 const TEAM_LANES = [
   {
@@ -164,55 +167,161 @@ function recommendations(mode, git) {
   return items;
 }
 
-const parsed = parseArgs(process.argv.slice(2));
-const git = gitStatusSummary();
-const pipeline = pipelineForMode(parsed.mode);
-const steps = [];
-let ok = git.unresolvedCount === 0;
+function sleep(ms) {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
+}
 
-for (const step of pipeline) {
-  console.log(`[evermemory:agent-teams] running ${step.name}`);
-  const result = run(step.command, step.args);
-  steps.push({ name: step.name, ...result });
-  if (!result.ok) {
-    ok = false;
-    break;
+function lockDirPath(name) {
+  return resolve('.openclaw/locks', `${name}.lock`);
+}
+
+function ownerFilePath(lockPath) {
+  return resolve(lockPath, 'owner.json');
+}
+
+function readLockOwner(lockPath) {
+  try {
+    return JSON.parse(readFileSync(ownerFilePath(lockPath), 'utf8'));
+  } catch {
+    return null;
   }
 }
 
-const report = {
-  generatedAt: new Date().toISOString(),
-  mode: parsed.mode,
-  ok,
-  nodeVersion: process.version,
-  cwd: process.cwd(),
-  git,
-  lanes: TEAM_LANES,
-  steps,
-  recommendations: recommendations(parsed.mode, git),
-};
-
-const reportPath = resolve(parsed.reportPath ?? resolveDefaultReportPath(parsed.mode));
-mkdirSync(dirname(reportPath), { recursive: true });
-writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-
-recordEvidence({
-  runner: 'agent-teams',
-  ok,
-  reportPath,
-  mode: parsed.mode,
-  stepCount: steps.length,
-  dirtyFiles: git.dirtyFiles,
-  unresolvedCount: git.unresolvedCount,
-});
-
-console.log(`[evermemory:agent-teams] mode=${parsed.mode}`);
-console.log(`[evermemory:agent-teams] gitDirty=${git.dirty} dirtyFiles=${git.dirtyFiles}`);
-console.log(`[evermemory:agent-teams] unresolvedConflicts=${git.unresolvedCount}`);
-console.log(`[evermemory:agent-teams] report=${reportPath}`);
-
-if (!ok) {
-  fail('quality supervision failed');
+function isPidAlive(pid) {
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(error && typeof error === 'object' && 'code' in error && error.code === 'ESRCH');
+  }
 }
 
-console.log('[evermemory:agent-teams] PASS');
+async function acquireCoordinationLock(mode) {
+  if (mode === 'status') {
+    return null;
+  }
+
+  const path = lockDirPath(COORDINATION_LOCK_NAME);
+  mkdirSync(dirname(path), { recursive: true });
+  const startedAt = new Date().toISOString();
+  const waitStart = Date.now();
+
+  while (true) {
+    try {
+      mkdirSync(path);
+      writeFileSync(ownerFilePath(path), `${JSON.stringify({
+        pid: process.pid,
+        mode,
+        startedAt,
+        cwd: process.cwd(),
+      }, null, 2)}\n`, 'utf8');
+      return {
+        name: COORDINATION_LOCK_NAME,
+        path,
+        acquiredAt: new Date().toISOString(),
+        waitedMs: Date.now() - waitStart,
+      };
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST')) {
+        throw error;
+      }
+      const owner = readLockOwner(path);
+      const ownerStartedAtMs = owner?.startedAt ? Date.parse(owner.startedAt) : Number.NaN;
+      const staleByTime = Number.isFinite(ownerStartedAtMs)
+        ? (Date.now() - ownerStartedAtMs) > COORDINATION_LOCK_STALE_MS
+        : false;
+      const staleByPid = owner?.pid ? !isPidAlive(owner.pid) : false;
+      if (staleByTime || staleByPid) {
+        rmSync(path, { recursive: true, force: true });
+        continue;
+      }
+      await sleep(COORDINATION_LOCK_WAIT_MS);
+    }
+  }
+}
+
+function releaseCoordinationLock(lock) {
+  if (!lock) {
+    return;
+  }
+  rmSync(lock.path, { recursive: true, force: true });
+}
+
+async function main() {
+  const parsed = parseArgs(process.argv.slice(2));
+  const git = gitStatusSummary();
+  const pipeline = pipelineForMode(parsed.mode);
+  const steps = [];
+  let ok = git.unresolvedCount === 0;
+  let coordinationLock = null;
+
+  try {
+    coordinationLock = await acquireCoordinationLock(parsed.mode);
+    if (coordinationLock) {
+      console.log(`[evermemory:agent-teams] coordinationLock=${coordinationLock.name} waitedMs=${coordinationLock.waitedMs}`);
+    }
+
+    for (const step of pipeline) {
+      console.log(`[evermemory:agent-teams] running ${step.name}`);
+      const result = run(step.command, step.args);
+      steps.push({ name: step.name, ...result });
+      if (!result.ok) {
+        ok = false;
+        break;
+      }
+    }
+  } finally {
+    releaseCoordinationLock(coordinationLock);
+  }
+
+  const report = {
+    generatedAt: new Date().toISOString(),
+    mode: parsed.mode,
+    ok,
+    nodeVersion: process.version,
+    cwd: process.cwd(),
+    git,
+    lanes: TEAM_LANES,
+    steps,
+    coordinationLock: coordinationLock
+      ? {
+          name: coordinationLock.name,
+          waitedMs: coordinationLock.waitedMs,
+          acquiredAt: coordinationLock.acquiredAt,
+        }
+      : undefined,
+    recommendations: recommendations(parsed.mode, git),
+  };
+
+  const reportPath = resolve(parsed.reportPath ?? resolveDefaultReportPath(parsed.mode));
+  mkdirSync(dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+
+  recordEvidence({
+    runner: 'agent-teams',
+    ok,
+    reportPath,
+    mode: parsed.mode,
+    stepCount: steps.length,
+    dirtyFiles: git.dirtyFiles,
+    unresolvedCount: git.unresolvedCount,
+  });
+
+  console.log(`[evermemory:agent-teams] mode=${parsed.mode}`);
+  console.log(`[evermemory:agent-teams] gitDirty=${git.dirty} dirtyFiles=${git.dirtyFiles}`);
+  console.log(`[evermemory:agent-teams] unresolvedConflicts=${git.unresolvedCount}`);
+  console.log(`[evermemory:agent-teams] report=${reportPath}`);
+
+  if (!ok) {
+    fail('quality supervision failed');
+  }
+
+  console.log('[evermemory:agent-teams] PASS');
+}
+
+await main();
