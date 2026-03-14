@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import Database from 'better-sqlite3';
 import { cleanupOpenClawTestArtifacts } from './openclaw-test-cleanup.mjs';
+import { recordEvidence } from './report-evidence.mjs';
 
 const DEFAULT_DB_PATH = '/root/.openclaw/memory/evermemory/store/evermemory.db';
 const DEFAULT_AGENT_ID = process.env.EVERMEMORY_AGENT_ID ?? 'main';
+const DEFAULT_LOOKBACK_MINUTES = 15;
 const RETRYABLE_TURN_PATTERNS = [
   'agent returned empty payload text',
   'agent run: empty output',
@@ -21,6 +25,87 @@ function fail(message, detail) {
     error.cause = detail;
   }
   throw error;
+}
+
+function parsePositiveInt(raw, flagName) {
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value <= 0) {
+    fail(`invalid value for ${flagName}: ${raw}`);
+  }
+  return value;
+}
+
+function parseArgs(argv) {
+  const parsed = {
+    dbPath: process.env.EVERMEMORY_DB_PATH ?? DEFAULT_DB_PATH,
+    agentId: DEFAULT_AGENT_ID,
+    lookbackMinutes: DEFAULT_LOOKBACK_MINUTES,
+    reportPath: undefined,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg.startsWith('--db-path=')) {
+      parsed.dbPath = arg.slice('--db-path='.length);
+      continue;
+    }
+    if (arg === '--db-path') {
+      const next = argv[index + 1];
+      if (!next) {
+        fail('missing value for --db-path');
+      }
+      parsed.dbPath = next;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--agent=')) {
+      parsed.agentId = arg.slice('--agent='.length);
+      continue;
+    }
+    if (arg === '--agent') {
+      const next = argv[index + 1];
+      if (!next) {
+        fail('missing value for --agent');
+      }
+      parsed.agentId = next;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--lookback-minutes=')) {
+      parsed.lookbackMinutes = parsePositiveInt(arg.slice('--lookback-minutes='.length), '--lookback-minutes');
+      continue;
+    }
+    if (arg === '--lookback-minutes') {
+      const next = argv[index + 1];
+      if (!next) {
+        fail('missing value for --lookback-minutes');
+      }
+      parsed.lookbackMinutes = parsePositiveInt(next, '--lookback-minutes');
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--report=')) {
+      parsed.reportPath = arg.slice('--report='.length);
+      continue;
+    }
+    if (arg === '--report') {
+      const next = argv[index + 1];
+      if (!next) {
+        fail('missing value for --report');
+      }
+      parsed.reportPath = next;
+      index += 1;
+      continue;
+    }
+    fail(`unsupported argument: ${arg}`);
+  }
+
+  return parsed;
+}
+
+function resolveDefaultReportPath() {
+  const stamp = new Date().toISOString().replaceAll(':', '-');
+  return `/tmp/evermemory-openclaw-continuity-${stamp}.json`;
 }
 
 function runOpenClaw(args) {
@@ -106,7 +191,11 @@ async function runTurnWithRetry(agentId, sessionId, message) {
   let lastError;
   for (let attempt = 1; attempt <= OPENCLAW_RETRY_ATTEMPTS; attempt += 1) {
     try {
-      return runTurn(agentId, sessionId, message);
+      const result = runTurn(agentId, sessionId, message);
+      return {
+        ...result,
+        attempt,
+      };
     } catch (error) {
       lastError = error;
       if (attempt >= OPENCLAW_RETRY_ATTEMPTS || !isRetryableTurnError(error)) {
@@ -209,14 +298,31 @@ function loadEvidence(dbPath, sessionId, tag, startedAtSql) {
   }
 }
 
-const dbPath = process.env.EVERMEMORY_DB_PATH ?? DEFAULT_DB_PATH;
-const agentId = DEFAULT_AGENT_ID;
-const startedAtSql = sqlMinutesAgo(15);
+const parsed = parseArgs(process.argv.slice(2));
+const dbPath = parsed.dbPath;
+const agentId = parsed.agentId;
+const startedAtSql = sqlMinutesAgo(parsed.lookbackMinutes);
 const tag = `CONT-${Date.now()}`;
 const sessionId = `evermemory-continuity-${Date.now()}`;
 const trackedSessionIds = new Set([sessionId]);
 
 let scriptError;
+const resultReport = {
+  generatedAt: new Date().toISOString(),
+  ok: false,
+  config: {
+    dbPath,
+    agentId,
+    lookbackMinutes: parsed.lookbackMinutes,
+  },
+  tag,
+  sessionId,
+  trackedSessionIds: [],
+  turns: [],
+  metrics: undefined,
+  cleanup: undefined,
+  error: undefined,
+};
 
 try {
   const gatewayStatus = runOpenClaw(['gateway', 'status']);
@@ -246,6 +352,13 @@ try {
     `再复述一下 ${tag} 的关键约束和最近决策。`,
   );
   trackedSessionIds.add(t3.sessionId);
+  resultReport.turns = [t1, t2, t3].map((turn, index) => ({
+    index: index + 1,
+    runId: turn.runId,
+    sessionId: turn.sessionId,
+    attempt: Number(turn.attempt ?? 1),
+    preview: turn.text.slice(0, 240),
+  }));
 
   if (!t2.text.includes(tag) && !t3.text.includes(tag)) {
     fail('continuity reply missing tag reference');
@@ -285,6 +398,28 @@ try {
     fail('no tagged memory rows found in memory_items');
   }
 
+  resultReport.ok = true;
+  resultReport.trackedSessionIds = Array.from(trackedSessionIds);
+  resultReport.metrics = {
+    memoryCount: evidence.memoryCount,
+    autoMemoryEvents: evidence.sessionEndEvents.length,
+    recallEvents: evidence.interactionEvents.length,
+    retrievalEvents: evidence.retrievalEvents.length,
+    projectRoutedRetrievalHits: evidence.retrievalEvents.filter((event) => {
+      const routeKind = String(event.payload.routeKind ?? '');
+      return (
+        (routeKind === 'next_step'
+          || routeKind === 'last_decision'
+          || routeKind === 'project_progress'
+          || routeKind === 'current_stage')
+        && event.payload.projectOriented === true
+        && Number(event.payload.returned ?? 0) > 0
+      );
+    }).length,
+    sourceKinds: evidence.memorySourceKinds,
+    maxTurnAttempt: Math.max(...resultReport.turns.map((turn) => Number(turn.attempt ?? 1))),
+  };
+
   console.log('[evermemory:openclaw-continuity] PASS');
   console.log(`[evermemory:openclaw-continuity] agentId=${agentId}`);
   console.log(`[evermemory:openclaw-continuity] sessionId=${t3.sessionId}`);
@@ -305,6 +440,10 @@ try {
       sessionIds: Array.from(trackedSessionIds),
     });
     const totalDeleted = Object.values(cleanup).reduce((sum, value) => sum + Number(value), 0);
+    resultReport.cleanup = {
+      ...cleanup,
+      totalDeleted,
+    };
     console.log(`[evermemory:openclaw-continuity] cleanup tag=${tag} totalDeleted=${totalDeleted}`);
   } catch (error) {
     if (!scriptError) {
@@ -319,6 +458,34 @@ try {
 if (scriptError) {
   const detail = scriptError instanceof Error ? scriptError.message : String(scriptError);
   const cause = scriptError instanceof Error && scriptError.cause ? ` detail=${String(scriptError.cause)}` : '';
+  resultReport.error = {
+    message: detail,
+    cause: scriptError instanceof Error && scriptError.cause ? String(scriptError.cause) : undefined,
+  };
   console.error(`[evermemory:openclaw-continuity] FAIL ${detail}${cause}`);
+}
+
+const reportPath = resolve(parsed.reportPath ?? resolveDefaultReportPath());
+resultReport.trackedSessionIds = Array.from(trackedSessionIds);
+mkdirSync(dirname(reportPath), { recursive: true });
+writeFileSync(reportPath, `${JSON.stringify(resultReport, null, 2)}\n`, 'utf8');
+
+recordEvidence({
+  runner: 'openclaw-continuity',
+  ok: resultReport.ok,
+  reportPath,
+  agentId,
+  tag,
+  sessionCount: trackedSessionIds.size,
+  memoryCount: Number(resultReport.metrics?.memoryCount ?? 0),
+  autoMemoryEvents: Number(resultReport.metrics?.autoMemoryEvents ?? 0),
+  recallEvents: Number(resultReport.metrics?.recallEvents ?? 0),
+  retrievalEvents: Number(resultReport.metrics?.retrievalEvents ?? 0),
+  maxTurnAttempt: Number(resultReport.metrics?.maxTurnAttempt ?? 0),
+});
+
+console.log(`[evermemory:openclaw-continuity] report=${reportPath}`);
+
+if (scriptError) {
   process.exit(1);
 }

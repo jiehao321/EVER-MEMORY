@@ -104,10 +104,12 @@ OpenClaw Runtime
 - 完成 0.0.1 发布基线（代码、文档、门禁、回滚流程）。
 - 完成 recall 路由与排序增强（项目连续性、下一步/进度/决策等查询优化）。
 - 完成 project continuity summary 强化：启动摘要会优先复用已有项目摘要，并用更新的决策/下一步/约束字段覆盖旧值。
+- 完成长周期 continuity matrix：单次 continuity 现在会输出结构化 JSON 报告，`test:openclaw:continuity:matrix` 可执行连续 3 轮验证，并已接入 `release:evaluate` 短版门禁。
 - 完成质量体系脚本化：
   - `teams:status` / `teams:dev` / `teams:release`
   - `quality:gate:openclaw`
   - `test:openclaw:smoke` / `test:openclaw:security`
+  - `test:openclaw:continuity` / `test:openclaw:continuity:matrix`
   - `test:recall:benchmark`
 - 完成发布链路：
   - npm 包发布（`evermemory@0.0.1`）
@@ -281,6 +283,7 @@ Registered by default:
 - Release 0.0.1 baseline (code + docs + gates + rollback procedure).
 - Retrieval routing/ranking improvements for project continuity queries.
 - Project continuity summary composition now reuses stored project summaries and refreshes newer decision/next-step/constraint fields at boot.
+- Long-cycle continuity validation now emits structured JSON reports per run, and `test:openclaw:continuity:matrix` executes a 3-run matrix with a short variant wired into `release:evaluate`.
 - Scripted quality system (teams/dev/release, OpenClaw smoke/security, recall benchmark).
 - Distribution pipeline completed:
   - npm package published
@@ -323,7 +326,14 @@ Run before any release:
 npm run teams:release
 ```
 
-This gate covers typecheck/build/tests/OpenClaw smoke/OpenClaw continuity/OpenClaw security/benchmark/release pack.
+This gate covers typecheck/build/tests/OpenClaw smoke/OpenClaw continuity/OpenClaw security/benchmark/release pack, and `release:evaluate` adds a short continuity matrix pass on top.
+
+Additional validation commands:
+
+```bash
+npm run test:openclaw:continuity
+npm run test:openclaw:continuity:matrix
+```
 
 ### 9. Key Paths
 

@@ -117,6 +117,7 @@ const steps = [
   { name: 'check', command: 'npm', args: ['run', 'check'] },
   { name: 'test:unit', command: 'npm', args: ['run', 'test:unit'] },
   { name: 'teams:release', command: 'npm', args: ['run', 'teams:release'] },
+  { name: 'test:openclaw:continuity:matrix:short', command: 'npm', args: ['run', 'test:openclaw:continuity:matrix:short'] },
   {
     name: 'soak-short',
     command: 'node',

@@ -46,6 +46,8 @@
     "quality:gate:feishu-qgent": "node ./scripts/quality-gate.mjs --with-openclaw --with-continuity --with-feishu-qgent --with-security",
     "test:openclaw:feishu-qgent": "node ./scripts/openclaw-feishu-qgent-e2e.mjs",
     "test:openclaw:continuity": "node ./scripts/openclaw-continuity-e2e.mjs",
+    "test:openclaw:continuity:matrix": "node ./scripts/openclaw-continuity-matrix.mjs --runs=3",
+    "test:openclaw:continuity:matrix:short": "node ./scripts/openclaw-continuity-matrix.mjs --runs=2",
     "test:openclaw:smoke": "node ./scripts/openclaw-smoke.mjs",
     "test:openclaw:security": "node ./scripts/openclaw-security-gate.mjs",
     "test:openclaw:soak": "node ./scripts/openclaw-real-soak.mjs --iterations=6 --security-every=2",

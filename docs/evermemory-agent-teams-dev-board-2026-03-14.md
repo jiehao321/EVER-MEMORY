@@ -51,7 +51,7 @@
 ### Batch A3
 - Owner: Team A
 - 任务：长周期 continuity 验证矩阵
-- 状态：进行中
+- 状态：已完成
 - 边界：
   - 以验证脚本和基线为主
   - 不在本批做大规模业务改造
@@ -93,9 +93,7 @@
 ## 5. 当前决策
 
 当前正式启动：
-- `Batch A3` continuity 验证接入 release gate
 - `Batch C1` agent-teams 协调锁与流水线稳定性增强
 
 下一批收口重点：
-- `Batch A3`
 - `Batch C1`
