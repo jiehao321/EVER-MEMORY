@@ -63,7 +63,18 @@ Phase 1-7 + Phase A 已完成。当前质量基线：
 - B-002：restore 审计字段（appliedAt、userImpact）
 - B-003：import 错误诊断增强（detail/hint/summary），batch truncation 建议
 
-**待推进（Phase C：长期稳定性验证）**：
-- 跨 session、跨天连续性测试矩阵进入 release gate
-- 关键 KPI 连续多版本不回退验证
-- soak + security + continuity 合并长期验证流水线
+**Phase C 完成内容**（2026-03-14）：
+- C-001：KPI 版本追踪器，检测跨版本回退（recall accuracy/unit pass/continuity/acceptRate）
+- C-002：soak + KPI 入 release gate，`quality:gate:full` 全量验证
+- C-003：`stability:check` 长期稳定性验证编排器，teams:release 已接入
+
+## 稳定性验证命令
+```bash
+npm run stability:check          # 快速版（无 soak）
+npm run stability:check:full     # 完整版（含 soak）
+npm run kpi:track                # 仅 KPI 对比
+npm run kpi:update               # 更新 KPI 基线
+npm run quality:gate:full        # 全量质量门禁（含 soak）
+```
+
+**当前 KPI 基线**（2026-03-14）：recall accuracy=1.0，unit pass=1.0，continuity=true，auto-capture=0.75
