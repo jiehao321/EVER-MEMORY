@@ -83,6 +83,9 @@ export class IntentService {
       intentConfidence: record.intent.confidence,
       memoryNeed: record.signals.memoryNeed,
       actionNeed: record.signals.actionNeed,
+      preferredScopes: record.retrievalHints.preferredScopes,
+      preferredTypes: record.retrievalHints.preferredTypes,
+      preferredTimeBias: record.retrievalHints.preferredTimeBias,
     });
 
     return record;

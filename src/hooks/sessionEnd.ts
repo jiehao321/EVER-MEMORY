@@ -103,6 +103,7 @@ export function handleSessionEnd(
     autoMemoryGeneratedByKind: autoCapture.generatedByKind,
     autoMemoryAcceptedByKind: autoCapture.acceptedByKind,
     autoMemoryAcceptedIdsByKind: autoCapture.acceptedIdsByKind,
+    autoMemoryRejectedReasons: autoCapture.rejectedReasons,
     projectSummaryGenerated: autoCapture.generatedByKind.project_summary ?? 0,
     projectSummaryAccepted: autoCapture.acceptedByKind.project_summary ?? 0,
   });

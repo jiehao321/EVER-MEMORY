@@ -112,3 +112,130 @@ test('evermemory_review and evermemory_restore provide archive review/apply base
   app.database.connection.close();
   rmSync(databasePath, { force: true });
 });
+
+test('evermemory_restore apply includes appliedAt timestamp and user impact summary', () => {
+  const databasePath = createTempDbPath('archive-restore-audit-apply');
+  const app = initializeEverMemory({ databasePath });
+
+  try {
+    const archived = app.memoryService.store({
+      content: '待恢复约束：恢复前需要完成双人复核。',
+      type: 'constraint',
+      lifecycle: 'archive',
+      source: { kind: 'manual', actor: 'system' },
+      scope: { userId: 'u-restore-audit-apply' },
+      active: false,
+      archived: true,
+    });
+    assert.equal(archived.accepted, true);
+    const archivedId = archived.memory?.id ?? '';
+    assert.ok(archivedId);
+
+    const result = app.evermemoryRestore({
+      ids: [archivedId],
+      mode: 'apply',
+      approved: true,
+    });
+    assert.equal(result.applied, true);
+    assert.ok(result.appliedAt);
+    assert.ok(!Number.isNaN(Date.parse(result.appliedAt ?? '')));
+    assert.ok(result.userImpact);
+    assert.ok(result.userImpact?.affectedUserIds.includes('u-restore-audit-apply'));
+    assert.equal(result.userImpact?.restoredByType.constraint, 1);
+  } finally {
+    app.database.connection.close();
+    rmSync(databasePath, { force: true });
+  }
+});
+
+test('evermemory_restore review mode omits audit metadata before approval', () => {
+  const databasePath = createTempDbPath('archive-restore-audit-review');
+  const app = initializeEverMemory({ databasePath });
+
+  try {
+    const archived = app.memoryService.store({
+      content: '待确认归档记录：暂缓执行。',
+      type: 'decision',
+      lifecycle: 'archive',
+      source: { kind: 'manual', actor: 'system' },
+      scope: { userId: 'u-restore-audit-review' },
+      active: false,
+      archived: true,
+    });
+    assert.equal(archived.accepted, true);
+    const archivedId = archived.memory?.id ?? '';
+    assert.ok(archivedId);
+
+    const result = app.evermemoryRestore({
+      ids: [archivedId],
+      mode: 'review',
+    });
+    assert.equal(result.applied, false);
+    assert.equal(result.appliedAt, undefined);
+    assert.equal(result.userImpact, undefined);
+    assert.ok((result.restorable ?? 0) >= 1);
+  } finally {
+    app.database.connection.close();
+    rmSync(databasePath, { force: true });
+  }
+});
+
+test('evermemory_restore aggregates user impact across users and memory types', () => {
+  const databasePath = createTempDbPath('archive-restore-audit-aggregate');
+  const app = initializeEverMemory({ databasePath });
+
+  try {
+    const archivedConstraint = app.memoryService.store({
+      content: '用户A约束：恢复前先跑治理检查。',
+      type: 'constraint',
+      lifecycle: 'archive',
+      source: { kind: 'manual', actor: 'system' },
+      scope: { userId: 'u-restore-audit-user-a' },
+      active: false,
+      archived: true,
+    });
+    const archivedDecision = app.memoryService.store({
+      content: '用户B决策：通过治理后恢复。',
+      type: 'decision',
+      lifecycle: 'archive',
+      source: { kind: 'manual', actor: 'system' },
+      scope: { userId: 'u-restore-audit-user-b' },
+      active: false,
+      archived: true,
+    });
+    const archivedProject = app.memoryService.store({
+      content: '用户B项目记忆：恢复完成后更新看板。',
+      type: 'project',
+      lifecycle: 'archive',
+      source: { kind: 'manual', actor: 'system' },
+      scope: { userId: 'u-restore-audit-user-b' },
+      active: false,
+      archived: true,
+    });
+    assert.equal(archivedConstraint.accepted, true);
+    assert.equal(archivedDecision.accepted, true);
+    assert.equal(archivedProject.accepted, true);
+
+    const ids = [
+      archivedConstraint.memory?.id ?? '',
+      archivedDecision.memory?.id ?? '',
+      archivedProject.memory?.id ?? '',
+    ];
+    const result = app.evermemoryRestore({
+      ids,
+      mode: 'apply',
+      approved: true,
+    });
+    assert.equal(result.applied, true);
+    assert.ok(result.userImpact);
+    const impact = result.userImpact!;
+    assert.ok(impact.affectedUserIds.includes('u-restore-audit-user-a'));
+    assert.ok(impact.affectedUserIds.includes('u-restore-audit-user-b'));
+    assert.equal(impact.restoredByType.constraint, 1);
+    assert.equal(impact.restoredByType.decision, 1);
+    assert.equal(impact.restoredByType.project, 1);
+  } finally {
+    app.database.connection.close();
+    rmSync(databasePath, { force: true });
+  }
+});

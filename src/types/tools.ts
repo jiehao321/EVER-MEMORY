@@ -175,17 +175,31 @@ export interface EverMemoryRestoreToolResult {
   mode: EverMemoryRestoreMode;
   approved: boolean;
   applied: boolean;
+  appliedAt?: string;
   total: number;
   restorable: number;
   restored: number;
   targetLifecycle: Exclude<MemoryLifecycle, 'archive'>;
+  userImpact?: {
+    affectedUserIds: string[];
+    restoredByType: Record<string, number>;
+  };
   rejected: Array<{
     id?: string;
     reason: string;
   }>;
 }
 
-export type EverMemoryExplainTopic = 'write' | 'retrieval' | 'rule';
+export type EverMemoryExplainTopic = 'write' | 'retrieval' | 'rule' | 'session' | 'archive' | 'intent';
+
+export type EverMemoryExplainMetaOutcome = 'accepted' | 'rejected' | 'skipped' | 'applied' | 'reviewed';
+
+export interface EverMemoryExplainMeta {
+  outcome: EverMemoryExplainMetaOutcome;
+  affectedCount?: number;
+  reason?: string;
+  categories?: string[];
+}
 
 export interface EverMemoryExplainToolInput {
   topic?: EverMemoryExplainTopic;
@@ -193,17 +207,20 @@ export interface EverMemoryExplainToolInput {
   limit?: number;
 }
 
+export interface EverMemoryExplainToolItem {
+  createdAt: string;
+  kind: DebugEventKind;
+  entityId?: string;
+  question: string;
+  answer: string;
+  evidence: Record<string, unknown>;
+  meta?: EverMemoryExplainMeta;
+}
+
 export interface EverMemoryExplainToolResult {
   topic: EverMemoryExplainTopic;
   total: number;
-  items: Array<{
-    createdAt: string;
-    kind: DebugEventKind;
-    entityId?: string;
-    question: string;
-    answer: string;
-    evidence: Record<string, unknown>;
-  }>;
+  items: EverMemoryExplainToolItem[];
 }
 
 export interface EverMemoryRulesToolInput {

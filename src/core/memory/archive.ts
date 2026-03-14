@@ -136,6 +136,7 @@ export class MemoryArchiveService {
       scope: input.scope,
       query,
       limit,
+      candidateIds: candidates.map((candidate) => candidate.id),
     });
 
     return {
@@ -149,6 +150,7 @@ export class MemoryArchiveService {
     const approved = input.approved ?? false;
     const targetLifecycleInput = input.targetLifecycle ?? DEFAULT_RESTORE_LIFECYCLE;
     const allowSuperseded = input.allowSuperseded ?? false;
+    const ids = normalizeIds(input.ids ?? []);
     if (!isRestoreLifecycle(targetLifecycleInput)) {
       const invalid = emptyRestoreResult(mode, approved, DEFAULT_RESTORE_LIFECYCLE);
       invalid.rejected.push({ reason: 'invalid_target_lifecycle' });
@@ -157,13 +159,13 @@ export class MemoryArchiveService {
         approved,
         applied: false,
         reason: 'invalid_target_lifecycle',
+        requestedIds: ids,
       });
       return invalid;
     }
 
     const targetLifecycle = targetLifecycleInput;
     const base = emptyRestoreResult(mode, approved, targetLifecycle);
-    const ids = normalizeIds(input.ids ?? []);
     if (ids.length === 0) {
       base.rejected.push({ reason: 'no_ids' });
       this.debugRepo?.log('memory_restore_reviewed', undefined, {
@@ -172,6 +174,7 @@ export class MemoryArchiveService {
         applied: false,
         reason: 'no_ids',
         targetLifecycle,
+        requestedIds: ids,
       });
       return base;
     }
@@ -193,6 +196,8 @@ export class MemoryArchiveService {
       }
       candidates.push({ memory });
     }
+
+    const restorableIds = candidates.map((candidate) => candidate.memory.id);
 
     if (mode === 'review' || !approved) {
       const result: EverMemoryRestoreToolResult = {
@@ -223,13 +228,19 @@ export class MemoryArchiveService {
         rejected: result.rejected.length,
         targetLifecycle,
         allowSuperseded,
+        requestedIds: ids,
+        restorableIds,
       });
       return result;
     }
 
     const touchedUsers = new Set<string>();
     let restored = 0;
+    const restoredIds: string[] = [];
+    const restoredByType: Record<string, number> = {};
+    const appliedAt = nowIso();
     for (const candidate of candidates) {
+      restoredByType[candidate.memory.type] = (restoredByType[candidate.memory.type] ?? 0) + 1;
       const updated = {
         ...candidate.memory,
         lifecycle: targetLifecycle,
@@ -253,6 +264,7 @@ export class MemoryArchiveService {
       if (updated.scope.userId) {
         touchedUsers.add(updated.scope.userId);
       }
+      restoredIds.push(updated.id);
     }
 
     if (this.profileService) {
@@ -265,11 +277,16 @@ export class MemoryArchiveService {
       mode,
       approved,
       applied: true,
+      appliedAt,
       total: ids.length,
       restorable: candidates.length,
       restored,
       targetLifecycle,
       rejected: base.rejected,
+      userImpact: {
+        affectedUserIds: Array.from(touchedUsers),
+        restoredByType,
+      },
     };
 
     this.debugRepo?.log('memory_restore_applied', undefined, {
@@ -282,6 +299,11 @@ export class MemoryArchiveService {
       rejected: result.rejected.length,
       targetLifecycle,
       allowSuperseded,
+      requestedIds: ids,
+      restorableIds,
+      restoredIds,
+      appliedAt,
+      userImpact: result.userImpact,
     });
 
     return result;
