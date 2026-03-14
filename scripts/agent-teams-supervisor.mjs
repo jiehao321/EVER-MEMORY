@@ -141,13 +141,13 @@ function pipelineForMode(mode) {
   if (mode === 'dev') {
     return [
       { name: 'doctor', command: 'npm', args: ['run', 'doctor'] },
-      { name: 'quality:gate', command: 'npm', args: ['run', 'quality:gate'] },
+      { name: 'quality:gate', command: 'npm', args: ['run', 'quality:gate', '--', '--skip-doctor'] },
       { name: 'test:recall:benchmark', command: 'node', args: ['./scripts/recall-benchmark.mjs'] },
     ];
   }
   return [
     { name: 'doctor', command: 'npm', args: ['run', 'doctor'] },
-    { name: 'quality:gate:openclaw', command: 'npm', args: ['run', 'quality:gate:openclaw'] },
+    { name: 'quality:gate:openclaw', command: 'npm', args: ['run', 'quality:gate:openclaw', '--', '--skip-doctor'] },
     { name: 'test:recall:benchmark', command: 'node', args: ['./scripts/recall-benchmark.mjs'] },
   ];
 }

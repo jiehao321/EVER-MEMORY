@@ -81,6 +81,9 @@
 - DoD：
   - `teams:release` 平均耗时下降
   - 输出报告不减少
+ - 进展：
+   - 已完成并行协调锁
+   - 已移除 `agent-teams -> quality-gate` 中的重复 `doctor` 执行
 
 ## 4. 总监边界控制
 

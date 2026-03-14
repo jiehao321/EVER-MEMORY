@@ -15,6 +15,7 @@ function parseArgs(argv) {
   let withContinuity = false;
   let withSecurity = false;
   let withFeishuQgent = false;
+  let skipDoctor = false;
   let reportPath;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -35,6 +36,10 @@ function parseArgs(argv) {
       withFeishuQgent = true;
       continue;
     }
+    if (arg === '--skip-doctor') {
+      skipDoctor = true;
+      continue;
+    }
     if (arg === '--report') {
       const next = argv[index + 1];
       if (!next) {
@@ -47,7 +52,14 @@ function parseArgs(argv) {
     fail(`unsupported argument: ${arg}`);
   }
 
-  return { withOpenClaw, withContinuity, withSecurity, withFeishuQgent, reportPath };
+  return {
+    withOpenClaw,
+    withContinuity,
+    withSecurity,
+    withFeishuQgent,
+    skipDoctor,
+    reportPath,
+  };
 }
 
 function resolveDefaultReportPath() {
@@ -86,11 +98,14 @@ function readGitHead() {
 const parsed = parseArgs(process.argv.slice(2));
 
 const steps = [
-  { name: 'doctor', command: 'npm', args: ['run', 'doctor'] },
   { name: 'check', command: 'npm', args: ['run', 'check'] },
   { name: 'build', command: 'npm', args: ['run', 'build'] },
   { name: 'test:unit', command: 'npm', args: ['run', 'test:unit'] },
 ];
+
+if (!parsed.skipDoctor) {
+  steps.unshift({ name: 'doctor', command: 'npm', args: ['run', 'doctor'] });
+}
 
 if (parsed.withOpenClaw) {
   steps.push({ name: 'test:openclaw:smoke', command: 'npm', args: ['run', 'test:openclaw:smoke'] });
@@ -123,6 +138,7 @@ const report = {
   withContinuity: parsed.withContinuity,
   withSecurity: parsed.withSecurity,
   withFeishuQgent: parsed.withFeishuQgent,
+  skipDoctor: parsed.skipDoctor,
   ok,
   nodeVersion: process.version,
   cwd: process.cwd(),
@@ -145,6 +161,7 @@ recordEvidence({
   withContinuity: parsed.withContinuity,
   withSecurity: parsed.withSecurity,
   withFeishuQgent: parsed.withFeishuQgent,
+  skipDoctor: parsed.skipDoctor,
   stepCount: summarySteps.length,
 });
 
