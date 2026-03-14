@@ -57,7 +57,13 @@ Phase 1-7 + Phase A 已完成。当前质量基线：
 - T-007：构建指纹缓存 + 增量编译，teams:dev 37s→17.5s(-53%)
 - T-008：5 轮跨 session 连续性验证矩阵，已入 release gate
 
-**待推进（Phase B：治理产品化）**：
-- 规则 explainability 输出标准化
-- import/export/review/restore 流程稳定化
-- operator 可独立完成 review/rollback 的端到端验证
+**Phase B 完成内容**（2026-03-14）：
+- B-001：explain 工具扩展新 topic（session/archive/intent），结构化 meta 输出
+- B-002：operator 端到端工作流测试（review→explain→restore→verify；rule→explain→deprecate）
+- B-002：restore 审计字段（appliedAt、userImpact）
+- B-003：import 错误诊断增强（detail/hint/summary），batch truncation 建议
+
+**待推进（Phase C：长期稳定性验证）**：
+- 跨 session、跨天连续性测试矩阵进入 release gate
+- 关键 KPI 连续多版本不回退验证
+- soak + security + continuity 合并长期验证流水线
