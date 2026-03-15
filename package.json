@@ -56,6 +56,7 @@
     "test:openclaw:soak:release": "node ./scripts/openclaw-real-soak.mjs --iterations=2 --security-every=1 --without-continuity",
     "test:recall:benchmark": "node ./scripts/build-if-needed.mjs && node ./scripts/recall-benchmark.mjs",
     "test:recall:benchmark:baseline": "node ./scripts/build-if-needed.mjs && node ./scripts/recall-benchmark.mjs --update-baseline",
+    "perf:benchmark": "node scripts/perf-benchmark.mjs",
     "release:evaluate": "node ./scripts/release-evaluate.mjs",
     "release:pack": "node ./scripts/release-pack.mjs",
     "release:0.0.1:evaluate": "node ./scripts/release-evaluate.mjs --version 0.0.1",

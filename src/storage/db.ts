@@ -9,6 +9,9 @@ export interface DatabaseHandle {
 }
 
 export function resolveDatabasePath(storagePath: string): string {
+  if (storagePath === ':memory:') {
+    return storagePath;
+  }
   return resolve(storagePath);
 }
 

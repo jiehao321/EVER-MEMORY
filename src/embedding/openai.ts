@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import type { EmbeddingProvider, EmbeddingVector } from './provider.js';
 
 const MAX_OPENAI_BATCH = 100;
+const MAX_ERROR_BODY_LENGTH = 200;
 
 type PackageManifest = {
   dependencies?: Record<string, string>;
@@ -138,7 +139,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     });
 
     if (!response.ok) {
-      const message = await response.text();
+      const message = (await response.text()).slice(0, MAX_ERROR_BODY_LENGTH);
       throw new Error(
         `OpenAI HTTP API error: ${response.status} ${response.statusText} ${message}`
       );

@@ -11,6 +11,7 @@ import {
   WRITE_CONFIDENCE_BY_TYPE,
   WRITE_DEFAULT_EXPLICITNESS,
   WRITE_IMPORTANCE_BY_TYPE,
+  WRITE_MAX_CONTENT_LENGTH,
   WRITE_MIN_CONTENT_LENGTH,
 } from '../../tuning.js';
 import { PolicyError } from '../../errors.js';
@@ -130,6 +131,13 @@ export function evaluateWrite(input: MemoryStoreInput): WriteDecision {
     return {
       accepted: false,
       reason: 'empty_content',
+    };
+  }
+
+  if (content.length > WRITE_MAX_CONTENT_LENGTH) {
+    return {
+      accepted: false,
+      reason: 'content_too_long',
     };
   }
 

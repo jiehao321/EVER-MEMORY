@@ -174,6 +174,9 @@ export const PROFILE_WEIGHT_EXPLICITNESS = 0.25;
 /** Minimum content length to accept a memory write */
 export const WRITE_MIN_CONTENT_LENGTH = 3;
 
+/** Maximum content length to accept a memory write */
+export const WRITE_MAX_CONTENT_LENGTH = 10_000;
+
 /** Inferred confidence scores by memory type */
 export const WRITE_CONFIDENCE_BY_TYPE = {
   identity: 0.95,

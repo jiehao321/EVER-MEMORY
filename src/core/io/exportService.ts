@@ -34,6 +34,7 @@ type ImportShape = {
 
 const DEFAULT_LIMIT = 1000;
 const MAX_CONTENT_LENGTH = 10_000;
+const DEDUP_SCAN_LIMIT = 10_000;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -177,7 +178,7 @@ export class MemoryExportService {
       this.memoryRepo.search({
         scope,
         archived: undefined,
-        limit: Math.max(this.memoryRepo.count({ scope }), 1),
+        limit: Math.min(Math.max(this.memoryRepo.count({ scope }), 1), DEDUP_SCAN_LIMIT),
       }).map((item) => `${item.type}::${item.content.trim()}`),
     );
 
@@ -197,7 +198,10 @@ export class MemoryExportService {
         existing.add(dedupKey);
         imported += 1;
       } catch (error) {
-        errors.push(`item ${index}: ${error instanceof Error ? error.message : String(error)}`);
+        const safeMsg = error instanceof Error && !error.message.includes('SQLITE')
+          ? error.message
+          : 'storage error';
+        errors.push(`item ${index}: ${safeMsg}`);
       }
     }
 

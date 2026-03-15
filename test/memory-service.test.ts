@@ -43,6 +43,14 @@ test('memory write policy rejects empty or low-value content with explicit reaso
   assert.equal(empty.accepted, false);
   assert.equal(empty.reason, 'empty_content');
 
+  const tooLong = app.memoryService.store({
+    content: `我喜欢${'a'.repeat(10_001)}`,
+    scope: { userId: 'user-2' },
+    source: { kind: 'manual', actor: 'user' },
+  });
+  assert.equal(tooLong.accepted, false);
+  assert.equal(tooLong.reason, 'content_too_long');
+
   const short = app.memoryService.store({
     content: '嗯',
     scope: { userId: 'user-2' },

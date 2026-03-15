@@ -4,6 +4,9 @@ import { safeJsonParse } from '../util/json.js';
 import { MEMORY_TYPES, MEMORY_LIFECYCLES } from '../constants.js';
 import { StorageError } from '../errors.js';
 
+const MAX_ALLOWED_LIMIT = 10_000;
+const SQLITE_MAX_VARIABLE_NUMBER = 999;
+
 interface MemoryItemRow {
   id: string;
   content: string;
@@ -166,7 +169,7 @@ function resolveSearchLimit(limit: number | undefined): number {
       context: { limit },
     });
   }
-  return limit;
+  return Math.min(limit, MAX_ALLOWED_LIMIT);
 }
 
 export class MemoryRepository {
@@ -375,15 +378,18 @@ export class MemoryRepository {
       return;
     }
 
-    const placeholders = unique.map(() => '?').join(', ');
     try {
-      this.db.prepare(`
-        UPDATE memory_items
-        SET retrieval_count = retrieval_count + 1,
-            updated_at = updated_at,
-            last_accessed_at = CURRENT_TIMESTAMP
-        WHERE id IN (${placeholders})
-      `).run(...unique);
+      for (let i = 0; i < unique.length; i += SQLITE_MAX_VARIABLE_NUMBER) {
+        const batch = unique.slice(i, i + SQLITE_MAX_VARIABLE_NUMBER);
+        const placeholders = batch.map(() => '?').join(', ');
+        this.db.prepare(`
+          UPDATE memory_items
+          SET retrieval_count = retrieval_count + 1,
+              updated_at = updated_at,
+              last_accessed_at = CURRENT_TIMESTAMP
+          WHERE id IN (${placeholders})
+        `).run(...batch);
+      }
     } catch (error) {
       if (error instanceof StorageError) {
         throw error;
