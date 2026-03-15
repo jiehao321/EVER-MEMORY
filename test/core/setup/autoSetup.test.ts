@@ -14,14 +14,14 @@ test('runAutoSetup marks first run and suggests onboarding when memory count is 
   assert.ok(result.suggestions.includes('运行 profile_onboard 开始个性化配置'));
 });
 
-test('runAutoSetup suggests transformer install when embedding provider is noop', async () => {
+test('runAutoSetup suggests reinstalling transformers when embedding provider is noop', async () => {
   const result = await runAutoSetup(
     { count: () => 12 },
     { isReady: () => false, providerKind: 'none' },
   );
 
   assert.equal(result.embeddingProvider, 'noop');
-  assert.ok(result.suggestions.includes('安装 @xenova/transformers 以启用语义搜索'));
+  assert.ok(result.suggestions.includes('重新安装 @xenova/transformers 以恢复默认语义搜索'));
 });
 
 test('runAutoSetup reports database ready when count succeeds', async () => {

@@ -57,7 +57,7 @@ export async function runAutoSetup(
       suggestions.push('运行 profile_onboard 开始个性化配置');
     }
     if (embeddingProvider === 'noop') {
-      suggestions.push('安装 @xenova/transformers 以启用语义搜索');
+      suggestions.push('重新安装 @xenova/transformers 以恢复默认语义搜索');
     }
     if (memoryCount > 200) {
       suggestions.push('建议运行 housekeeping 整理记忆');

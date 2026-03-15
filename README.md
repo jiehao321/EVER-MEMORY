@@ -47,8 +47,7 @@ EverMemory gives OpenClaw a persistent, inspectable memory system. It stores dur
 ```bash
 npm install evermemory
 
-# Optional: enable local semantic retrieval
-npm install @xenova/transformers
+# Local semantic retrieval is built in and available after install
 ```
 
 Install into OpenClaw:

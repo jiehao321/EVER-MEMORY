@@ -105,7 +105,7 @@ try {
   require.resolve('@xenova/transformers');
 } catch {
   transformersInstalled = false;
-  suggestions.push('npm install @xenova/transformers  # 启用语义搜索');
+  suggestions.push('重新安装 @xenova/transformers  # 恢复内置语义搜索依赖');
 }
 
 if (orphanEmbeddings > 0) {
@@ -135,7 +135,7 @@ lines.push(formatCheck(
   '嵌入',
   transformersInstalled
     ? '@xenova/transformers 已安装'
-    : '@xenova/transformers 未安装 -> 使用关键词搜索（建议安装以获得更好的语义搜索）',
+    : '@xenova/transformers 缺失 -> 退化为关键词搜索（请重新安装以恢复默认语义搜索）',
 ));
 lines.push(formatCheck(
   orphanEmbeddings === 0,

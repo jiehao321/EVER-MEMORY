@@ -113,6 +113,7 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     try {
       transformersModule = (await import(moduleName)) as TransformersModule;
     } catch (error) {
+      // This fallback is retained for broken/manual installs; the package is a normal dependency.
       const message =
         'LocalEmbeddingProvider: @xenova/transformers not installed. Run: npm install @xenova/transformers';
       console.error(message);
