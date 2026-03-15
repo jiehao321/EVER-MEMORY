@@ -1,5 +1,6 @@
 import { Type } from '@sinclair/typebox';
 import type { OpenClawRegistrationContext, UnknownRecord } from '../shared.js';
+import type { EverMemorySnapshotV1 } from '../../types.js';
 import {
   asOptionalBoolean,
   asOptionalEnum,
@@ -12,6 +13,24 @@ import {
   scopeSchema,
   toolLimits,
 } from '../shared.js';
+
+function isMemorySnapshotItemArray(value: unknown): value is EverMemorySnapshotV1['items'] {
+  return Array.isArray(value);
+}
+
+function isEverMemorySnapshotV1(value: unknown): value is EverMemorySnapshotV1 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.format === 'evermemory.snapshot.v1' &&
+    typeof candidate.generatedAt === 'string' &&
+    typeof candidate.total === 'number' &&
+    isMemorySnapshotItemArray(candidate.items)
+  );
+}
 
 export function registerIOTools({ api, evermemory, sessionScopes }: OpenClawRegistrationContext): void {
   api.registerTool(
@@ -107,14 +126,14 @@ export function registerIOTools({ api, evermemory, sessionScopes }: OpenClawRegi
             details: result,
           };
         }
-        if (typeof params.snapshot !== 'object' || params.snapshot === null || Array.isArray(params.snapshot)) {
+        if (!isEverMemorySnapshotV1(params.snapshot)) {
           return {
             content: [{ type: 'text', text: 'Missing required field: snapshot or content+format' }],
             details: { reason: 'missing_snapshot' },
           };
         }
         const result = evermemory.evermemoryImport({
-          snapshot: params.snapshot as any,
+          snapshot: params.snapshot,
           mode: asOptionalEnum(params.mode, IMPORT_MODES),
           approved: asOptionalBoolean(params.approved),
           allowOverwrite: asOptionalBoolean(params.allowOverwrite),

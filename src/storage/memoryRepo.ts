@@ -35,13 +35,17 @@ interface MemoryItemRow {
   retrieval_count: number;
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
 function parseStringArray(value: string | null): string[] {
   if (!value) {
     return [];
   }
 
-  const parsed = safeJsonParse(value, []) as unknown;
-  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  const parsed = safeJsonParse<unknown>(value, []);
+  return isStringArray(parsed) ? parsed : [];
 }
 
 function toMemoryItem(row: MemoryItemRow): MemoryItem {

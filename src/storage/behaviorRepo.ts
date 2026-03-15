@@ -50,12 +50,13 @@ interface BehaviorRuleRow {
   tags_json: string | null;
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim().length > 0);
+}
+
 function parseStringArray(value: string | null): string[] {
-  const parsed = safeJsonParse(value ?? '[]', []) as unknown;
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-  return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  const parsed = safeJsonParse<unknown>(value ?? '[]', []);
+  return isStringArray(parsed) ? parsed : [];
 }
 
 function toBehaviorRule(row: BehaviorRuleRow): BehaviorRule {

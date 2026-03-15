@@ -7,6 +7,12 @@ type TensorLike = {
   dims?: number[];
 };
 
+type FeatureExtractionResultObject = {
+  data?: ArrayLikeNumber;
+  dims?: number[];
+  tensor?: TensorLike;
+};
+
 type FeatureExtractionPipeline = (
   input: string,
   options?: Record<string, unknown>
@@ -17,11 +23,7 @@ type FeatureExtractionResult =
   | ArrayLikeNumber
   | ArrayLikeNumber[]
   | TensorLike[]
-  | {
-      data?: ArrayLikeNumber;
-      dims?: number[];
-      tensor?: TensorLike;
-    };
+  | FeatureExtractionResultObject;
 
 type TransformersModule = {
   pipeline: (
@@ -150,10 +152,10 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
         return this._tensorFromResult(first);
       }
 
-      if (Array.isArray(first)) {
-        const rows = result as Array<ArrayLikeNumber>;
+      if (this._isArrayLikeNumberMatrix(result)) {
+        const rows = result;
         const tokens = rows.length;
-        const features = rows[0].length ?? 0;
+        const features = rows[0]?.length ?? 0;
         const data = new Float32Array(tokens * features);
         let offset = 0;
         for (const row of rows) {
@@ -165,27 +167,23 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
         return { data, dims: [tokens, features] };
       }
 
-      if (typeof first === 'number') {
-        const numericResult = result as unknown as number[];
-        const data = this._toFloat32Array(numericResult);
+      if (this._isNumberArray(result)) {
+        const data = this._toFloat32Array(result);
         return { data, dims: [1, data.length] };
       }
     }
 
-    if (typeof result === 'object' && result !== null) {
-      if ('tensor' in result && result.tensor) {
+    if (this._isFeatureExtractionResultObject(result)) {
+      if (result.tensor) {
         return this._tensorFromResult(result.tensor as FeatureExtractionResult);
       }
 
-      const { data, dims } = result as {
-        data?: unknown;
-        dims?: unknown;
-      };
+      const { data, dims } = result;
       if (this._isArrayLikeNumber(data)) {
         return {
           data: this._toFloat32Array(data),
           dims: Array.isArray(dims)
-            ? (dims as number[]).map((value) => Number(value))
+            ? dims.map((value) => Number(value))
             : undefined,
         };
       }
@@ -279,5 +277,17 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
       'length' in value &&
       typeof (value as { length: unknown }).length === 'number'
     );
+  }
+
+  private _isNumberArray(value: unknown): value is number[] {
+    return Array.isArray(value) && value.every((item) => typeof item === 'number');
+  }
+
+  private _isArrayLikeNumberMatrix(value: unknown): value is ArrayLikeNumber[] {
+    return Array.isArray(value) && value.every((item) => this._isArrayLikeNumber(item));
+  }
+
+  private _isFeatureExtractionResultObject(value: unknown): value is FeatureExtractionResultObject {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }

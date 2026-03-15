@@ -11,6 +11,17 @@ import { createTempDbPath } from '../helpers.js';
 
 type HookHandler = (event: unknown, context: unknown) => unknown | Promise<unknown>;
 
+async function hasTransformersDependency(): Promise<boolean> {
+  try {
+    const module = await import('@xenova/transformers');
+    return typeof module.pipeline === 'function';
+  } catch {
+    return false;
+  }
+}
+
+const transformersAvailable = await hasTransformersDependency();
+
 function createMockApi(databasePath: string) {
   const hooks = new Map<string, HookHandler[]>();
   const services: Array<{ id: string; start: () => void | Promise<void>; stop?: () => void | Promise<void> }> =
@@ -55,7 +66,15 @@ function createMockApi(databasePath: string) {
   return { api, hooks, infoLogs, services, warnLogs };
 }
 
-test('LocalEmbeddingProvider throws a recognizable dependency error when transformers is unavailable', async () => {
+test(
+  'LocalEmbeddingProvider throws a recognizable dependency error when transformers is unavailable',
+  {
+    // This fallback path is only meaningful when the optional dependency is absent.
+    skip: transformersAvailable
+      ? '@xenova/transformers is installed in this environment'
+      : false,
+  },
+  async () => {
   const provider = new LocalEmbeddingProvider();
   const errors: string[] = [];
   const originalConsoleError = console.error;
@@ -86,9 +105,18 @@ test('LocalEmbeddingProvider throws a recognizable dependency error when transfo
     console.error = originalConsoleError;
     await provider.dispose();
   }
-});
+  },
+);
 
-test('EmbeddingManager falls back to NoOp provider when local embeddings cannot initialize', async () => {
+test(
+  'EmbeddingManager falls back to NoOp provider when local embeddings cannot initialize',
+  {
+    // This fallback path is only meaningful when the optional dependency is absent.
+    skip: transformersAvailable
+      ? '@xenova/transformers is installed in this environment'
+      : false,
+  },
+  async () => {
   const manager = new EmbeddingManager();
   const warnings: string[] = [];
   const originalConsoleWarn = console.warn;
@@ -111,7 +139,38 @@ test('EmbeddingManager falls back to NoOp provider when local embeddings cannot 
     console.warn = originalConsoleWarn;
     await manager.dispose();
   }
-});
+  },
+);
+
+test(
+  'LocalEmbeddingProvider initializes successfully when transformers is available',
+  {
+    skip: transformersAvailable
+      ? false
+      : '@xenova/transformers is not installed in this environment',
+  },
+  async () => {
+    const provider = new LocalEmbeddingProvider();
+    const fakePipeline = async () => ({
+      data: new Float32Array([1, 2, 3]),
+      dims: [1, 3],
+    });
+
+    // Avoid loading a real model here; the success-path contract is that a
+    // successful pipeline factory leaves the provider ready for use.
+    (
+      provider as unknown as {
+        _initialize(): Promise<(input: string) => Promise<{ data: Float32Array; dims: number[] }>>;
+      }
+    )._initialize = async () => fakePipeline;
+
+    await provider.initialize();
+
+    assert.equal(provider.isReady(), true);
+    await provider.dispose();
+    assert.equal(provider.isReady(), false);
+  },
+);
 
 test('OpenClaw plugin defaults to the local embedding provider', async () => {
   const databasePath = createTempDbPath('openclaw-plugin-default-local');

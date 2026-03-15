@@ -11,25 +11,36 @@ interface ProjectedProfileRow {
   behavior_hints_json: string;
 }
 
-function parseObject<T extends Record<string, unknown>>(value: string): T {
-  const parsed = safeJsonParse(value, {}) as unknown;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return {} as T;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim().length > 0);
+}
+
+function parseObject<T extends Record<string, unknown>>(value: string, fallback: T): T {
+  const parsed = safeJsonParse<unknown>(value, fallback);
+  if (!isRecord(parsed)) {
+    return fallback;
   }
   return parsed as T;
 }
 
 function parseStringArray(value: string): string[] {
-  const parsed = safeJsonParse(value, []) as unknown;
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-  return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  const parsed = safeJsonParse<unknown>(value, []);
+  return isStringArray(parsed) ? parsed : [];
 }
 
 function toProjectedProfile(row: ProjectedProfileRow): ProjectedProfile {
-  const stable = parseObject<ProjectedProfile['stable']>(row.stable_json);
-  const derived = parseObject<ProjectedProfile['derived']>(row.derived_json);
+  const stable = parseObject<ProjectedProfile['stable']>(row.stable_json, {
+    explicitPreferences: {},
+    explicitConstraints: [],
+  });
+  const derived = parseObject<ProjectedProfile['derived']>(row.derived_json, {
+    likelyInterests: [],
+    workPatterns: [],
+  });
 
   return {
     userId: row.user_id,
