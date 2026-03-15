@@ -2,6 +2,22 @@
 
 ## v0.0.1 (2026-03-15)
 
+### Phase I: 集成验收 (2026-03-15)
+- 全生命周期冒烟测试
+- 5 轮 session 连续性矩阵
+- 性能基准（sessionStart 2.3ms, messageReceived 4.8ms, sessionEnd 11.8ms）
+- 错误恢复测试（9 场景）
+- 安全审计修复（3 HIGH + 3 MEDIUM + 2 LOW）
+- KPI baseline 更新到 v0.9 标准
+
+### Phase H: 加固与补课 (2026-03-15)
+- 存储层/检索层/嵌入层测试补全（+51 tests）
+- 大文件拆分（7 个超标文件→全部 <500 行）
+- type safety 清零（6 处 as any/as unknown → 0）
+- KPI baseline 更新（autoCaptureAcceptRate 0.75→0.90）
+- @xenova/transformers 安装，语义搜索激活
+- CLAUDE.md 精简（110→62 行）
+
 ### Phase G: 体验与生态
 - G-001: 零配置开箱即用（`autoSetup.ts`），plugin `start()` 自动诊断 embedding、数据库、首次运行状态并输出建议。
 - G-002: 大管家欢迎体验，`profile_onboard` 前置欢迎语，完成后给出确认信息。

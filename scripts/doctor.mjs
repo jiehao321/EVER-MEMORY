@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
 
-const VERSION = '0.0.1';
+const VERSION = '1.0.0';
 const DEFAULT_DATABASE_PATH = '.openclaw/memory/evermemory/store/evermemory.db';
 const MEMORY_TYPES = ['identity', 'fact', 'preference', 'decision', 'commitment', 'relationship', 'task', 'project', 'style', 'summary', 'constraint'];
 const CURRENT_SCHEMA_VERSION = 9;

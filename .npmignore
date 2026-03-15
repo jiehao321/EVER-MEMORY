@@ -1,0 +1,8 @@
+src/
+test/
+scripts/
+docs/
+.openclaw/
+.claude/
+tsconfig*.json
+*.test.ts

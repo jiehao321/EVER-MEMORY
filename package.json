@@ -1,27 +1,30 @@
 {
   "name": "evermemory",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": false,
   "description": "EverMemory deterministic memory plugin for OpenClaw with intent and reflection baseline.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "engines": {
-    "node": "22.x"
+    "node": ">=22"
   },
   "files": [
     "dist",
-    "index.js",
-    "index.ts",
-    "openclaw.plugin.json",
-    "plugin.json",
-    "README.md",
-    "docs/evermemory-installation-guide.md"
+    "LICENSE",
+    "README.md"
   ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "openclaw": {
     "extensions": [
-      "./index.ts"
+      "./dist/openclaw/plugin.js"
     ]
   },
   "scripts": {
@@ -57,10 +60,11 @@
     "test:recall:benchmark": "node ./scripts/build-if-needed.mjs && node ./scripts/recall-benchmark.mjs",
     "test:recall:benchmark:baseline": "node ./scripts/build-if-needed.mjs && node ./scripts/recall-benchmark.mjs --update-baseline",
     "perf:benchmark": "node scripts/perf-benchmark.mjs",
+    "dashboard": "node scripts/dashboard.mjs",
     "release:evaluate": "node ./scripts/release-evaluate.mjs",
     "release:pack": "node ./scripts/release-pack.mjs",
-    "release:0.0.1:evaluate": "node ./scripts/release-evaluate.mjs --version 0.0.1",
-    "release:0.0.1:pack": "node ./scripts/release-pack.mjs --version 0.0.1",
+    "release:1.0.0:evaluate": "node ./scripts/release-evaluate.mjs --version 1.0.0",
+    "release:1.0.0:pack": "node ./scripts/release-pack.mjs --version 1.0.0",
     "test:unit": "npm run build:test && node --test $(find dist-test/test -name '*.test.js' -print)",
     "test": "npm run test:unit",
     "validate": "npm run doctor && npm run check && npm run test:unit",
