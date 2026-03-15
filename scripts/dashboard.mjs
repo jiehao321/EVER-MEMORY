@@ -51,7 +51,7 @@ function padLine(text = '') {
 
 function getVersion() {
   const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));
-  return String(pkg.version ?? '1.0.0');
+  return String(pkg.version ?? '1.0.1');
 }
 
 function hasTable(db, table) {

@@ -53,7 +53,7 @@ npm install evermemory
 安装到 OpenClaw：
 
 ```bash
-openclaw plugins install evermemory@1.0.0
+openclaw plugins install evermemory@1.0.1
 openclaw plugins enable evermemory
 openclaw config set plugins.slots.memory evermemory
 openclaw gateway restart

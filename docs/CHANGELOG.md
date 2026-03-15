@@ -1,5 +1,11 @@
 # EverMemory Changelog
 
+## v1.0.1 (2026-03-15)
+
+### Bug Fixes
+- 将 `@xenova/transformers` 从 `optionalDependencies` 提升为 `dependencies`，确保语义搜索真正开箱即用
+- 更新文档反映语义搜索已内置
+
 ## v0.0.1 (2026-03-15)
 
 ### Phase I: 集成验收 (2026-03-15)

@@ -1,6 +1,6 @@
 {
   "name": "evermemory",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": false,
   "description": "EverMemory deterministic memory plugin for OpenClaw with intent and reflection baseline.",
   "license": "MIT",
@@ -63,8 +63,8 @@
     "dashboard": "node scripts/dashboard.mjs",
     "release:evaluate": "node ./scripts/release-evaluate.mjs",
     "release:pack": "node ./scripts/release-pack.mjs",
-    "release:1.0.0:evaluate": "node ./scripts/release-evaluate.mjs --version 1.0.0",
-    "release:1.0.0:pack": "node ./scripts/release-pack.mjs --version 1.0.0",
+    "release:1.0.1:evaluate": "node ./scripts/release-evaluate.mjs --version 1.0.1",
+    "release:1.0.1:pack": "node ./scripts/release-pack.mjs --version 1.0.1",
     "test:unit": "npm run build:test && node --test $(find dist-test/test -name '*.test.js' -print)",
     "test": "npm run test:unit",
     "validate": "npm run doctor && npm run check && npm run test:unit",

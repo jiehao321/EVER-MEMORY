@@ -12,7 +12,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   const parsed = {
-    version: '1.0.0',
+    version: '1.0.1',
     outDir: '/tmp/evermemory-release',
     reportPath: undefined,
     evidenceDir: '/tmp/evermemory-release-evidence',
