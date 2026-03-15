@@ -69,6 +69,10 @@ export interface MemoryItem {
   tags: string[];
   relatedEntities: string[];
   stats: MemoryStats;
+  metadata?: {
+    source?: string;
+    semanticScore?: number;
+  };
 }
 
 export interface WriteDecision {

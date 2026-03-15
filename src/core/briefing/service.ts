@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { DEFAULT_BOOT_TOKEN_BUDGET } from '../../constants.js';
 import type { BriefingRepository } from '../../storage/briefingRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
+import type { ProfileRepository } from '../../storage/profileRepo.js';
 import type { BootBriefing, MemoryItem, MemoryScope } from '../../types.js';
+import { PreferenceGraphService } from '../profile/preferenceGraph.js';
+import { CrossProjectTransferService } from '../profile/crossProjectTransfer.js';
 import { PROJECT_STATUS_PATTERNS } from '../../patterns.js';
 import {
   BRIEFING_ACTIVE_PROJECT_LIMIT,
@@ -27,6 +30,11 @@ import { BriefingError } from '../../errors.js';
 
 const PROJECT_SUMMARY_REGEX = /^项目连续性摘要（(?<projectName>[^）]+)）：状态：(?<status>.*?)；关键约束：(?<keyConstraint>.*?)；最近决策：(?<recentDecision>.*?)；下一步：(?<nextStep>.*)$/u;
 const SUMMARY_PLACEHOLDER_VALUES = new Set(['待补充', '待确认', '待更新']);
+const BRIEFING_STYLE_LIMITS = {
+  concise: 2,
+  detailed: 5,
+  structured: Number.POSITIVE_INFINITY,
+} as const;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -52,6 +60,56 @@ function dedupe(values: string[]): string[] {
     output.push(normalized);
   }
   return output;
+}
+
+function dedupeByContent(values: string[]): string[] {
+  return dedupe(values);
+}
+
+function humanizeProfileValue(value: string): string {
+  return value
+    .replace(/concise_direct/gi, '简洁直接')
+    .replace(/stepwise_planning/gi, '逐步确认')
+    .replace(/confirm_before_execution/gi, '逐步确认')
+    .replace(/risk_aware_execution/gi, '谨慎执行')
+    .replace(/_/g, ' ');
+}
+
+function appendPreferenceSummary(
+  identity: string[],
+  scope: MemoryScope,
+  graphService: PreferenceGraphService,
+  profileRepo?: ProfileRepository,
+): string[] {
+  if (!profileRepo || !scope.userId) {
+    return identity;
+  }
+
+  const profile = profileRepo.getByUserId(scope.userId);
+  if (!profile) {
+    return identity;
+  }
+
+  const nextIdentity = [...identity];
+  const communicationStyle = profile.derived.communicationStyle?.tendency;
+  if (communicationStyle) {
+    nextIdentity.push(`沟通风格：${humanizeProfileValue(communicationStyle)}`);
+  }
+
+  const workPatterns = profile.derived.workPatterns
+    .slice(0, 3)
+    .map((item) => humanizeProfileValue(item.value));
+  if (workPatterns.length > 0) {
+    nextIdentity.push(`工作习惯：${workPatterns.join('、')}`);
+  }
+
+  const graph = graphService.buildFromProfile(scope.userId, profile);
+  const inferred = graphService.inferImplications(graph).slice(0, 3);
+  if (inferred.length > 0) {
+    nextIdentity.push(`偏好推断：${inferred.join('、')}`);
+  }
+
+  return nextIdentity;
 }
 
 function pickContent(memories: MemoryItem[], limit: number): string[] {
@@ -243,6 +301,12 @@ function composeRecentContinuity(
   ]).slice(0, BRIEFING_PICK_CONTINUITY_OUTPUT);
 }
 
+export interface BriefingBuildOptions {
+  sessionId?: string;
+  tokenTarget?: number;
+  communicationStyle?: 'concise' | 'detailed' | 'structured';
+}
+
 type BriefingSectionKey = keyof BootBriefing['sections'];
 
 interface BriefingOptimizationStats {
@@ -335,13 +399,56 @@ function optimizeSections(
   };
 }
 
+export function normalizeCommunicationStyle(style?: string): 'concise' | 'detailed' | 'structured' {
+  if (style === 'concise' || style === 'detailed' || style === 'structured') {
+    return style;
+  }
+  if (style === 'concise_direct') {
+    return 'concise';
+  }
+  return 'structured';
+}
+
+function toConciseProjectSummary(entry: string): string {
+  const parsed = parseProjectSummary(entry);
+  if (!parsed) {
+    return clip(entry, BRIEFING_CLIP_SHORT);
+  }
+  const keyField = parsed.status || parsed.nextStep || parsed.keyConstraint || parsed.recentDecision;
+  return clip(`项目状态（${parsed.projectName || 'current'}）：${keyField || '待补充'}`, BRIEFING_CLIP_SHORT);
+}
+
+function adaptSectionsByStyle(
+  sections: BootBriefing['sections'],
+  communicationStyle: 'concise' | 'detailed' | 'structured',
+): BootBriefing['sections'] {
+  if (communicationStyle === 'structured') {
+    return sections;
+  }
+
+  const limit = BRIEFING_STYLE_LIMITS[communicationStyle];
+  return {
+    identity: dedupeByContent(sections.identity).slice(0, limit),
+    constraints: dedupeByContent(sections.constraints).slice(0, limit),
+    recentContinuity: dedupeByContent(sections.recentContinuity).slice(0, limit),
+    activeProjects: dedupeByContent(
+      communicationStyle === 'concise'
+        ? sections.activeProjects.map((entry) => toConciseProjectSummary(entry))
+        : sections.activeProjects,
+    ).slice(0, limit),
+  };
+}
+
 export class BriefingService {
   constructor(
     private readonly memoryRepo: MemoryRepository,
     private readonly briefingRepo: BriefingRepository,
+    private readonly profileRepo?: ProfileRepository,
+    private readonly crossProjectTransferService?: CrossProjectTransferService,
+    private readonly preferenceGraphService = new PreferenceGraphService(),
   ) {}
 
-  build(scope: MemoryScope, options?: { sessionId?: string; tokenTarget?: number }): BootBriefing {
+  build(scope: MemoryScope, options?: BriefingBuildOptions): BootBriefing {
     try {
       const identity = this.memoryRepo.search({
         scope,
@@ -399,11 +506,28 @@ export class BriefingService {
         limit: BRIEFING_SUMMARY_LIMIT,
       });
       const projectSummaries = summaryMemories.filter((memory) => includesProjectSummaryTag(memory));
+      const communicationStyle = normalizeCommunicationStyle(options?.communicationStyle);
+      const inheritedGlobalConstraints = scope.project && scope.userId && this.crossProjectTransferService
+        ? this.crossProjectTransferService
+          .getGlobalPreferences(scope.userId)
+          .filter((preference) => preference.kind === 'explicit_constraint')
+          .filter((preference) => this.crossProjectTransferService?.shouldInheritGlobal(preference))
+          .slice(0, 3)
+          .map((preference) => `[全局] ${clip(preference.content, BRIEFING_CLIP_SHORT)}`)
+        : [];
 
       const tokenTarget = resolveTokenTarget(options?.tokenTarget);
       const rawSections: BootBriefing['sections'] = {
-        identity: pickContent(identity, BRIEFING_PICK_IDENTITY),
-        constraints: pickContent(constraints, BRIEFING_PICK_CONSTRAINTS),
+        identity: appendPreferenceSummary(
+          pickContent(identity, BRIEFING_PICK_IDENTITY),
+          scope,
+          this.preferenceGraphService,
+          this.profileRepo,
+        ),
+        constraints: dedupe([
+          ...pickContent(constraints, BRIEFING_PICK_CONSTRAINTS),
+          ...inheritedGlobalConstraints,
+        ]),
         recentContinuity: composeRecentContinuity(recentContinuity, decisions, commitments),
         activeProjects: composeActiveProjects(
           scope,
@@ -415,13 +539,14 @@ export class BriefingService {
         ),
       };
       const optimized = optimizeSections(rawSections, tokenTarget);
+      const styledSections = adaptSectionsByStyle(optimized.sections, communicationStyle);
 
       const briefing: BootBriefing = {
         id: randomUUID(),
         sessionId: options?.sessionId,
         userId: scope.userId,
         generatedAt: nowIso(),
-        sections: optimized.sections,
+        sections: styledSections,
         tokenTarget,
         actualApproxTokens: 0,
         optimization: optimized.stats,

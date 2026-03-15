@@ -261,6 +261,14 @@ export class MemoryLifecycleService {
     };
   }
 
+  scoreNearDuplicate(leftContent: string, rightContent: string): number {
+    return nearDuplicateScore(leftContent, rightContent);
+  }
+
+  preferMemory(left: MemoryItem, right: MemoryItem): MemoryItem {
+    return shouldPreferLeft(left, right) ? left : right;
+  }
+
   private mergeDuplicates(memory: MemoryItem): number {
     const scope = scopeForMaintenance(memory.scope);
     const candidates = this.memoryRepo.search({

@@ -9,7 +9,8 @@ export const PHASE5_SCHEMA_VERSION = 5;
 export const PHASE5_PROFILE_SCHEMA_VERSION = 6;
 export const PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION = 7;
 export const PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION = 8;
-export const CURRENT_SCHEMA_VERSION = PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION;
+export const PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION = 9;
+export const CURRENT_SCHEMA_VERSION = PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION;
 
 const CREATE_PHASE1_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS schema_version (\n    version INTEGER NOT NULL\n  )`,
@@ -104,6 +105,10 @@ const CREATE_PHASE6_SEMANTIC_VECTOR_SQL = [
     FOREIGN KEY (memory_id) REFERENCES memory_items(id) ON DELETE CASCADE
   )`,
   'CREATE INDEX IF NOT EXISTS idx_embedding_meta_model ON embedding_meta(model)',
+] as const;
+
+const CREATE_PHASE7_BEHAVIOR_TAGS_SQL = [
+  "ALTER TABLE behavior_rules ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'",
 ] as const;
 
 function ensureSchemaVersionTable(db: Database.Database): void {
@@ -215,6 +220,10 @@ export function runMigrations(db: Database.Database): number {
       runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE6_SEMANTIC_VECTOR_SQL);
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION);
     });
+    const phase7BehaviorTagsTx = db.transaction(() => {
+      runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE7_BEHAVIOR_TAGS_SQL);
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -253,6 +262,10 @@ export function runMigrations(db: Database.Database): number {
     if (currentVersion < PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION) {
       phase6SemanticVectorTx();
       currentVersion = PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION) {
+      phase7BehaviorTagsTx();
+      currentVersion = PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION;
     }
 
     return currentVersion;

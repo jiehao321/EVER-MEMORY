@@ -3,10 +3,16 @@ import { getDefaultConfig as loadDefaultConfig, loadConfig } from './config.js';
 import type { EverMemoryConfigInput } from './config.js';
 import { BehaviorService } from './core/behavior/service.js';
 import { BriefingService } from './core/briefing/service.js';
+import { SmartnessMetricsService } from './core/analytics/smartnessMetrics.js';
 import { IntentService } from './core/intent/service.js';
+import { MemoryExportService } from './core/io/exportService.js';
 import { MemoryArchiveService } from './core/memory/archive.js';
+import { MemoryHousekeepingService } from './core/memory/housekeeping.js';
+import { MemoryLifecycleService } from './core/memory/lifecycle.js';
 import { MemoryService } from './core/memory/service.js';
 import { MemoryTransferService } from './core/memory/transfer.js';
+import { OnboardingService } from './core/profile/onboarding.js';
+import { CrossProjectTransferService } from './core/profile/crossProjectTransfer.js';
 import { ProfileProjectionService } from './core/profile/projection.js';
 import { ExperienceService } from './core/reflection/experience.js';
 import { ReflectionService } from './core/reflection/service.js';
@@ -33,12 +39,14 @@ import {
   evermemoryExport,
   evermemoryImport,
   evermemoryIntent,
+  evermemoryOnboard,
   evermemoryProfile,
   evermemoryRecall,
   evermemoryRestore,
   evermemoryReflect,
   evermemoryReview,
   evermemoryRules,
+  evermemorySmartness,
   evermemoryStatus,
   evermemoryStore,
 } from './tools/index.js';
@@ -54,6 +62,8 @@ import type {
   EverMemoryImportToolInput,
   EverMemoryImportToolResult,
   EverMemoryIntentToolInput,
+  EverMemoryOnboardingToolInput,
+  EverMemoryOnboardingToolResult,
   EverMemoryPluginDefinition,
   EverMemoryProfileToolInput,
   EverMemoryProfileToolResult,
@@ -66,11 +76,13 @@ import type {
   EverMemoryReviewToolResult,
   EverMemoryRulesToolInput,
   EverMemoryRulesToolResult,
+  EverMemorySmartnessToolInput,
   EverMemoryStatusToolResult,
   EverMemoryStoreToolInput,
   IntentLLMAnalyzer,
   IntentAnalyzeInput,
   IntentRecord,
+  MemoryScope,
   MessageReceivedInput,
   MessageReceivedResult,
   SessionEndInput,
@@ -80,6 +92,7 @@ import type {
 } from './types.js';
 
 export * from './errors.js';
+export * from './core/io/exportService.js';
 
 export interface InitializeEverMemoryOptions {
   intentLLMAnalyzer?: IntentLLMAnalyzer;
@@ -125,11 +138,22 @@ export function initializeEverMemory(
     profileRepo,
     debugRepo,
   );
+  const lifecycleService = new MemoryLifecycleService(memoryRepo, debugRepo);
+  const crossProjectTransferService = new CrossProjectTransferService(memoryRepo);
   const memoryService = new MemoryService(memoryRepo, debugRepo, {
     semanticEnabled: config.semantic.enabled,
     semanticRepo,
+    lifecycleService,
     profileProjectionService: profileService,
   });
+  const housekeepingService = new MemoryHousekeepingService(memoryRepo, lifecycleService);
+  const smartnessMetricsService = new SmartnessMetricsService(memoryRepo, debugRepo);
+  const onboardingService = new OnboardingService(
+    memoryService,
+    memoryRepo,
+    profileRepo,
+    smartnessMetricsService,
+  );
   const retrievalService = new RetrievalService(memoryRepo, debugRepo, {
     semanticEnabled: config.semantic.enabled,
     semanticRepo,
@@ -139,7 +163,12 @@ export function initializeEverMemory(
     keywordWeights: config.retrieval.keywordWeights,
     hybridWeights: config.retrieval.hybridWeights,
   });
-  const briefingService = new BriefingService(memoryRepo, briefingRepo);
+  const briefingService = new BriefingService(
+    memoryRepo,
+    briefingRepo,
+    profileRepo,
+    crossProjectTransferService,
+  );
   const intentService = new IntentService(intentRepo, debugRepo, {
     useLLM: config.intent.useLLM,
     fallbackHeuristics: config.intent.fallbackHeuristics,
@@ -153,6 +182,7 @@ export function initializeEverMemory(
     semanticRepo,
     profileService,
   });
+  const exportService = new MemoryExportService(memoryRepo);
   const archiveService = new MemoryArchiveService(memoryRepo, debugRepo, {
     semanticEnabled: config.semantic.enabled,
     semanticRepo,
@@ -172,6 +202,7 @@ export function initializeEverMemory(
     semanticRepo,
     profileRepo,
     memoryService,
+    housekeepingService,
     retrievalService,
     briefingService,
     intentService,
@@ -179,10 +210,13 @@ export function initializeEverMemory(
     reflectionService,
     behaviorService,
     profileService,
+    crossProjectTransferService,
+    onboardingService,
     transferService,
     archiveService,
+    smartnessMetricsService,
     sessionStart(input: SessionStartInput): SessionStartResult {
-      return handleSessionStart(input, briefingService, behaviorService, debugRepo);
+      return handleSessionStart(input, briefingService, behaviorService, debugRepo, profileRepo);
     },
     getRuntimeSessionContext(sessionId: string) {
       return getSessionContext(sessionId);
@@ -203,9 +237,17 @@ export function initializeEverMemory(
       return intentService.analyze(input);
     },
     async messageReceived(input: MessageReceivedInput): Promise<MessageReceivedResult> {
-      return handleMessageReceived(input, intentService, behaviorService, retrievalService, debugRepo);
+      return handleMessageReceived(
+        input,
+        intentService,
+        behaviorService,
+        retrievalService,
+        debugRepo,
+        semanticRepo,
+        memoryRepo,
+      );
     },
-    sessionEnd(input: SessionEndInput): SessionEndResult {
+    async sessionEnd(input: SessionEndInput): Promise<SessionEndResult> {
       return handleSessionEnd(
         input,
         experienceService,
@@ -213,7 +255,14 @@ export function initializeEverMemory(
         behaviorService,
         memoryService,
         debugRepo,
+        semanticRepo,
+        memoryRepo,
+        profileService,
+        housekeepingService,
       );
+    },
+    async housekeeping(scope: { userId?: string; chatId?: string; project?: string; global?: boolean }) {
+      return housekeepingService.run(scope);
     },
     evermemoryIntent(input: EverMemoryIntentToolInput) {
       return evermemoryIntent(intentService, input);
@@ -227,6 +276,9 @@ export function initializeEverMemory(
     evermemoryProfile(input: EverMemoryProfileToolInput = {}): EverMemoryProfileToolResult {
       return evermemoryProfile(profileService, profileRepo, input);
     },
+    async evermemoryOnboard(input: EverMemoryOnboardingToolInput): Promise<EverMemoryOnboardingToolResult> {
+      return evermemoryOnboard(onboardingService, input);
+    },
     evermemoryConsolidate(input: EverMemoryConsolidateToolInput = {}): EverMemoryConsolidateToolResult {
       return evermemoryConsolidate(memoryService, input);
     },
@@ -238,6 +290,16 @@ export function initializeEverMemory(
     },
     evermemoryImport(input: EverMemoryImportToolInput): EverMemoryImportToolResult {
       return evermemoryImport(transferService, input);
+    },
+    export(
+      format: 'json' | 'markdown',
+      scope?: MemoryScope,
+      options: { includeArchived?: boolean; limit?: number } = {},
+    ) {
+      return exportService.export({ format, scope, ...options });
+    },
+    import(content: string, format: 'json' | 'markdown', scope: MemoryScope) {
+      return exportService.import(content, format, scope);
     },
     evermemoryReview(input: EverMemoryReviewToolInput = {}): EverMemoryReviewToolResult {
       return evermemoryReview(archiveService, behaviorService, input);
@@ -259,6 +321,12 @@ export function initializeEverMemory(
         runtimeSession: input.sessionId ? getSessionContext(input.sessionId) : undefined,
         userId: input.userId,
         sessionId: input.sessionId,
+      });
+    },
+    async evermemorySmartness(input: EverMemorySmartnessToolInput = {}): Promise<string> {
+      return evermemorySmartness({
+        smartnessMetricsService,
+        userId: input.userId,
       });
     },
   };

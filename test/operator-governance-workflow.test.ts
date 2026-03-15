@@ -104,7 +104,7 @@ test('operator workflow B: sessionEnd rule promotion → explain → deprecate l
       scope,
     });
 
-    const sessionResult = app.sessionEnd({
+    const sessionResult = await app.sessionEnd({
       sessionId: 'ops-session-b-1',
       messageId: 'ops-msg-b-1',
       scope,

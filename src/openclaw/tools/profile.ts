@@ -52,6 +52,62 @@ export function registerProfileTools({ api, evermemory, sessionScopes }: OpenCla
 
   api.registerTool(
     (toolContext: UnknownRecord) => ({
+      name: 'profile_onboard',
+      label: 'Profile Onboard',
+      description: 'Run the first-use onboarding questionnaire and persist answers into the user profile.',
+      parameters: Type.Object(
+        {
+          userId: Type.Optional(Type.String()),
+          responses: Type.Optional(Type.Array(Type.Object(
+            {
+              questionId: Type.String(),
+              answer: Type.String(),
+            },
+            { additionalProperties: false },
+          ))),
+        },
+        { additionalProperties: false },
+      ),
+      async execute(_toolCallId: string, params: UnknownRecord) {
+        const scope = resolveToolScope(sessionScopes, toolContext);
+        const userId = asOptionalString(params.userId) ?? scope.userId;
+        if (!userId) {
+          return {
+            content: [{ type: 'text', text: 'Missing required field: userId' }],
+            details: { reason: 'missing_user_id' },
+          };
+        }
+        const responses = Array.isArray(params.responses)
+          ? params.responses
+            .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+            .map((item) => ({
+              questionId: asOptionalString(item.questionId) ?? '',
+              answer: asOptionalString(item.answer) ?? '',
+            }))
+            .filter((item) => item.questionId.length > 0)
+          : undefined;
+        const result = await evermemory.evermemoryOnboard({
+          userId,
+          responses,
+        });
+        return {
+          content: [{
+            type: 'text',
+            text: result.questions.length > 0
+              ? `${result.welcomeMessage ?? ''}\nOnboarding required: ${result.questions.length} question(s) pending.`
+              : result.completionMessage
+                ?? result.welcomeMessage
+                ?? `Onboarding completed=${result.result?.completed ?? false}, profileUpdated=${result.result?.profileUpdated ?? false}`,
+          }],
+          details: result,
+        };
+      },
+    }),
+    { name: 'profile_onboard' },
+  );
+
+  api.registerTool(
+    (toolContext: UnknownRecord) => ({
       name: 'evermemory_intent',
       label: 'EverMemory Intent',
       description: 'Analyze a message intent and persist deterministic intent record.',

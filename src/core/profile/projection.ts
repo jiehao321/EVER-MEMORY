@@ -342,6 +342,10 @@ function dedupeStrings(values: string[]): string[] {
   return result;
 }
 
+function isReservedBehaviorHint(value: string): boolean {
+  return value.startsWith('system:');
+}
+
 export class ProfileProjectionService {
   private readonly maxMemoryScan: number;
 
@@ -361,6 +365,7 @@ export class ProfileProjectionService {
       return null;
     }
     try {
+      const existingProfile = this.profileRepo.getByUserId(normalizedUserId);
       const memories = this.memoryRepo.search({
         scope: { userId: normalizedUserId },
         activeOnly: true,
@@ -425,9 +430,12 @@ export class ProfileProjectionService {
       const likelyInterests = collectLikelyInterests(memories, explicitPreferences, explicitConstraints);
       const workPatterns = collectWorkPatterns(memories, explicitConstraints);
       const behaviorHints = dedupeStrings(
-        this.behaviorRepo
-          .listActiveCandidates({ userId: normalizedUserId, limit: PROFILE_MAX_BEHAVIOR_HINTS })
-          .map((rule) => rule.statement),
+        [
+          ...(existingProfile?.behaviorHints.filter(isReservedBehaviorHint) ?? []),
+          ...this.behaviorRepo
+            .listActiveCandidates({ userId: normalizedUserId, limit: PROFILE_MAX_BEHAVIOR_HINTS })
+            .map((rule) => rule.statement),
+        ],
       ).slice(0, PROFILE_MAX_BEHAVIOR_HINTS);
 
       const profile: ProjectedProfile = {

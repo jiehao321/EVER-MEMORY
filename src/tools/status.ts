@@ -7,6 +7,7 @@ import type { MemoryRepository } from '../storage/memoryRepo.js';
 import type { ProfileRepository } from '../storage/profileRepo.js';
 import type { ReflectionRepository } from '../storage/reflectionRepo.js';
 import type { SemanticRepository } from '../storage/semanticRepo.js';
+import type { SmartnessMetricsService, SmartnessSummary } from '../core/analytics/smartnessMetrics.js';
 import { getSchemaVersion } from '../storage/migrations.js';
 import type { EverMemoryStatusToolResult, RuntimeSessionContext } from '../types.js';
 
@@ -276,4 +277,37 @@ export function evermemoryStatus(input: {
     runtimeSession: input.runtimeSession,
     recentDebugEvents,
   };
+}
+
+function toPercent(score: number): number {
+  return Math.round(Math.max(0, Math.min(1, score)) * 100);
+}
+
+function toTrend(trend: SmartnessSummary['dimensions'][number]['trend']): string {
+  if (trend === 'up') {
+    return '↑';
+  }
+  if (trend === 'down') {
+    return '↓';
+  }
+  return '→';
+}
+
+export function formatSmartnessReport(summary: SmartnessSummary): string {
+  const lines = [
+    `🧠 智能度评分：${toPercent(summary.overall)}/100`,
+    ...summary.dimensions.map((dimension, index) => {
+      const prefix = index === summary.dimensions.length - 1 ? '  └─' : '  ├─';
+      return `${prefix} ${dimension.name}：${String(`${toPercent(dimension.score)}分`).padStart(6, ' ')} (${toTrend(dimension.trend)} ${dimension.description})`;
+    }),
+  ];
+  return lines.join('\n');
+}
+
+export async function evermemorySmartness(input: {
+  smartnessMetricsService: SmartnessMetricsService;
+  userId?: string;
+}): Promise<string> {
+  const summary = await input.smartnessMetricsService.compute(input.userId);
+  return formatSmartnessReport(summary);
 }

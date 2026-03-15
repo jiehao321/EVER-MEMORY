@@ -75,6 +75,7 @@ export interface BehaviorRule {
   lifecycle: BehaviorRuleLifecycle;
   state: BehaviorRuleState;
   trace?: BehaviorRuleTrace;
+  tags?: string[];
 }
 
 export interface BehaviorRuleLookupInput {
@@ -101,6 +102,7 @@ export interface BehaviorRulePromotionDecision {
 export interface PromoteFromReflectionInput {
   reflectionId: string;
   appliesTo?: BehaviorRuleAppliesTo;
+  tags?: string[];
 }
 
 export interface PromoteFromReflectionResult {

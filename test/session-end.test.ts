@@ -15,7 +15,7 @@ test('sessionEnd writes experience and can trigger lightweight reflection', asyn
     scope: { userId: 'u-session-end-1', project: 'evermemory' },
   });
 
-  const result = app.sessionEnd({
+  const result = await app.sessionEnd({
     sessionId: 'session-end-1',
     messageId: 'session-end-msg-1',
     scope: { userId: 'u-session-end-1', project: 'evermemory' },
@@ -30,6 +30,8 @@ test('sessionEnd writes experience and can trigger lightweight reflection', asyn
   assert.ok(result.reflection);
   assert.ok((result.promotedRules?.length ?? 0) >= 1);
   assert.equal(result.reflection?.state.promoted, true);
+  assert.ok(result.learningInsights >= 1);
+  assert.equal(result.autoPromotedRules >= 0, true);
   assert.ok((result.autoMemory?.generated ?? 0) >= 1);
   assert.ok((result.autoMemory?.accepted ?? 0) >= 1);
   assert.ok((result.autoMemory?.generatedByKind?.project_summary ?? 0) >= 1);
@@ -88,7 +90,7 @@ test('sessionEnd auto memory extraction prefers intent raw text and skips operat
     scope: { userId: 'u-session-end-noise', project: 'evermemory' },
   });
 
-  const result = app.sessionEnd({
+  const result = await app.sessionEnd({
     sessionId: 'session-end-noise-1',
     messageId: 'session-end-noise-msg-1',
     scope: { userId: 'u-session-end-noise', project: 'evermemory' },
@@ -126,7 +128,7 @@ test('project continuity recall stays stable across sessions for progress/stage/
     scope: { userId: 'u-continuity-1', project: 'apollo' },
   });
 
-  const end = app.sessionEnd({
+  const end = await app.sessionEnd({
     sessionId: 'session-continuity-1',
     messageId: 'msg-continuity-1',
     scope: { userId: 'u-continuity-1', project: 'apollo' },
@@ -214,7 +216,7 @@ test('sessionEnd auto capture maintains accept rate and blocks placeholder summa
     scope: { userId: 'u-accept-rate', project: 'titan' },
   });
 
-  const quality = app.sessionEnd({
+  const quality = await app.sessionEnd({
     sessionId: 'session-accept-rate-1',
     messageId: 'msg-accept-rate-1',
     scope: { userId: 'u-accept-rate', project: 'titan' },
@@ -241,7 +243,7 @@ test('sessionEnd auto capture maintains accept rate and blocks placeholder summa
   assert.ok(!titanSummary?.content.includes('待补充'));
   assert.ok(!titanSummary?.content.includes('待确认'));
 
-  const placeholder = app.sessionEnd({
+  const placeholder = await app.sessionEnd({
     sessionId: 'session-accept-rate-2',
     messageId: 'msg-accept-rate-2',
     scope: { userId: 'u-accept-rate', project: 'titan' },
@@ -269,7 +271,7 @@ test('sessionEnd does not over-generate decision or project summary from weak ge
     scope: { userId: 'u-boundary-1', project: 'boundary-project' },
   });
 
-  const result = app.sessionEnd({
+  const result = await app.sessionEnd({
     sessionId: 'session-boundary-1',
     messageId: 'msg-boundary-1',
     scope: { userId: 'u-boundary-1', project: 'boundary-project' },

@@ -31,6 +31,26 @@ type TransformersModule = {
   ) => Promise<FeatureExtractionPipeline>;
 };
 
+export const LOCAL_EMBEDDING_DEPENDENCY_ERROR_CODE =
+  'EVERMEMORY_LOCAL_EMBEDDING_DEPENDENCY_MISSING';
+
+export class LocalEmbeddingDependencyError extends Error {
+  readonly code = LOCAL_EMBEDDING_DEPENDENCY_ERROR_CODE;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'LocalEmbeddingDependencyError';
+    if (options && 'cause' in options) {
+      Object.defineProperty(this, 'cause', {
+        configurable: true,
+        enumerable: false,
+        value: options.cause,
+        writable: true,
+      });
+    }
+  }
+}
+
 export class LocalEmbeddingProvider implements EmbeddingProvider {
   readonly kind = 'local' as const;
   readonly dimensions = 384;
@@ -45,6 +65,10 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
 
   isReady(): boolean {
     return this._pipeline !== null;
+  }
+
+  async initialize(): Promise<void> {
+    await this._loadPipeline();
   }
 
   async embed(texts: string[]): Promise<EmbeddingVector[]> {
@@ -77,17 +101,30 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
       return this._pipeline;
     }
 
+    this._pipeline = await this._initialize();
+    return this._pipeline;
+  }
+
+  private async _initialize(): Promise<FeatureExtractionPipeline> {
     const moduleName: string = '@xenova/transformers';
-    const transformersModule = (await import(moduleName)) as TransformersModule;
+    let transformersModule: TransformersModule;
+    try {
+      transformersModule = (await import(moduleName)) as TransformersModule;
+    } catch (error) {
+      const message =
+        'LocalEmbeddingProvider: @xenova/transformers not installed. Run: npm install @xenova/transformers';
+      console.error(message);
+      throw new LocalEmbeddingDependencyError(message, { cause: error });
+    }
+
     if (typeof transformersModule.pipeline !== 'function') {
       throw new Error('Invalid transformers pipeline module');
     }
 
-    this._pipeline = await transformersModule.pipeline(
+    return transformersModule.pipeline(
       'feature-extraction',
       this._modelName
     );
-    return this._pipeline;
   }
 
   private _tensorFromResult(result: FeatureExtractionResult): TensorLike {
@@ -201,15 +238,16 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     }
 
     if (sum === 0) {
-      return vector;
+      return vector.slice(0);
     }
 
     const norm = Math.sqrt(sum);
+    const normalized = new Float32Array(vector.length);
     for (let i = 0; i < vector.length; i += 1) {
-      vector[i] /= norm;
+      normalized[i] = vector[i] / norm;
     }
 
-    return vector;
+    return normalized;
   }
 
   private _toFloat32Array(source: ArrayLikeNumber): Float32Array {

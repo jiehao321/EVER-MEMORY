@@ -5,7 +5,12 @@ import type {
   ReflectionRecord,
   SessionEndInput,
 } from '../../types.js';
+import type { MemoryRepository } from '../../storage/memoryRepo.js';
+import type { SemanticRepository } from '../../storage/semanticRepo.js';
 import type { MemoryService } from './service.js';
+import { embeddingManager } from '../../embedding/manager.js';
+import { checkSemanticDuplicate } from './dedup.js';
+import { detectConflicts, resolveConflict } from './conflict.js';
 import {
   CONSTRAINT_PATTERNS,
   CORRECTION_PATTERNS,
@@ -473,19 +478,49 @@ function buildAutoMemoryCandidates(
   return Array.from(deduped.values());
 }
 
-function storeAutoMemoryCandidates(
+async function storeAutoMemoryCandidates(
   candidates: EvaluatedAutoMemoryCandidate[],
   input: SessionEndInput,
   memoryService: MemoryService,
-): Omit<AutoCaptureResult, 'generatedByKind'> {
+  semanticRepo?: SemanticRepository,
+  memoryRepo?: MemoryRepository,
+  dedupThreshold = 0.92,
+): Promise<Omit<AutoCaptureResult, 'generatedByKind'>> {
   const acceptedByKind: Partial<Record<AutoMemoryCandidateKind, number>> = {};
   const acceptedIdsByKind: Partial<Record<AutoMemoryCandidateKind, string[]>> = {};
   const storedIds: string[] = [];
   const rejectedReasons: string[] = [];
 
   for (const candidate of candidates) {
+    if (semanticRepo) {
+      const dedup = await checkSemanticDuplicate(
+        candidate.memory.content,
+        candidate.kind,
+        semanticRepo,
+        {
+          enabled: embeddingManager.isReady(),
+          threshold: dedupThreshold,
+        },
+      );
+      if (dedup.isDuplicate) {
+        rejectedReasons.push(`duplicate:${dedup.existingId}:${dedup.similarity}`);
+        continue;
+      }
+    }
+
     const result = memoryService.store(candidate.memory, input.scope);
     if (result.accepted && result.memory) {
+      if (semanticRepo && memoryRepo) {
+        const conflicts = await detectConflicts(
+          result.memory.id,
+          result.memory.content,
+          semanticRepo,
+          memoryRepo,
+        );
+        for (const conflict of conflicts) {
+          await resolveConflict(conflict, memoryRepo);
+        }
+      }
       storedIds.push(result.memory.id);
       acceptedByKind[candidate.kind] = (acceptedByKind[candidate.kind] ?? 0) + 1;
       const ids = acceptedIdsByKind[candidate.kind] ?? [];
@@ -507,15 +542,18 @@ function storeAutoMemoryCandidates(
   };
 }
 
-export function processAutoCapture(
+export async function processAutoCapture(
   input: SessionEndInput,
   context: AutoCaptureContext,
   memoryService: MemoryService,
-): AutoCaptureResult {
+  semanticRepo?: SemanticRepository,
+  memoryRepo?: MemoryRepository,
+  dedupThreshold?: number,
+): Promise<AutoCaptureResult> {
   const candidates = buildAutoMemoryCandidates(input, context);
   const generatedByKind = countByKind(candidates.map((candidate) => candidate.kind));
   return {
-    ...storeAutoMemoryCandidates(candidates, input, memoryService),
+    ...(await storeAutoMemoryCandidates(candidates, input, memoryService, semanticRepo, memoryRepo, dedupThreshold)),
     generatedByKind,
   };
 }

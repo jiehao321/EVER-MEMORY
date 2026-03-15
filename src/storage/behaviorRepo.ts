@@ -47,6 +47,7 @@ interface BehaviorRuleRow {
   deactivated_by_reflection_id: string | null;
   deactivated_reason: string | null;
   deactivated_at: string | null;
+  tags_json: string | null;
 }
 
 function parseStringArray(value: string | null): string[] {
@@ -112,6 +113,7 @@ function toBehaviorRule(row: BehaviorRuleRow): BehaviorRule {
       deactivatedReason: row.deactivated_reason ?? undefined,
       deactivatedAt: row.deactivated_at ?? undefined,
     },
+    tags: parseStringArray(row.tags_json),
   };
 
   return evaluateBehaviorLifecycle(baseRule, new Date(baseRule.updatedAt));
@@ -134,8 +136,8 @@ export class BehaviorRepository {
         frozen, status_reason, status_source_reflection_id, status_changed_at,
         promoted_from_reflection_id, promoted_reason, promoted_at, review_source_refs_json,
         promotion_evidence_summary, deactivated_by_rule_id, deactivated_by_reflection_id,
-        deactivated_reason, deactivated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        deactivated_reason, deactivated_at, tags_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         statement = excluded.statement,
         created_at = excluded.created_at,
@@ -178,7 +180,8 @@ export class BehaviorRepository {
         deactivated_by_rule_id = excluded.deactivated_by_rule_id,
         deactivated_by_reflection_id = excluded.deactivated_by_reflection_id,
         deactivated_reason = excluded.deactivated_reason,
-        deactivated_at = excluded.deactivated_at
+        deactivated_at = excluded.deactivated_at,
+        tags_json = excluded.tags_json
     `).run(
       rule.id,
       rule.statement,
@@ -223,6 +226,7 @@ export class BehaviorRepository {
       rule.trace?.deactivatedByReflectionId ?? null,
       rule.trace?.deactivatedReason ?? null,
       rule.trace?.deactivatedAt ?? null,
+      JSON.stringify(rule.tags ?? []),
     );
   }
 

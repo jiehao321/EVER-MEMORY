@@ -22,10 +22,19 @@ export interface InteractionRuntimeContext {
   updatedAt: string;
 }
 
+export interface RuntimeUserProfile {
+  readonly communicationStyle?: string;
+  readonly likelyInterests: readonly string[];
+  readonly workPatterns: readonly string[];
+  readonly explicitPreferences: Readonly<Record<string, string>>;
+  readonly displayName?: string;
+}
+
 export interface RuntimeSessionContext {
   sessionId: string;
   scope: MemoryScope;
   bootBriefing?: BootBriefing;
+  userProfile?: RuntimeUserProfile;
   activeBehaviorRules?: BehaviorRule[];
   interaction?: InteractionRuntimeContext;
 }
@@ -34,6 +43,7 @@ export interface SessionStartResult {
   sessionId: string;
   scope: MemoryScope;
   briefing: BootBriefing;
+  userProfile?: RuntimeUserProfile;
   behaviorRules?: BehaviorRule[];
 }
 
@@ -72,6 +82,9 @@ export interface SessionEndResult {
   experience: ExperienceLog;
   reflection?: ReflectionRecord;
   promotedRules?: BehaviorRule[];
+  learningInsights: number;
+  autoPromotedRules: number;
+  profileUpdated: boolean;
   autoMemory?: {
     generated: number;
     accepted: number;

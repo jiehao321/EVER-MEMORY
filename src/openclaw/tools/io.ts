@@ -18,19 +18,42 @@ export function registerIOTools({ api, evermemory, sessionScopes }: OpenClawRegi
     (toolContext: UnknownRecord) => ({
       name: 'evermemory_export',
       label: 'EverMemory Export',
-      description: 'Export memory snapshot for review or migration.',
+      description: 'Export memory as snapshot, JSON, or Markdown for review, backup, or migration.',
       parameters: Type.Object(
         {
           scope: scopeSchema,
-          includeArchived: Type.Optional(Type.Boolean()),
-          limit: Type.Optional(Type.Number({ minimum: 1, maximum: toolLimits.export })),
+          format: Type.Optional(Type.Union([
+            Type.Literal('json', { description: 'Export as lightweight JSON array.' }),
+            Type.Literal('markdown', { description: 'Export as Markdown sections.' }),
+          ])),
+          includeArchived: Type.Optional(Type.Boolean({ description: 'Include archived memories in the export.' })),
+          limit: Type.Optional(Type.Number({
+            minimum: 1,
+            maximum: toolLimits.export,
+            description: 'Maximum number of memories to export.',
+          })),
         },
         { additionalProperties: false },
       ),
       async execute(_toolCallId: string, params: UnknownRecord) {
         const baseScope = resolveToolScope(sessionScopes, toolContext);
+        const scope = mergeScope(baseScope, parseScope(params.scope));
+        const format = asOptionalEnum(params.format, ['json', 'markdown'] as const);
+        if (format) {
+          const result = evermemory.export(format, scope, {
+            includeArchived: asOptionalBoolean(params.includeArchived),
+            limit: asOptionalInteger(params.limit),
+          });
+          return {
+            content: [{
+              type: 'text',
+              text: result.content,
+            }],
+            details: result,
+          };
+        }
         const result = evermemory.evermemoryExport({
-          scope: mergeScope(baseScope, parseScope(params.scope)),
+          scope,
           includeArchived: asOptionalBoolean(params.includeArchived),
           limit: asOptionalInteger(params.limit),
         });
@@ -43,28 +66,50 @@ export function registerIOTools({ api, evermemory, sessionScopes }: OpenClawRegi
         };
       },
     }),
-    { name: 'evermemory_export' },
+    { names: ['evermemory_export', 'memory_export'] },
   );
 
   api.registerTool(
-    () => ({
+    (toolContext: UnknownRecord) => ({
       name: 'evermemory_import',
       label: 'EverMemory Import',
-      description: 'Review/apply memory snapshot import with safety checks.',
+      description: 'Import memory from snapshot, JSON, or Markdown with validation and duplicate skipping.',
       parameters: Type.Object(
         {
+          content: Type.Optional(Type.String({ description: 'JSON or Markdown content to import.' })),
+          format: Type.Optional(Type.Union([
+            Type.Literal('json', { description: 'Parse lightweight JSON memory array.' }),
+            Type.Literal('markdown', { description: 'Parse Markdown memory blocks.' }),
+          ])),
           snapshot: Type.Any(),
           mode: importModeSchema,
-          approved: Type.Optional(Type.Boolean()),
-          allowOverwrite: Type.Optional(Type.Boolean()),
+          approved: Type.Optional(Type.Boolean({ description: 'Approve applying snapshot import changes.' })),
+          allowOverwrite: Type.Optional(Type.Boolean({ description: 'Allow snapshot import to overwrite existing IDs.' })),
           scopeOverride: scopeSchema,
         },
         { additionalProperties: false },
       ),
       async execute(_toolCallId: string, params: UnknownRecord) {
+        const format = asOptionalEnum(params.format, ['json', 'markdown'] as const);
+        const content = typeof params.content === 'string' ? params.content : undefined;
+        if (format && content !== undefined) {
+          const baseScope = resolveToolScope(sessionScopes, toolContext);
+          const result = await evermemory.import(
+            content,
+            format,
+            mergeScope(baseScope, parseScope(params.scopeOverride)),
+          );
+          return {
+            content: [{
+              type: 'text',
+              text: `Import completed: imported=${result.imported}, skipped=${result.skipped}, errors=${result.errors.length}`,
+            }],
+            details: result,
+          };
+        }
         if (typeof params.snapshot !== 'object' || params.snapshot === null || Array.isArray(params.snapshot)) {
           return {
-            content: [{ type: 'text', text: 'Missing required field: snapshot' }],
+            content: [{ type: 'text', text: 'Missing required field: snapshot or content+format' }],
             details: { reason: 'missing_snapshot' },
           };
         }
@@ -84,6 +129,6 @@ export function registerIOTools({ api, evermemory, sessionScopes }: OpenClawRegi
         };
       },
     }),
-    { name: 'evermemory_import' },
+    { names: ['evermemory_import', 'memory_import'] },
   );
 }

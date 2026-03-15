@@ -48,7 +48,7 @@ test('cross session continuity recall stays accurate after multi-day progression
       text: session.message,
       scope,
     });
-    const endResult = app.sessionEnd({
+    const endResult = await app.sessionEnd({
       sessionId: session.sessionId,
       messageId: `${session.sessionId}-end`,
       scope,

@@ -8,6 +8,11 @@ import type {
   RetrievalMode,
 } from './primitives.js';
 import type {
+  OnboardingQuestion,
+  OnboardingResponse,
+  OnboardingResult,
+} from '../core/profile/onboarding.js';
+import type {
   BehaviorRule,
   BehaviorRuleMutationAction,
   BehaviorRuleReviewRecord,
@@ -76,6 +81,19 @@ export interface EverMemoryProfileToolResult {
     derivedHintFields: number;
     derivedGuardrail: 'weak_hint_only';
   };
+}
+
+export interface EverMemoryOnboardingToolInput {
+  userId?: string;
+  responses?: readonly OnboardingResponse[];
+}
+
+export interface EverMemoryOnboardingToolResult {
+  needsOnboarding: boolean;
+  questions: readonly OnboardingQuestion[];
+  welcomeMessage?: string;
+  completionMessage?: string;
+  result?: OnboardingResult;
 }
 
 export interface EverMemoryConsolidateToolInput {
@@ -389,3 +407,7 @@ export interface EverMemoryStatusToolResult {
 }
 
 export interface EverMemoryStoreToolResult extends MemoryStoreResult {}
+
+export interface EverMemorySmartnessToolInput {
+  userId?: string;
+}

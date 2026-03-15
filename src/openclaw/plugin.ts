@@ -6,6 +6,7 @@ import { registerIOTools } from './tools/io.js';
 import { registerMemoryTools } from './tools/memory.js';
 import { registerProfileTools } from './tools/profile.js';
 import { embeddingManager, type EmbeddingConfig } from '../embedding/manager.js';
+import { runAutoSetup } from '../core/setup/autoSetup.js';
 
 const memoryPlugin = {
   id: PLUGIN_NAME,
@@ -24,11 +25,11 @@ const memoryPlugin = {
 
     api.registerService({
       id: PLUGIN_NAME,
-      start: () => {
-        const provider = (process.env.EVERMEMORY_EMBEDDING_PROVIDER ?? 'none') as EmbeddingConfig['provider'];
+      start: async () => {
+        const provider = (process.env.EVERMEMORY_EMBEDDING_PROVIDER ?? 'local') as EmbeddingConfig['provider'];
         embeddingManager.configure({ provider });
-        if (provider === 'none') {
-          api.logger.info('[EverMemory] Embedding provider not configured. Set EVERMEMORY_EMBEDDING_PROVIDER=local for semantic search.');
+        if (process.env.EVERMEMORY_EMBEDDING_PROVIDER === undefined) {
+          api.logger.info('[EverMemory] Using local embedding provider (default)');
         } else {
           api.logger.info(`[EverMemory] Embedding provider: ${provider}`);
         }
@@ -36,6 +37,22 @@ const memoryPlugin = {
         api.logger.info(
           `${PLUGIN_NAME}@${PLUGIN_VERSION}: initialized (db=${status.databasePath}, memory=${status.memoryCount})`,
         );
+        if (status.profileCount === 0) {
+          api.logger.info('[EverMemory] No stored profiles detected. Run profile_onboard to initialize the first user profile.');
+        }
+        try {
+          await embeddingManager.embed('EverMemory startup diagnostic');
+        } catch {
+          // Diagnostics stay best-effort; startup must continue.
+        }
+        const setup = await runAutoSetup(context.evermemory.memoryRepo, embeddingManager);
+        api.logger.info(`[EverMemory] Ready. memories=${setup.memoryCount}, embedding=${setup.embeddingProvider}`);
+        if (setup.isFirstRun) {
+          api.logger.info("[EverMemory] First run detected. Run 'profile_onboard' to get started.");
+        }
+        for (const warning of setup.warnings) {
+          api.logger.warn(`[EverMemory] ${warning}`);
+        }
       },
       stop: () => {
         try {

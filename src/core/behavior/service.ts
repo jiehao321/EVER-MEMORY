@@ -36,6 +36,10 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function mergeTags(...groups: Array<string[] | undefined>): string[] {
+  return Array.from(new Set(groups.flatMap((group) => group ?? []).filter((tag) => tag.trim().length > 0)));
+}
+
 function withReviewState(reflection: ReflectionRecord, promotedCount: number): ReflectionRecord {
   return {
     ...reflection,
@@ -54,6 +58,13 @@ export class BehaviorService {
     private readonly reflectionRepo: ReflectionRepository,
     private readonly debugRepo?: DebugRepository,
   ) {}
+
+  listPendingReflections(limit = 20): ReflectionRecord[] {
+    return this.reflectionRepo.listRecent(limit).filter((reflection) =>
+      !reflection.state.promoted
+      && !reflection.state.rejected
+      && reflection.candidateRules.length > 0);
+  }
 
   promoteFromReflection(input: PromoteFromReflectionInput): PromoteFromReflectionResult {
     const reflection = this.reflectionRepo.findById(input.reflectionId);
@@ -166,6 +177,7 @@ export class BehaviorService {
           reviewSourceRefs: reflection.evidence.refs,
           promotionEvidenceSummary: reflection.analysis.summary,
         },
+        tags: mergeTags(input.tags),
       };
 
       this.behaviorRepo.insert(rule);
@@ -178,6 +190,7 @@ export class BehaviorService {
         confidence: rule.evidence.confidence,
         level: rule.lifecycle.level,
         maturity: rule.lifecycle.maturity,
+        tags: rule.tags,
         promotedReason: decision.reason,
         reviewSourceRefs: rule.trace?.reviewSourceRefs,
         promotionEvidenceSummary: rule.trace?.promotionEvidenceSummary,

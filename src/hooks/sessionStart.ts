@@ -1,8 +1,9 @@
 import type { DebugRepository } from '../storage/debugRepo.js';
 import type { BehaviorService } from '../core/behavior/service.js';
-import type { BriefingService } from '../core/briefing/service.js';
+import { normalizeCommunicationStyle, type BriefingService } from '../core/briefing/service.js';
+import type { ProfileRepository } from '../storage/profileRepo.js';
 import { setSessionContext } from '../runtime/context.js';
-import type { MemoryScope, SessionStartInput, SessionStartResult } from '../types.js';
+import type { MemoryScope, ProjectedProfile, RuntimeUserProfile, SessionStartInput, SessionStartResult } from '../types.js';
 
 function buildScope(input: SessionStartInput): MemoryScope {
   return {
@@ -12,26 +13,48 @@ function buildScope(input: SessionStartInput): MemoryScope {
   };
 }
 
+function buildUserProfile(profile: ProjectedProfile): RuntimeUserProfile {
+  return {
+    communicationStyle: profile.derived.communicationStyle?.tendency,
+    likelyInterests: profile.derived.likelyInterests.map((item) => item.value),
+    workPatterns: profile.derived.workPatterns.map((item) => item.value),
+    explicitPreferences: Object.freeze(Object.fromEntries(
+      Object.entries(profile.stable.explicitPreferences).map(([key, value]) => [key, value.value]),
+    )),
+    displayName: profile.stable.displayName?.value,
+  };
+}
+
 export function handleSessionStart(
   input: SessionStartInput,
   briefingService: BriefingService,
   behaviorService: BehaviorService,
   debugRepo?: DebugRepository,
+  profileRepo?: ProfileRepository,
 ): SessionStartResult {
   const scope = buildScope(input);
+  const userProfile = profileRepo && input.userId
+    ? profileRepo.getByUserId(input.userId) ?? undefined
+    : undefined;
+  const style = userProfile
+    ? normalizeCommunicationStyle(userProfile.derived.communicationStyle?.tendency)
+    : undefined;
   const briefing = briefingService.build(scope, {
     sessionId: input.sessionId,
+    communicationStyle: style,
   });
   const behaviorRules = behaviorService.getActiveRules({
     scope,
     channel: input.channel,
     limit: 6,
   });
+  const runtimeUserProfile = userProfile ? buildUserProfile(userProfile) : undefined;
 
   setSessionContext({
     sessionId: input.sessionId,
     scope,
     bootBriefing: briefing,
+    userProfile: runtimeUserProfile,
     activeBehaviorRules: behaviorRules,
   });
 
@@ -68,6 +91,7 @@ export function handleSessionStart(
     sessionId: input.sessionId,
     scope,
     briefing,
+    userProfile: runtimeUserProfile,
     behaviorRules,
   };
 }

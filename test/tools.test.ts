@@ -30,6 +30,7 @@ test('recall, briefing, and status return structured outputs with improved statu
   assert.ok(Array.isArray(briefing.sections.identity));
 
   const status = app.evermemoryStatus({ userId: 'user-2' });
+  const smartness = await app.evermemorySmartness({ userId: 'user-2' });
   assert.ok(status.schemaVersion >= 1);
   assert.equal(status.databasePath, databasePath);
   assert.equal(status.memoryCount, 2);
@@ -46,6 +47,8 @@ test('recall, briefing, and status return structured outputs with improved statu
   assert.ok(Array.isArray(status.latestDebugEvents));
   assert.equal(status.latestWriteDecision?.accepted, true);
   assert.equal(status.latestRetrieval?.mode, 'keyword');
+  assert.match(smartness, /智能度评分：/);
+  assert.match(smartness, /记忆深度：/);
 
   const intent = app.evermemoryIntent({
     message: '请给出下一步计划',
@@ -54,7 +57,7 @@ test('recall, briefing, and status return structured outputs with improved statu
   });
   assert.equal(intent.intent.type, 'planning');
 
-  app.sessionEnd({
+  await app.sessionEnd({
     sessionId: 'session-tools-1',
     messageId: 'session-tools-msg-1',
     inputText: '更正一下，先确认再执行',

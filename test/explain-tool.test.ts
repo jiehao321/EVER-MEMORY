@@ -36,7 +36,7 @@ test('evermemory_explain explains write, retrieval, and rule decisions', async (
     limit: 3,
   });
 
-  app.sessionEnd({
+  await app.sessionEnd({
     sessionId: 'session-explain-1',
     scope: { userId: 'u-explain-1' },
     inputText: '更正一下，执行前必须先确认',
@@ -104,7 +104,7 @@ test('evermemory_explain covers session and archive topics', async () => {
   const databasePath = createTempDbPath('explain-session-archive');
   const app = initializeEverMemory({ databasePath });
 
-  app.sessionEnd({
+  await app.sessionEnd({
     sessionId: 'session-explain-2',
     scope: { userId: 'u-explain-2' },
     inputText: '项目状态更新：Phoenix 进入测试阶段，后续需要补充回滚方案。',

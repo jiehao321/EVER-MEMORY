@@ -56,6 +56,7 @@ function makeRule(input: Partial<BehaviorRule> & Pick<BehaviorRule, 'statement' 
       statusChangedAt: input.state?.statusChangedAt,
     },
     trace: input.trace,
+    tags: input.tags ?? [],
   };
 }
 

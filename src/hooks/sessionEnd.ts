@@ -1,9 +1,15 @@
 import type { DebugRepository } from '../storage/debugRepo.js';
+import type { MemoryRepository } from '../storage/memoryRepo.js';
+import type { SemanticRepository } from '../storage/semanticRepo.js';
 import type { BehaviorService } from '../core/behavior/service.js';
+import type { ProfileProjectionService } from '../core/profile/projection.js';
 import type { ExperienceService } from '../core/reflection/experience.js';
 import type { ReflectionService } from '../core/reflection/service.js';
+import type { MemoryHousekeepingService } from '../core/memory/housekeeping.js';
 import type { MemoryService } from '../core/memory/service.js';
 import { processAutoCapture } from '../core/memory/autoCapture.js';
+import { extractLearningInsights, storeInsights } from '../core/memory/activeLearning.js';
+import { autoPromoteRules } from '../core/behavior/autoPromotion.js';
 import type { SessionEndInput, SessionEndResult } from '../types.js';
 import { clearSessionContext, getInteractionContext } from '../runtime/context.js';
 
@@ -24,14 +30,18 @@ function pickTriggerKind(input: SessionEndInput, correction: boolean, repeat: bo
   return null;
 }
 
-export function handleSessionEnd(
+export async function handleSessionEnd(
   input: SessionEndInput,
   experienceService: ExperienceService,
   reflectionService: ReflectionService,
   behaviorService: BehaviorService,
   memoryService: MemoryService,
   debugRepo?: DebugRepository,
-): SessionEndResult {
+  semanticRepo?: SemanticRepository,
+  memoryRepo?: MemoryRepository,
+  profileProjection?: ProfileProjectionService,
+  housekeepingService?: MemoryHousekeepingService,
+): Promise<SessionEndResult> {
   const interaction = getInteractionContext(input.sessionId);
   const experience = experienceService.log({
     sessionId: input.sessionId,
@@ -76,8 +86,9 @@ export function handleSessionEnd(
         },
       }
     : undefined;
+  const autoPromotionResult = await autoPromoteRules(behaviorService);
 
-  const autoCapture = processAutoCapture(
+  const autoCapture = await processAutoCapture(
     input,
     {
       intent: interaction?.intent,
@@ -85,7 +96,32 @@ export function handleSessionEnd(
       reflection: reviewedReflection,
     },
     memoryService,
+    semanticRepo,
+    memoryRepo,
   );
+  const extractedInsights = await extractLearningInsights(input, {
+    intent: interaction?.intent,
+    reflection: reviewedReflection,
+  });
+  const learningResult = await storeInsights(
+    extractedInsights,
+    input.scope ?? {},
+    memoryService,
+    semanticRepo,
+  );
+  let profileUpdated = false;
+  if (input.scope?.userId && profileProjection) {
+    try {
+      profileProjection.recomputeForUser(input.scope.userId);
+      profileUpdated = true;
+    } catch (error) {
+      // Profile refresh is best-effort and must never block session teardown.
+      debugRepo?.log('profile_recompute_failed', input.sessionId ?? 'unknown', {
+        userId: input.scope?.userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   debugRepo?.log('session_end_processed', input.sessionId, {
     sessionId: input.sessionId,
@@ -97,6 +133,8 @@ export function handleSessionEnd(
     reflectionId: reviewedReflection?.id,
     reflected: Boolean(reviewedReflection),
     promotedRules: promotionResult?.promotedRules.length ?? 0,
+    autoPromotedRules: autoPromotionResult.promoted,
+    learningInsights: learningResult.storedCount,
     autoMemoryGenerated: autoCapture.generated,
     autoMemoryAccepted: autoCapture.accepted,
     autoMemoryRejected: autoCapture.rejected,
@@ -106,7 +144,24 @@ export function handleSessionEnd(
     autoMemoryRejectedReasons: autoCapture.rejectedReasons,
     projectSummaryGenerated: autoCapture.generatedByKind.project_summary ?? 0,
     projectSummaryAccepted: autoCapture.acceptedByKind.project_summary ?? 0,
+    profileUpdated,
   });
+
+  if (housekeepingService && memoryRepo && input.scope && memoryRepo.count({ scope: input.scope }) > 50) {
+    try {
+      const lastRunAt = memoryRepo.search({
+        scope: input.scope,
+        limit: 1,
+      })[0]?.timestamps.updatedAt;
+      await housekeepingService.runIfNeeded(input.scope, lastRunAt);
+    } catch (error) {
+      debugRepo?.log('session_end_processed', input.sessionId, {
+        sessionId: input.sessionId,
+        housekeepingFailed: true,
+        housekeepingError: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   // Clear session context to prevent memory leak
   clearSessionContext(input.sessionId);
@@ -116,6 +171,9 @@ export function handleSessionEnd(
     experience,
     reflection: reviewedReflection,
     promotedRules: promotionResult?.promotedRules,
+    learningInsights: learningResult.storedCount,
+    autoPromotedRules: autoPromotionResult.promoted,
+    profileUpdated,
     autoMemory: {
       generated: autoCapture.generated,
       accepted: autoCapture.accepted,

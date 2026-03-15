@@ -12,6 +12,9 @@ export type EmbeddingConfig = {
 };
 
 type QueueResolver = (value: EmbeddingVector | null) => void;
+type InitializableEmbeddingProvider = EmbeddingProvider & {
+  initialize?: () => Promise<void>;
+};
 
 export class EmbeddingManager {
   private _provider: EmbeddingProvider = new NoOpEmbeddingProvider();
@@ -154,7 +157,7 @@ export class EmbeddingManager {
     }
 
     if (!this._initializing) {
-      this._initializing = Promise.resolve(this._createProvider()).then(
+      this._initializing = this._setup().then(
         (provider) => {
           this._provider = provider;
           this._initialized = true;
@@ -171,6 +174,24 @@ export class EmbeddingManager {
     return this._initializing;
   }
 
+  private async _setup(): Promise<EmbeddingProvider> {
+    const provider = this._createProvider();
+    try {
+      await this._initializeProvider(provider);
+      return provider;
+    } catch (error) {
+      if (provider.kind === 'local') {
+        console.warn(
+          '[EmbeddingManager] Local embedding provider failed to initialize. Falling back to NoOp provider.',
+          error
+        );
+        await provider.dispose().catch(() => undefined);
+        return new NoOpEmbeddingProvider();
+      }
+      throw error;
+    }
+  }
+
   private _createProvider(): EmbeddingProvider {
     switch (this._config.provider) {
       case 'local':
@@ -181,6 +202,13 @@ export class EmbeddingManager {
         });
       default:
         return new NoOpEmbeddingProvider();
+    }
+  }
+
+  private async _initializeProvider(provider: EmbeddingProvider): Promise<void> {
+    const initializable = provider as InitializableEmbeddingProvider;
+    if (typeof initializable.initialize === 'function') {
+      await initializable.initialize();
     }
   }
 

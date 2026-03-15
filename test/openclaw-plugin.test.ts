@@ -12,9 +12,12 @@ function createMockApi(databasePath: string) {
   const toolRegistrations: Array<{ tool: unknown; opts?: { name?: string; names?: string[] } }> = [];
   const services: Array<{ id: string; start: () => void | Promise<void>; stop?: () => void | Promise<void> }> =
     [];
+  const infoLogs: string[] = [];
 
   const logger = {
-    info() {},
+    info(...args: unknown[]) {
+      infoLogs.push(args.map((arg) => String(arg)).join(' '));
+    },
     warn() {},
     error() {},
     debug() {},
@@ -47,7 +50,7 @@ function createMockApi(databasePath: string) {
     registerContextEngine() {},
   };
 
-  return { api, hooks, toolRegistrations, services };
+  return { api, hooks, infoLogs, toolRegistrations, services };
 }
 
 async function runHook(
@@ -137,10 +140,13 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   const reflectTool = tools.get('evermemory_reflect');
   const rulesTool = tools.get('evermemory_rules');
   const profileTool = tools.get('evermemory_profile');
+  const onboardTool = tools.get('profile_onboard');
   const consolidateTool = tools.get('evermemory_consolidate');
   const explainTool = tools.get('evermemory_explain');
   const exportTool = tools.get('evermemory_export');
   const importTool = tools.get('evermemory_import');
+  const memoryExportTool = tools.get('memory_export');
+  const memoryImportTool = tools.get('memory_import');
   const reviewTool = tools.get('evermemory_review');
   const restoreTool = tools.get('evermemory_restore');
 
@@ -152,10 +158,13 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   assert.ok(reflectTool);
   assert.ok(rulesTool);
   assert.ok(profileTool);
+  assert.ok(onboardTool);
   assert.ok(consolidateTool);
   assert.ok(explainTool);
   assert.ok(exportTool);
   assert.ok(importTool);
+  assert.ok(memoryExportTool);
+  assert.ok(memoryImportTool);
   assert.ok(reviewTool);
   assert.ok(restoreTool);
 
@@ -213,11 +222,28 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   });
   assert.ok(Array.isArray(rulesResult.details.rules));
 
+  const markdownExport = await memoryExportTool.execute('tc-export-md', {
+    format: 'markdown',
+  });
+  assert.match(String(markdownExport.content[0]?.text ?? ''), /^## \[/m);
+
+  const markdownImport = await memoryImportTool.execute('tc-import-md', {
+    format: 'markdown',
+    content: '## [fact] 记住这个导入块\n- 标签: imported\n- 创建时间: 2026-03-15\n- 重要性: 0.7',
+  });
+  assert.equal(markdownImport.details.imported, 1);
+
   const profileResult = await profileTool.execute('tc-profile', {
     userId: 'user-openclaw-1',
     recompute: true,
   });
   assert.ok(['recomputed', 'stored', 'none', 'latest'].includes(profileResult.details.source));
+
+  const onboardResult = await onboardTool.execute('tc-onboard', {
+    userId: 'user-openclaw-1',
+  });
+  assert.equal(typeof onboardResult.details.needsOnboarding, 'boolean');
+  assert.ok(Array.isArray(onboardResult.details.questions));
 
   const consolidateResult = await consolidateTool.execute('tc-consolidate', {
     mode: 'light',
@@ -438,6 +464,34 @@ test('OpenClaw adapter rebinds host user/chat/channel scope for main-session per
     { sessionId: 'session-feishu-main-1' },
     { sessionId: 'session-feishu-main-1' },
   );
+
+  await services[0].stop?.();
+  rmSync(databasePath, { force: true });
+});
+
+test('OpenClaw adapter logs onboarding guidance on first start when no profile exists', async () => {
+  const databasePath = createTempDbPath('openclaw-plugin-onboarding-log');
+  const warnLogs: string[] = [];
+  const { api, infoLogs, services } = createMockApi(databasePath);
+  api.logger.warn = (...args: unknown[]) => {
+    warnLogs.push(args.map((arg) => String(arg)).join(' '));
+  };
+
+  await memoryPlugin.register(api);
+  assert.equal(services.length, 1);
+
+  await services[0].start();
+
+  assert.ok(
+    infoLogs.some((message) => message.includes('Run profile_onboard to initialize the first user profile.')),
+  );
+  assert.ok(
+    infoLogs.some((message) => message.includes("[EverMemory] First run detected. Run 'profile_onboard' to get started.")),
+  );
+  assert.ok(
+    infoLogs.some((message) => message.includes('[EverMemory] Ready. memories=0, embedding=noop')),
+  );
+  assert.ok(warnLogs.some((message) => message.includes('Embedding provider not ready: noop')));
 
   await services[0].stop?.();
   rmSync(databasePath, { force: true });

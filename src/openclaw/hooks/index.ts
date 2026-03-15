@@ -63,7 +63,7 @@ export function registerHooks({ api, evermemory, sessionScopes }: OpenClawRegist
     return injected.prependContext ? { prependContext: injected.prependContext } : undefined;
   });
 
-  registerHook(api, 'agent_end', (event: unknown, context: unknown) => {
+  registerHook(api, 'agent_end', async (event: unknown, context: unknown) => {
     const sessionId = (
       (isRecord(context) ? asOptionalString(context.sessionId) : undefined)
       ?? (isRecord(event) ? asOptionalString(event.sessionId) : undefined)
@@ -77,7 +77,7 @@ export function registerHooks({ api, evermemory, sessionScopes }: OpenClawRegist
     const messages = isRecord(event) && Array.isArray(event.messages) ? event.messages : [];
     const exchange = extractLastExchange(messages);
 
-    evermemory.sessionEnd({
+    await evermemory.sessionEnd({
       sessionId,
       messageId: isRecord(context) ? asOptionalString(context.runId) : undefined,
       scope: scopeState.scope,

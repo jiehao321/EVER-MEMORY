@@ -68,6 +68,34 @@ Phase 1-7 + Phase A 已完成。当前质量基线：
 - C-002：soak + KPI 入 release gate，`quality:gate:full` 全量验证
 - C-003：`stability:check` 长期稳定性验证编排器，teams:release 已接入
 
+**Phase G 完成内容**（2026-03-15）：
+- G-001：零配置开箱即用（autoSetup.ts），plugin start() 自动诊断 embedding/DB/首次运行状态，输出建议
+- G-002：大管家欢迎体验，profile_onboard 前置欢迎语，完成后确认信息
+- G-004：多格式导入导出（exportService.ts），JSON/Markdown 导出，带验证的批量导入，memory_export/import 工具命令
+- G-005：doctor 命令增强，7 项检查（DB/迁移/类型分布/嵌入/孤立嵌入/规则/健康），附带建议输出
+
+**Phase F 完成内容**（2026-03-15）：
+- F-001：主动学习循环（activeLearning.ts），session_end 自动提炼 lesson/pattern/insight/warning 洞察
+- F-002：主动提醒机制（beforeAgentStart.ts），warning/lesson 记忆前置注入，relevantRules 过滤相关规则
+- F-003：自我整理引擎（housekeeping.ts），近重复合并/过时归档/高频强化，runIfNeeded 24h 节流
+- F-004：行为规则自进化（autoPromotion.ts），confidence>=0.85 + evidence>=2 自动晋升，打 auto_promoted tag
+- F-005：智能度成长指标（SmartnessMetricsService），5 维度评分 + trend，growth-report 集成，smartness 工具命令
+
+**Phase E 完成内容**（2026-03-15）：
+- E-001：session_end 后自动触发 profile 重算（profileProjection.recomputeForUser），SessionEndResult 新增 profileUpdated
+- E-002：偏好图谱（preferenceGraph.ts），推断隐式偏好+冲突检测，briging 注入沟通风格/工作习惯摘要
+- E-003：session_start 注入完整 userProfile（communicationStyle/likelyInterests/workPatterns）到 RuntimeSessionContext
+- E-004：跨项目知识迁移（crossProjectTransfer.ts），全局 explicit_constraint 自动注入到 briefing constraints
+- E-005：对话风格自适应，briefing 按 concise/detailed/structured 调整条目数量和详细程度
+
+**Phase D 完成内容**（2026-03-15）：
+- D-001：本地嵌入默认开启（provider 默认 'local'），`@xenova/transformers` 缺失时优雅降级 NoOp
+- D-002：auto-capture 语义去重（cosine > 0.92 跳过重复存储），目标 accept rate ≥ 0.90
+- D-003：`beforeAgentStart.ts` 精准语义注入，messageReceived 末尾补充语义命中记忆（来源标记 `metadata.source='semantic'`）
+- D-004：记忆冲突检测与自愈（`conflict.ts`，相似度 0.75-0.92 + 矛盾词对），自动保留较新版本并打 `conflict_resolved` tag
+- D-005：`scripts/growth-report.mjs` 成长指标周报（`npm run growth:report`）
+- D-006：首次安装 onboarding 问卷（`OnboardingService`，6 个问题，`profile_onboard` 工具）
+
 ## 稳定性验证命令
 ```bash
 npm run stability:check          # 快速版（无 soak）
@@ -75,6 +103,7 @@ npm run stability:check:full     # 完整版（含 soak）
 npm run kpi:track                # 仅 KPI 对比
 npm run kpi:update               # 更新 KPI 基线
 npm run quality:gate:full        # 全量质量门禁（含 soak）
+npm run growth:report            # 成长指标报告
 ```
 
-**当前 KPI 基线**（2026-03-14）：recall accuracy=1.0，unit pass=1.0，continuity=true，auto-capture=0.75
+**当前 KPI 基线**（2026-03-15）：recall accuracy=1.0，unit pass=1.0，continuity=true，tests=178/178

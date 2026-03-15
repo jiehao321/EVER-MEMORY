@@ -1,6 +1,12 @@
+import type { OnboardingService } from '../core/profile/onboarding.js';
 import type { ProfileProjectionService } from '../core/profile/projection.js';
 import type { ProfileRepository } from '../storage/profileRepo.js';
-import type { EverMemoryProfileToolInput, EverMemoryProfileToolResult } from '../types.js';
+import type {
+  EverMemoryOnboardingToolInput,
+  EverMemoryOnboardingToolResult,
+  EverMemoryProfileToolInput,
+  EverMemoryProfileToolResult,
+} from '../types.js';
 
 export function evermemoryProfile(
   profileService: ProfileProjectionService,
@@ -52,5 +58,43 @@ export function evermemoryProfile(
           derivedGuardrail: 'weak_hint_only',
         }
       : undefined,
+  };
+}
+
+export async function evermemoryOnboard(
+  onboardingService: OnboardingService,
+  input: EverMemoryOnboardingToolInput,
+): Promise<EverMemoryOnboardingToolResult> {
+  const userId = input.userId?.trim();
+  if (!userId) {
+    return {
+      needsOnboarding: true,
+      questions: onboardingService.getQuestions(),
+      welcomeMessage: onboardingService.generateWelcomeMessage(true),
+    };
+  }
+
+  const needsOnboarding = onboardingService.isOnboardingNeeded(userId);
+  if (!needsOnboarding) {
+    return {
+      needsOnboarding: false,
+      questions: [],
+      welcomeMessage: onboardingService.generateWelcomeMessage(false, undefined, userId),
+    };
+  }
+
+  if (!input.responses || input.responses.length === 0) {
+    return {
+      needsOnboarding: true,
+      questions: onboardingService.getQuestions(),
+      welcomeMessage: onboardingService.generateWelcomeMessage(true, undefined, userId),
+    };
+  }
+
+  return {
+    needsOnboarding: false,
+    questions: [],
+    completionMessage: '✓ 初始化完成！我已记录您的偏好。随时可以开始工作。',
+    result: await onboardingService.processResponses(userId, input.responses),
   };
 }
