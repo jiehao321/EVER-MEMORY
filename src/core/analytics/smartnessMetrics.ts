@@ -7,6 +7,7 @@ export interface SmartnessDimension {
   readonly score: number;
   readonly trend: 'up' | 'down' | 'stable';
   readonly description: string;
+  readonly advice?: string;
 }
 
 export interface SmartnessSummary {
@@ -126,36 +127,57 @@ export class SmartnessMetricsService {
       ? Math.round(previousRuleEvents.reduce((sum, event) => sum + getRulesCount(event), 0) / previousRuleEvents.length)
       : 0;
 
+    const recallAccuracyScore = clamp(total / 100);
+    const preferenceScore = clamp((total > 0 ? preferenceCount / total : 0) * 3 + (constraintCount > 0 ? 0.1 : 0));
+    const learningScore = clamp(total > 0 ? learningCount / total : 0);
+    const ruleScore = clamp(activeRules / 10);
+    const diversityScore = clamp(uniqueKinds / DIVERSITY_KINDS.length);
+
     const dimensions: SmartnessDimension[] = [
       {
         name: '记忆深度',
-        score: clamp(total / 100),
+        score: recallAccuracyScore,
         trend: toTrend(recentAdded, previousAdded),
         description: `${total} 条记忆，近 7 天新增 ${recentAdded} 条`,
+        advice: recallAccuracyScore < 0.6
+          ? 'Try `evermemory_recall` more often to retrieve relevant memories'
+          : undefined,
       },
       {
         name: '偏好精准度',
-        score: clamp((total > 0 ? preferenceCount / total : 0) * 3 + (constraintCount > 0 ? 0.1 : 0)),
+        score: preferenceScore,
         trend: toTrend(recentPreference, previousPreference),
         description: `${preferenceCount} 条偏好记忆，${constraintCount} 条约束`,
+        advice: preferenceScore < 0.6
+          ? 'Run `evermemory_store` to record identity and preference memories'
+          : undefined,
       },
       {
         name: '主动学习密度',
-        score: clamp(total > 0 ? learningCount / total : 0),
+        score: learningScore,
         trend: toTrend(recentLearning, previousLearning),
         description: `${learningCount} 条 lesson/warning 记忆`,
+        advice: learningScore < 0.6
+          ? 'Complete more sessions with context — auto-capture improves over time'
+          : undefined,
       },
       {
         name: '行为规则成熟度',
-        score: clamp(activeRules / 10),
+        score: ruleScore,
         trend: toTrend(recentRules, previousRules),
         description: `${activeRules} 条活跃规则`,
+        advice: ruleScore < 0.6
+          ? 'Use `evermemory_rules` to review and promote candidate rules'
+          : undefined,
       },
       {
         name: '记忆多样性',
-        score: clamp(uniqueKinds / DIVERSITY_KINDS.length),
+        score: diversityScore,
         trend: toTrend(recentKinds, previousKinds),
         description: `${uniqueKinds}/${DIVERSITY_KINDS.length} 种关键类型覆盖`,
+        advice: diversityScore < 0.6
+          ? 'Complete more sessions with context — auto-capture improves over time'
+          : undefined,
       },
     ];
 

@@ -9,109 +9,135 @@
     "additionalProperties": false,
     "properties": {
       "enabled": {
-        "type": "boolean"
+        "type": "boolean",
+        "description": "Master switch for the EverMemory plugin. Set false to disable all memory operations without removing config."
       },
       "databasePath": {
-        "type": "string"
+        "type": "string",
+        "description": "File path for the SQLite database (WAL mode). Use ':memory:' for ephemeral in-memory storage (no persistence). Default: ~/.evermemory/memory.db"
       },
       "bootTokenBudget": {
         "type": "integer",
-        "minimum": 1
+        "minimum": 1,
+        "description": "Maximum token budget for the session boot briefing injected at sessionStart. Larger values surface more context but consume more context window. Default: 1200."
       },
       "maxRecall": {
         "type": "integer",
-        "minimum": 1
+        "minimum": 1,
+        "description": "Maximum number of memories returned by evermemory_recall per query. Higher values improve recall coverage but increase latency. Default: 10."
       },
       "debugEnabled": {
-        "type": "boolean"
+        "type": "boolean",
+        "description": "Enable write_decision and retrieval debug event logging. Useful for diagnosing why memories were accepted or rejected. Adds minor write overhead. Default: true."
       },
       "semantic": {
         "type": "object",
         "additionalProperties": false,
+        "description": "Semantic (vector) search configuration. Semantic search enables meaning-based recall beyond keyword matching.",
         "properties": {
           "enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Enable semantic vector search. When true, memories are embedded and a hybrid keyword+semantic retrieval is used. Requires @xenova/transformers (local) or OPENAI_API_KEY (openai provider). Default: true."
           },
           "maxCandidates": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "description": "Maximum candidate memories fetched from the semantic index before re-ranking. Higher values improve recall at the cost of latency. Default: 30."
           },
           "minScore": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1
+            "maximum": 1,
+            "description": "Minimum cosine similarity score [0–1] for a semantic candidate to qualify. Lower values surface more results; higher values are stricter. Default: 0.3."
           }
         }
       },
       "intent": {
         "type": "object",
         "additionalProperties": false,
+        "description": "Intent classification configuration. Intent signals guide write/recall policy decisions.",
         "properties": {
           "useLLM": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Enable optional LLM-based intent enrichment for messages that exceed heuristic confidence. Adds one LLM call per ambiguous message. Default: false."
           },
           "fallbackHeuristics": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Fall back to rule-based heuristics when LLM intent classification is unavailable or disabled. Strongly recommended to keep true. Default: true."
           }
         }
       },
       "retrieval": {
         "type": "object",
         "additionalProperties": false,
+        "description": "Retrieval scoring weight configuration. All weight groups are auto-normalized to sum to 1.0 — you only need to set relative values.",
         "properties": {
           "keywordWeights": {
             "type": "object",
             "additionalProperties": false,
+            "description": "Scoring weights for keyword/structured retrieval ranking. Values are relative — they are normalized automatically.",
             "properties": {
               "keyword": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight for keyword match score (TF-IDF / Jaccard overlap). Higher values favor text similarity."
               },
               "recency": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight for recency (how recently the memory was updated). Higher values favor newer memories."
               },
               "importance": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight for the memory's importance score [0–1]. Higher values surface high-importance memories first."
               },
               "confidence": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight for the memory's confidence score [0–1]. Higher values surface high-confidence memories first."
               },
               "explicitness": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight for explicitness score [0–1]. Higher values favor explicitly stated facts over inferred ones."
               },
               "scopeMatch": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Bonus weight when a memory's scope exactly matches the query scope (userId, chatId, project). Increase to prefer local memories."
               },
               "typePriority": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight for memory type priority (identity > constraint > preference > ...). Higher values prefer higher-priority types."
               },
               "lifecyclePriority": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight for lifecycle priority (semantic > episodic > working). Higher values prefer mature memories."
               }
             }
           },
           "hybridWeights": {
             "type": "object",
             "additionalProperties": false,
+            "description": "Blend weights for hybrid retrieval (keyword + semantic + base score). Values are normalized automatically.",
             "properties": {
               "keyword": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight of the keyword ranking component in hybrid blending."
               },
               "semantic": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight of the semantic (vector similarity) component in hybrid blending."
               },
               "base": {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0,
+                "description": "Weight of the base structural score (recency, importance, lifecycle) in hybrid blending."
               }
             }
           }
@@ -125,6 +151,10 @@
       "help": "SQLite storage path for EverMemory",
       "advanced": true
     },
+    "bootTokenBudget": {
+      "label": "Boot Token Budget",
+      "help": "Max tokens for the session boot briefing"
+    },
     "maxRecall": {
       "label": "Max Recall",
       "help": "Maximum recall items for each query"
@@ -134,13 +164,23 @@
       "help": "Enable debug event logging for explainability"
     },
     "semantic.enabled": {
-      "label": "Semantic Sidecar",
-      "help": "Enable semantic sidecar index (disabled by default)",
+      "label": "Semantic Search",
+      "help": "Enable vector-based semantic search (local or OpenAI)",
+      "advanced": false
+    },
+    "semantic.minScore": {
+      "label": "Semantic Min Score",
+      "help": "Minimum cosine similarity [0–1] for semantic results",
       "advanced": true
     },
     "intent.useLLM": {
       "label": "Intent LLM Enrichment",
       "help": "Enable optional LLM intent enrichment",
+      "advanced": true
+    },
+    "retrieval.hybridWeights.semantic": {
+      "label": "Semantic Blend Weight",
+      "help": "Relative weight of semantic score in hybrid retrieval",
       "advanced": true
     }
   }

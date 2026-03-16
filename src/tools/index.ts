@@ -1,5 +1,7 @@
 export { evermemoryStore } from './store.js';
 export { evermemoryRecall } from './recall.js';
+export { evermemoryEdit } from './edit.js';
+export { evermemoryBrowse } from './browse.js';
 export { evermemoryBriefing } from './briefing.js';
 export { evermemoryStatus } from './status.js';
 export { evermemorySmartness } from './status.js';

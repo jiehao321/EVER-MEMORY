@@ -42,10 +42,64 @@ npm run teams:release  # Release gate
 - Run `npm run validate` before commits; `teams:release` before publishing.
 
 ## Current Status
-- Version: v1.0.1 (2026-03-15)
-- Tests: 250 total, 248 pass, 0 fail, 2 skipped.
+- Version: v1.0.1 (2026-03-16)
+- Tests: all pass (npm test now uses glob pattern, no RTK dependency).
 - KPI: recall accuracy=1.0, unit pass=1.0, continuity=true, teams:dev ~17s.
-- 16 tools, 9 schema migrations, built-in semantic search.
+- 18 tools (+ evermemory_edit, evermemory_browse), 9 schema migrations, built-in semantic search.
+
+## Recent Changes (2026-03-16 Quality Sprint)
+
+### Track A — Technical Debt
+- **A0**: Scope isolation fix — empty scope `{}` no longer matches all-users memories; system actor stores exempt.
+- **A1**: Semantic status (`ready`/`degraded`/`disabled`) surfaced in `evermemory_status`.
+- **A2**: Housekeeping `run()` is synchronous SQLite; async wrapper retained for interface compat.
+- **A3**: AutoPromotion type-checked via proper `BehaviorService` type import.
+- **A4**: SessionEnd steps wrapped with `withTimeout()` (5–15s limits) to prevent indefinite blocking.
+- **A4c**: Embedding manager `dispose()` called on plugin `stop()`.
+- **A5**: Decay formula unified — `decay.ts` now imports half-life/stability constants from `tuning/memory.ts`.
+- **A7**: DB unbounded growth — `MemoryHousekeepingService` prunes old `debug_events` and `intent_records`.
+- **A8**: Empty/whitespace content rejected at write boundary in `MemoryService`.
+- **A9**: Rule promotion loop wrapped in SQLite transaction for atomicity.
+- **A10**: `DebugRepository` prepared statements cached as constructor-initialized fields.
+
+### Track B — Feature Completeness
+- **B1**: Conflict detection results surfaced in `evermemory_consolidate` output.
+- **B2**: Profile scan coverage warning (`scanCoverage`) added to `ProjectedProfile`.
+- **B3**: Rule rollback support (`action: "rollback"`) added to `evermemory_rules`.
+- **B5**: Candidate rule provenance (`sourceExperienceIds`) added to `BehaviorRule.trace`.
+- **B6**: PreferenceGraph (top preferences + conflicts) surfaced in `evermemory_profile`.
+- **B7**: Pre-migration backup — `.db.bak.{timestamp}` created before any schema upgrade.
+
+### Track C — Product Experience
+- **C1**: Briefing builder no longer outputs "待补充" placeholders; empty sections are omitted.
+- **C1**: Briefing quality score (`qualityScore`, `qualityLabel`, `nudge`) computed and attached.
+- **C2**: Chinese intent heuristics — question-ending particles (`吗/呢/啊`) and confirmation patterns.
+- **C3**: Embedding cold start — 120s init timeout + `onInitProgress` callback for stage feedback.
+- **C4a**: Store tool surfaces `inferredType` and `inferredLifecycle` in result.
+- **C4b**: Rules tool shows `appliedCount` on each rule.
+- **C4**: RecallResult includes `strategyUsed`, `semanticFallback`, `nudge`.
+- **C5**: Smartness metrics dimensions include `advice` string; shown in report when score < 0.6.
+- **C6**: `openclaw.plugin.json` config schema enriched with `description` on every property.
+
+### Track D — Core Product Gaps
+- **D1**: `evermemory_edit` tool — update/delete/correct memory actions with re-embedding.
+- **D2**: `evermemory_browse` tool — filtered/sorted memory browser with at-risk flagging.
+- **D3**: Session Continuity Score (`continuityScore`) computed and attached to `BootBriefing`.
+- **D4**: At-risk memories warning (`atRiskMemories`) in `evermemory_status`.
+
+## Test Command
+RTK has been uninstalled. `npm test` now uses glob patterns and works directly:
+```bash
+npm test
+# Or run directly:
+node --test 'dist-test/test/**/*.test.js' 'dist-test/test/*.test.js'
+```
+
+## Post-Review Security Fixes (2026-03-16)
+- **SEC-1**: `evermemory_edit` now accepts `callerScope` — registered with `toolContext`, calls `resolveToolScope`, validates memory ownership before mutating. Cross-user access denied with clear error.
+- **SEC-2**: `pruneOldDebugEvents` / `pruneOldIntentRecords` errors now logged via `debugRepo` (kind: `housekeeping_error`) instead of silently swallowed.
+- **SEC-3**: `promoteFromReflection` captures a single `batchTimestamp = nowIso()` before the transaction; all frozen/promoted rule timestamps are consistent within a batch.
+- **PKG**: `package.json` `test:unit` updated from `find` to glob pattern — no longer depends on RTK not being present.
 
 ## Stability Verification
 ```bash

@@ -42,4 +42,9 @@ export interface ProjectedProfile {
     workPatterns: ProfileDerivedField[];
   };
   behaviorHints: string[];
+  scanCoverage?: {
+    scanned: number;
+    total: number;
+    isPartial: boolean;
+  };
 }

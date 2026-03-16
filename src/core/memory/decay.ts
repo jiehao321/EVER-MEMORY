@@ -1,4 +1,10 @@
 import type { MemoryItem, MemoryLifecycle } from '../../types.js';
+import {
+  DECAY_FREQUENCY_LOG_DIVISOR,
+  DECAY_LAST_ACCESSED_HALF_LIFE_DAYS,
+  DECAY_RECENCY_HALF_LIFE_DAYS,
+  LIFECYCLE_STABILITY_SCORES,
+} from '../../tuning.js';
 
 /**
  * Decay score weights configuration.
@@ -28,12 +34,7 @@ export const DEFAULT_DECAY_WEIGHTS: DecayWeights = {
   supersededPenalty: 0.05,
 };
 
-const LIFECYCLE_STABILITY: Record<MemoryLifecycle, number> = {
-  working: 0.2,
-  episodic: 0.5,
-  semantic: 0.9,
-  archive: 0.0,
-};
+const LIFECYCLE_STABILITY: Record<MemoryLifecycle, number> = LIFECYCLE_STABILITY_SCORES;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -67,9 +68,7 @@ function calculateRecencyScore(updatedAt: string, nowMs: number): number {
   const ageMs = nowMs - updatedMs;
   const ageDays = ageMs / MS_PER_DAY;
 
-  // Exponential decay: 1.0 at 0 days, 0.5 at 30 days, ~0.0 at 180 days
-  const halfLifeDays = 30;
-  return Math.exp(-ageDays / halfLifeDays);
+  return Math.exp(-ageDays / DECAY_RECENCY_HALF_LIFE_DAYS);
 }
 
 /**
@@ -93,9 +92,7 @@ function calculateLastAccessedScore(lastAccessedAt: string | undefined, nowMs: n
   const ageMs = nowMs - accessedMs;
   const ageDays = ageMs / MS_PER_DAY;
 
-  // Exponential decay: 1.0 at 0 days, 0.5 at 15 days, ~0.0 at 90 days
-  const halfLifeDays = 15;
-  return Math.exp(-ageDays / halfLifeDays);
+  return Math.exp(-ageDays / DECAY_LAST_ACCESSED_HALF_LIFE_DAYS);
 }
 
 /**
@@ -106,11 +103,10 @@ function calculateLastAccessedScore(lastAccessedAt: string | undefined, nowMs: n
  * @returns Score from 0.0 (never) to 1.0 (frequently)
  */
 function calculateRetrievalFrequencyScore(retrievalCount: number): number {
-  // Logarithmic scale: 0 → 0.0, 1 → 0.5, 10 → 0.83, 100 → 1.0
   if (retrievalCount <= 0) {
     return 0;
   }
-  return Math.log10(retrievalCount + 1) / 2;
+  return Math.log10(retrievalCount + 1) / DECAY_FREQUENCY_LOG_DIVISOR;
 }
 
 /**
@@ -121,11 +117,10 @@ function calculateRetrievalFrequencyScore(retrievalCount: number): number {
  * @returns Score from 0.0 (never) to 1.0 (frequently)
  */
 function calculateAccessFrequencyScore(accessCount: number): number {
-  // Logarithmic scale: 0 → 0.0, 1 → 0.5, 10 → 0.83, 100 → 1.0
   if (accessCount <= 0) {
     return 0;
   }
-  return Math.log10(accessCount + 1) / 2;
+  return Math.log10(accessCount + 1) / DECAY_FREQUENCY_LOG_DIVISOR;
 }
 
 /**

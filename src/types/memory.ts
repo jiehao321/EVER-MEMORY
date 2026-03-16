@@ -98,6 +98,9 @@ export interface RecallResult {
   items: MemoryItem[];
   total: number;
   limit: number;
+  strategyUsed?: RetrievalMode;
+  semanticFallback?: boolean;
+  nudge?: string;
 }
 
 export interface MemoryStoreInput {
@@ -134,4 +137,6 @@ export interface MemoryStoreResult {
   accepted: boolean;
   reason: string;
   memory: MemoryItem | null;
+  inferredType?: string;
+  inferredLifecycle?: string;
 }

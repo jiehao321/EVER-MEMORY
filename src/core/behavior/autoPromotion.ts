@@ -13,11 +13,10 @@ const DEFAULT_CONFIG: AutoPromotionConfig = {
 };
 
 export async function autoPromoteRules(
-  behaviorService: BehaviorService,
+  behaviorService: BehaviorService | undefined,
   config: Partial<AutoPromotionConfig> = {},
 ): Promise<{ promoted: number; skipped: number }> {
-  if (typeof (behaviorService as Partial<BehaviorService>).listPendingReflections !== 'function'
-    || typeof behaviorService.promoteFromReflection !== 'function') {
+  if (behaviorService == null) {
     return { promoted: 0, skipped: 0 };
   }
   const resolved = { ...DEFAULT_CONFIG, ...config };

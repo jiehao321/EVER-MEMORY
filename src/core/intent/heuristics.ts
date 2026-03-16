@@ -74,8 +74,12 @@ function inferIntentType(text: string): { type: IntentType; subtype?: string; co
   if (containsAny(text, EXECUTION_PATTERNS)) {
     return { type: 'instruction', subtype: 'execution', confidence: INTENT_CONFIDENCE.instruction };
   }
-  if (text.includes('?') || text.includes('？')) {
+  if (text.includes('?') || text.includes('？') || /[吗呢啊嘛？]$/u.test(text)) {
     return { type: 'question', confidence: INTENT_CONFIDENCE.question };
+  }
+  // C2: Chinese confirmation request patterns
+  if (/(对吗|是这样吗|你确定|确认一下|是吗|真的吗|可以吗)/u.test(text)) {
+    return { type: 'question', confidence: INTENT_CONFIDENCE.question, subtype: 'confirmation' };
   }
   return { type: 'other', confidence: INTENT_CONFIDENCE.other };
 }

@@ -103,6 +103,35 @@ export class MemoryService {
       };
     }
 
+    // A8: Reject empty content before normalizing
+    if (!input.content.trim()) {
+      this.debugRepo?.log('memory_write_rejected', input.id ?? 'unknown', {
+        accepted: false,
+        reason: 'empty_content',
+      });
+      return {
+        accepted: false,
+        reason: 'Memory content cannot be empty or whitespace-only.',
+        memory: null,
+      };
+    }
+
+    // A0: Validate scope has at least one identifier to prevent data cross-leakage
+    // Only enforce for user/tool-initiated stores; system-generated stores (auto-capture, etc.) are exempt.
+    const isSystemStore = input.source?.actor === 'system';
+    const resolvedScope = input.scope ?? fallbackScope ?? {};
+    if (!isSystemStore && !resolvedScope.userId && !resolvedScope.chatId && !resolvedScope.project && !resolvedScope.global) {
+      this.debugRepo?.log('memory_write_rejected', input.id ?? 'unknown', {
+        accepted: false,
+        reason: 'empty_scope',
+      });
+      return {
+        accepted: false,
+        reason: 'Memory scope must include at least one identifier (userId, chatId, project, or global=true). An empty scope risks data leakage across users and sessions.',
+        memory: null,
+      };
+    }
+
     const memory = normalizeMemory(input, decision, fallbackScope);
     this.memoryRepo.insert(memory);
     if (this.semanticEnabled && this.semanticRepo) {
@@ -134,6 +163,8 @@ export class MemoryService {
       accepted: true,
       reason: decision.reason,
       memory,
+      inferredType: memory.type,
+      inferredLifecycle: memory.lifecycle,
     };
   }
 

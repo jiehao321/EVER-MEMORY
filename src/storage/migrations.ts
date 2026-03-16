@@ -1,3 +1,4 @@
+import { cpSync, existsSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 import { StorageError } from '../errors.js';
 
@@ -154,7 +155,7 @@ export function getSchemaVersion(db: Database.Database): number {
   }
 }
 
-export function runMigrations(db: Database.Database): number {
+export function runMigrations(db: Database.Database, dbPath?: string): number {
   let currentVersion = 0;
   try {
     ensureSchemaVersionTable(db);
@@ -162,6 +163,16 @@ export function runMigrations(db: Database.Database): number {
     currentVersion = getSchemaVersion(db);
     if (currentVersion >= CURRENT_SCHEMA_VERSION) {
       return currentVersion;
+    }
+
+    // B7: Create a timestamped backup before applying any migrations
+    if (dbPath && dbPath !== ':memory:' && existsSync(dbPath)) {
+      const backupPath = `${dbPath}.bak.${Date.now()}`;
+      try {
+        cpSync(dbPath, backupPath);
+      } catch {
+        // Backup failure must not block migration — log and continue
+      }
     }
 
     const phase1Tx = db.transaction(() => {

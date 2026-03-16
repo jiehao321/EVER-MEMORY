@@ -27,9 +27,14 @@ export function evermemoryRules(
     includeFrozen: input.includeFrozen,
   });
 
+  const rulesWithCounts = rules.map((rule) => ({
+    ...rule,
+    appliedCount: rule.lifecycle.applyCount,
+  }));
+
   return {
-    rules,
-    total: rules.length,
+    rules: rulesWithCounts,
+    total: rulesWithCounts.length,
     filters: {
       userId: input.scope?.userId,
       intentType: input.intentType,
@@ -53,6 +58,7 @@ export function evermemoryRules(
           changed: mutation.changed,
           reason: mutation.reason,
           rule: mutation.rule,
+          rolledBack: mutation.rolledBack,
         }
       : undefined,
   };

@@ -24,6 +24,9 @@ import {
   truncate,
 } from '../shared.js';
 
+const EDIT_ACTIONS = ['update', 'delete', 'correct'] as const;
+const BROWSE_SORT_BY = ['recent', 'importance', 'accessed'] as const;
+
 export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClawRegistrationContext): void {
   api.registerTool(
     (toolContext: UnknownRecord) => ({
@@ -206,5 +209,82 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
       },
     }),
     { name: 'evermemory_restore' },
+  );
+
+  api.registerTool(
+    (toolContext: UnknownRecord) => ({
+      name: 'evermemory_edit',
+      label: 'EverMemory Edit',
+      description: 'Edit, correct, or delete a stored memory by ID. Use evermemory_browse or evermemory_recall to find memory IDs.',
+      parameters: Type.Object(
+        {
+          memoryId: Type.String({ description: 'ID of the memory to edit (from browse/recall results).' }),
+          action: Type.Union(EDIT_ACTIONS.map((a) => Type.Literal(a)), { description: 'update: modify content, delete: soft-delete, correct: create new version superseding old.' }),
+          newContent: Type.Optional(Type.String({ description: 'New content for update/correct actions.' })),
+          reason: Type.Optional(Type.String({ description: 'Reason for the edit (for audit trail).' })),
+        },
+        { additionalProperties: false },
+      ),
+      async execute(_toolCallId: string, params: UnknownRecord) {
+        const memoryId = asOptionalString(params.memoryId);
+        const action = asOptionalEnum(params.action, EDIT_ACTIONS);
+        if (!memoryId || !action) {
+          return {
+            content: [{ type: 'text', text: 'Missing required fields: memoryId, action' }],
+            details: { success: false, error: 'missing_params' },
+          };
+        }
+        const callerScope = resolveToolScope(sessionScopes, toolContext);
+        const result = await evermemory.evermemoryEdit({
+          memoryId,
+          action,
+          newContent: asOptionalString(params.newContent),
+          reason: asOptionalString(params.reason),
+        }, callerScope);
+        return {
+          content: [{
+            type: 'text',
+            text: result.success
+              ? `Memory ${action}d successfully. Previous: "${truncate(result.previous?.content ?? '', 80)}"`
+              : `Edit failed: ${result.error}`,
+          }],
+          details: result,
+        };
+      },
+    }),
+    { name: 'evermemory_edit' },
+  );
+
+  api.registerTool(
+    (toolContext: UnknownRecord) => ({
+      name: 'evermemory_browse',
+      label: 'EverMemory Browse',
+      description: 'Browse your stored memories as an inventory. Shows what EverMemory remembers about you, with at-risk-of-archival flags.',
+      parameters: Type.Object(
+        {
+          type: Type.Optional(Type.Union([...MEMORY_TYPES.map((t) => Type.Literal(t)), Type.Literal('all')])),
+          lifecycle: memoryLifecycleSchema,
+          limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
+          sortBy: Type.Optional(Type.Union(BROWSE_SORT_BY.map((s) => Type.Literal(s)))),
+          scope: scopeSchema,
+        },
+        { additionalProperties: false },
+      ),
+      async execute(_toolCallId: string, params: UnknownRecord) {
+        const baseScope = resolveToolScope(sessionScopes, toolContext);
+        const result = evermemory.evermemoryBrowse({
+          type: asOptionalEnum(params.type, [...MEMORY_TYPES, 'all'] as readonly string[]) as import('../../tools/browse.js').EverMemoryBrowseToolInput['type'],
+          lifecycle: asOptionalEnum(params.lifecycle, MEMORY_LIFECYCLES),
+          limit: asOptionalInteger(params.limit),
+          sortBy: asOptionalEnum(params.sortBy, BROWSE_SORT_BY),
+          scope: mergeScope(baseScope, parseScope(params.scope)),
+        });
+        return {
+          content: [{ type: 'text', text: result.summary }],
+          details: result,
+        };
+      },
+    }),
+    { name: 'evermemory_browse' },
   );
 }

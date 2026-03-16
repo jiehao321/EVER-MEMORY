@@ -93,7 +93,7 @@ test('evermemory_profile supports recompute and stored/latest read paths', () =>
   rmSync(databasePath, { force: true });
 });
 
-test('evermemory_consolidate runs lifecycle maintenance in manual mode', () => {
+test('evermemory_consolidate runs lifecycle maintenance in manual mode', async () => {
   const databasePath = createTempDbPath('tool-consolidate');
   const app = initializeEverMemory({ databasePath });
   const nowIso = new Date().toISOString();
@@ -125,7 +125,7 @@ test('evermemory_consolidate runs lifecycle maintenance in manual mode', () => {
   app.memoryRepo.insert(duplicateB);
   app.memoryRepo.insert(staleEpisodic);
 
-  const report = app.evermemoryConsolidate({
+  const report = await app.evermemoryConsolidate({
     mode: 'deep',
     scope: { userId: 'u-tool-cons-1' },
   });

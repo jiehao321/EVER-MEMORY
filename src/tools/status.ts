@@ -9,6 +9,7 @@ import type { ReflectionRepository } from '../storage/reflectionRepo.js';
 import type { SemanticRepository } from '../storage/semanticRepo.js';
 import type { SmartnessMetricsService, SmartnessSummary } from '../core/analytics/smartnessMetrics.js';
 import { getSchemaVersion } from '../storage/migrations.js';
+import { embeddingManager } from '../embedding/manager.js';
 import type { EverMemoryStatusToolResult, RuntimeSessionContext } from '../types.js';
 
 export function evermemoryStatus(input: {
@@ -160,6 +161,42 @@ export function evermemoryStatus(input: {
     : undefined;
   const projectRouteHitRate = projectRoutedExecutions > 0 ? projectRoutedHits / projectRoutedExecutions : undefined;
 
+  // A1: Surface semantic search status for operators
+  const recentSemanticFailed = input.debugRepo.listRecent('semantic_preload_failed', 5);
+  const semanticStatus: 'ready' | 'degraded' | 'disabled' = !input.semanticRepo
+    ? 'disabled'
+    : embeddingManager.isReady()
+      ? 'ready'
+      : recentSemanticFailed.length > 0
+        ? 'degraded'
+        : 'disabled';
+
+  // D4: Compute at-risk memories (ageInDays > 25 && accessCount < 2)
+  const atRiskCutoff = Date.now() - 25 * 24 * 60 * 60 * 1000;
+  const allActiveMemories = input.memoryRepo.search({
+    scope: filters.scope,
+    activeOnly: true,
+    archived: false,
+    limit: 200,
+  });
+  const atRiskItems = allActiveMemories.filter((m) => {
+    const lastTouched = m.timestamps.lastAccessedAt ?? m.timestamps.updatedAt;
+    const touchedAt = lastTouched ? Date.parse(lastTouched) : 0;
+    return touchedAt > 0 && touchedAt < atRiskCutoff && m.stats.accessCount < 2;
+  }).slice(0, 5);
+  const atRiskMemories = {
+    count: atRiskItems.length,
+    items: atRiskItems.map((m) => ({
+      id: m.id,
+      content: m.content.slice(0, 80),
+      ageInDays: Math.floor((Date.now() - Date.parse(m.timestamps.updatedAt)) / (24 * 60 * 60 * 1000)),
+      accessCount: m.stats.accessCount,
+    })),
+    nudge: atRiskItems.length > 0
+      ? `${atRiskItems.length} memories will be archived soon. Access them or use evermemory_store to refresh.`
+      : null,
+  };
+
   return {
     schemaVersion,
     databasePath: input.database.path,
@@ -276,6 +313,18 @@ export function evermemoryStatus(input: {
     },
     runtimeSession: input.runtimeSession,
     recentDebugEvents,
+    semanticStatus,
+    atRiskMemories,
+    // B4: Auto-capture quality feedback — surface lastRun + per-session counts
+    autoCapture: {
+      lastRun: recentSessionEndEvents[0]?.createdAt ?? null,
+      capturedCount: autoMemoryAccepted,
+      rejectedCount: autoMemoryRejected,
+      topKinds: Object.entries(autoMemoryAcceptedByKind)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 3)
+        .map(([kind]) => kind),
+    },
   };
 }
 
@@ -296,9 +345,14 @@ function toTrend(trend: SmartnessSummary['dimensions'][number]['trend']): string
 export function formatSmartnessReport(summary: SmartnessSummary): string {
   const lines = [
     `🧠 智能度评分：${toPercent(summary.overall)}/100`,
-    ...summary.dimensions.map((dimension, index) => {
+    ...summary.dimensions.flatMap((dimension, index) => {
       const prefix = index === summary.dimensions.length - 1 ? '  └─' : '  ├─';
-      return `${prefix} ${dimension.name}：${String(`${toPercent(dimension.score)}分`).padStart(6, ' ')} (${toTrend(dimension.trend)} ${dimension.description})`;
+      const mainLine = `${prefix} ${dimension.name}：${String(`${toPercent(dimension.score)}分`).padStart(6, ' ')} (${toTrend(dimension.trend)} ${dimension.description})`;
+      if (dimension.score < 0.6 && dimension.advice) {
+        const advicePrefix = index === summary.dimensions.length - 1 ? '     ' : '  │  ';
+        return [mainLine, `${advicePrefix}  💡 ${dimension.advice}`];
+      }
+      return [mainLine];
     }),
   ];
   return lines.join('\n');

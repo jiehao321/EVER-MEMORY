@@ -177,10 +177,19 @@ export class RetrievalService {
         })),
       });
 
+      // C4: Surface strategy used and semantic fallback info for operators
+      const semanticFallback = requestedMode === 'hybrid' && mode !== 'hybrid';
+      const nudge = items.length === 0
+        ? 'No memories matched. Try broader terms or check if memories exist via evermemory_status.'
+        : undefined;
+
       return {
         items,
         total: items.length,
         limit,
+        strategyUsed: mode,
+        semanticFallback,
+        nudge,
       };
     } catch (error) {
       if (error instanceof RetrievalError) {

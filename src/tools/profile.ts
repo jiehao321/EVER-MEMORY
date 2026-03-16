@@ -1,12 +1,30 @@
 import type { OnboardingService } from '../core/profile/onboarding.js';
 import type { ProfileProjectionService } from '../core/profile/projection.js';
 import type { ProfileRepository } from '../storage/profileRepo.js';
+import { PreferenceGraphService } from '../core/profile/preferenceGraph.js';
 import type {
   EverMemoryOnboardingToolInput,
   EverMemoryOnboardingToolResult,
   EverMemoryProfileToolInput,
   EverMemoryProfileToolResult,
 } from '../types.js';
+
+const preferenceGraphService = new PreferenceGraphService();
+
+function buildPreferenceGraph(profile: NonNullable<EverMemoryProfileToolResult['profile']>): EverMemoryProfileToolResult['preferenceGraph'] {
+  try {
+    const graph = preferenceGraphService.buildFromProfile(profile.userId, profile);
+    const topPrefs = preferenceGraphService.getTopPreferences(graph, 5);
+    const conflicts = preferenceGraphService.findConflicts(graph);
+    return {
+      topPreferences: topPrefs.map((n) => ({ label: n.label, category: n.category, strength: n.strength })),
+      conflicts: conflicts.map((c) => ({ nodeA: c.nodeA, nodeB: c.nodeB, reason: c.reason })),
+      nodeCount: graph.nodes.length,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 export function evermemoryProfile(
   profileService: ProfileProjectionService,
@@ -35,6 +53,7 @@ export function evermemoryProfile(
             derivedGuardrail: 'weak_hint_only',
           }
         : undefined,
+      preferenceGraph: profile ? buildPreferenceGraph(profile) : undefined,
     };
   }
 
@@ -58,6 +77,7 @@ export function evermemoryProfile(
           derivedGuardrail: 'weak_hint_only',
         }
       : undefined,
+    preferenceGraph: latest ? buildPreferenceGraph(latest) : undefined,
   };
 }
 

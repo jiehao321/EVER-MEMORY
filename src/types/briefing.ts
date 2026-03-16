@@ -5,6 +5,21 @@ export interface BootBriefingSections {
   activeProjects: string[];
 }
 
+export interface BootBriefingQuality {
+  qualityScore: number;
+  qualityLabel: 'excellent' | 'good' | 'fair' | 'low';
+  emptySections: string[];
+  nudge: string | null;
+}
+
+/** D3: Session Continuity Score — 0.0 (no context) to 1.0 (rich context) */
+export interface SessionContinuityScore {
+  score: number;
+  label: 'rich' | 'moderate' | 'sparse' | 'empty';
+  filledSections: number;
+  totalSections: number;
+}
+
 export interface BootBriefing {
   id: string;
   sessionId?: string;
@@ -18,4 +33,6 @@ export interface BootBriefing {
     tokenPrunedBlocks: number;
     highValueBlocksKept: number;
   };
+  quality?: BootBriefingQuality;
+  continuityScore?: SessionContinuityScore;
 }

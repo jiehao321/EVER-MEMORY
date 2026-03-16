@@ -182,7 +182,7 @@ test('rules tool supports freeze/deprecate/rollback and excludes frozen rules fr
   rmSync(databasePath, { force: true });
 });
 
-test('rules rollback requires a valid replacement rule and repeat mutations are idempotent', () => {
+test('rules rollback reverts to candidate without replacement; replacement-based rollback supersedes', () => {
   const databasePath = createTempDbPath('rules-governance-boundary');
   const app = initializeEverMemory({ databasePath });
 
@@ -201,21 +201,35 @@ test('rules rollback requires a valid replacement rule and repeat mutations are 
   app.behaviorRepo.insert(rule);
   app.behaviorRepo.insert(replacement);
 
-  const missingReplacement = app.evermemoryRules({
+  // Rollback without a replacementRuleId: reverts to candidate state
+  const candidateRollback = app.evermemoryRules({
     action: 'rollback',
     ruleId: rule.id,
-    reason: '没有替代规则时不允许回滚。',
+    reason: '无需替代规则，直接回退为候选状态。',
     includeInactive: true,
     includeDeprecated: true,
     includeFrozen: true,
   });
-  assert.equal(missingReplacement.mutation?.changed, false);
-  assert.equal(missingReplacement.mutation?.reason, 'replacement_rule_required');
+  assert.equal(candidateRollback.mutation?.changed, true);
+  assert.equal(candidateRollback.mutation?.rolledBack, true);
+  assert.equal(candidateRollback.mutation?.rule?.state.active, false);
+  assert.equal(candidateRollback.mutation?.rule?.state.statusReason, 'rolled_back');
+  assert.equal(candidateRollback.mutation?.rule?.lifecycle.level, 'candidate');
+  assert.equal(candidateRollback.mutation?.rule?.lifecycle.maturity, 'emerging');
+
+  // Re-insert the original rule fresh for the replacement-based rollback tests
+  const rule2 = makeRule({
+    statement: '生产变更允许直接执行（第二轮）。',
+    category: 'execution',
+    priority: 78,
+    appliesTo: { userId: 'user-governance-2', intentTypes: ['instruction'], contexts: [] },
+  });
+  app.behaviorRepo.insert(rule2);
 
   const selfReplacement = app.evermemoryRules({
     action: 'rollback',
-    ruleId: rule.id,
-    replacementRuleId: rule.id,
+    ruleId: rule2.id,
+    replacementRuleId: rule2.id,
     reason: '自身不能作为替代规则。',
     includeInactive: true,
     includeDeprecated: true,
@@ -226,7 +240,7 @@ test('rules rollback requires a valid replacement rule and repeat mutations are 
 
   const firstFreeze = app.evermemoryRules({
     action: 'freeze',
-    ruleId: rule.id,
+    ruleId: rule2.id,
     reason: '先冻结等待复核。',
     includeFrozen: true,
     includeInactive: true,
@@ -235,7 +249,7 @@ test('rules rollback requires a valid replacement rule and repeat mutations are 
 
   const secondFreeze = app.evermemoryRules({
     action: 'freeze',
-    ruleId: rule.id,
+    ruleId: rule2.id,
     reason: '重复冻结不应再次改写状态。',
     includeFrozen: true,
     includeInactive: true,
@@ -245,7 +259,7 @@ test('rules rollback requires a valid replacement rule and repeat mutations are 
 
   const rollback = app.evermemoryRules({
     action: 'rollback',
-    ruleId: rule.id,
+    ruleId: rule2.id,
     replacementRuleId: replacement.id,
     reason: '由更安全的新规则替代。',
     includeInactive: true,
@@ -257,7 +271,7 @@ test('rules rollback requires a valid replacement rule and repeat mutations are 
 
   const rollbackAgain = app.evermemoryRules({
     action: 'rollback',
-    ruleId: rule.id,
+    ruleId: rule2.id,
     replacementRuleId: replacement.id,
     reason: '重复回滚应为幂等。',
     includeInactive: true,

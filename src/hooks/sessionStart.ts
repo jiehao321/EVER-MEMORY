@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import type { DebugRepository } from '../storage/debugRepo.js';
 import type { BehaviorService } from '../core/behavior/service.js';
 import { normalizeCommunicationStyle, type BriefingService } from '../core/briefing/service.js';
 import type { ProfileRepository } from '../storage/profileRepo.js';
 import { setSessionContext } from '../runtime/context.js';
-import type { MemoryScope, ProjectedProfile, RuntimeUserProfile, SessionStartInput, SessionStartResult } from '../types.js';
+import { DEFAULT_BOOT_TOKEN_BUDGET } from '../constants.js';
+import type { BootBriefing, MemoryScope, ProjectedProfile, RuntimeUserProfile, SessionStartInput, SessionStartResult } from '../types.js';
 
 function buildScope(input: SessionStartInput): MemoryScope {
   return {
@@ -39,10 +41,33 @@ export function handleSessionStart(
   const style = userProfile
     ? normalizeCommunicationStyle(userProfile.derived.communicationStyle?.tendency)
     : undefined;
-  const briefing = briefingService.build(scope, {
-    sessionId: input.sessionId,
-    communicationStyle: style,
-  });
+
+  // A4b: Wrap briefing generation in try-catch — failure must not crash session startup
+  let briefing: BootBriefing;
+  try {
+    briefing = briefingService.build(scope, {
+      sessionId: input.sessionId,
+      communicationStyle: style,
+    });
+  } catch (error) {
+    debugRepo?.log('boot_generated', input.sessionId ?? 'unknown', {
+      sessionId: input.sessionId,
+      userId: input.userId,
+      briefingFailed: true,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // Degraded: empty briefing — session can still proceed
+    briefing = {
+      id: randomUUID(),
+      sessionId: input.sessionId,
+      userId: input.userId,
+      generatedAt: new Date().toISOString(),
+      sections: { identity: [], constraints: [], recentContinuity: [], activeProjects: [] },
+      tokenTarget: DEFAULT_BOOT_TOKEN_BUDGET,
+      actualApproxTokens: 0,
+      optimization: { duplicateBlocksRemoved: 0, tokenPrunedBlocks: 0, highValueBlocksKept: 0 },
+    };
+  }
   const behaviorRules = behaviorService.getActiveRules({
     scope,
     channel: input.channel,

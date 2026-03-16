@@ -54,7 +54,11 @@ const memoryPlugin = {
           api.logger.warn(`[EverMemory] ${warning}`);
         }
       },
-      stop: () => {
+      stop: async () => {
+        // A4c: Dispose embedding resources before closing DB
+        await embeddingManager.dispose().catch((error: unknown) => {
+          api.logger.warn(`${PLUGIN_NAME}: failed to dispose embedding manager: ${toErrorMessage(error)}`);
+        });
         try {
           context.evermemory.database.connection.close();
           api.logger.info(`${PLUGIN_NAME}: stopped`);

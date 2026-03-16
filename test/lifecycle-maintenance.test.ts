@@ -91,7 +91,7 @@ test('lifecycle maintenance archives stale episodic memory in follow-up writes',
   rmSync(databasePath, { force: true });
 });
 
-test('lifecycle consolidate is idempotent for already-processed scope', () => {
+test('lifecycle consolidate is idempotent for already-processed scope', async () => {
   const databasePath = createTempDbPath('lifecycle-idempotent');
   const app = initializeEverMemory({ databasePath });
 
@@ -117,14 +117,14 @@ test('lifecycle consolidate is idempotent for already-processed scope', () => {
     updatedAt: staleIso,
   });
 
-  const first = app.evermemoryConsolidate({
+  const first = await app.evermemoryConsolidate({
     mode: 'deep',
     scope: { userId: 'u-life-3', project: 'evermemory' },
   });
   assert.ok(first.processed >= 1);
   const statusAfterFirst = app.evermemoryStatus({ userId: 'u-life-3' });
 
-  const second = app.evermemoryConsolidate({
+  const second = await app.evermemoryConsolidate({
     mode: 'deep',
     scope: { userId: 'u-life-3', project: 'evermemory' },
   });

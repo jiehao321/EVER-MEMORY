@@ -22,33 +22,37 @@ function toDebugEvent(row: DebugEventRow): DebugEvent {
 }
 
 export class DebugRepository {
-  constructor(private readonly db: Database.Database) {}
+  // A10: Pre-compiled prepared statements for high-frequency operations
+  private readonly stmtInsert: Database.Statement;
+  private readonly stmtListRecentAll: Database.Statement;
+  private readonly stmtListRecentByKind: Database.Statement;
 
-  log(kind: DebugEventKind, entityId: string | undefined, payload: Record<string, unknown>): void {
-    this.db.prepare(`
+  constructor(private readonly db: Database.Database) {
+    this.stmtInsert = db.prepare(`
       INSERT INTO debug_events (id, created_at, kind, entity_id, payload_json)
       VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)
-    `).run(
-      randomUUID(),
-      kind,
-      entityId ?? null,
-      JSON.stringify(payload),
-    );
+    `);
+    this.stmtListRecentAll = db.prepare(`
+      SELECT * FROM debug_events
+      ORDER BY created_at DESC
+      LIMIT ?
+    `);
+    this.stmtListRecentByKind = db.prepare(`
+      SELECT * FROM debug_events
+      WHERE kind = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `);
+  }
+
+  log(kind: DebugEventKind, entityId: string | undefined, payload: Record<string, unknown>): void {
+    this.stmtInsert.run(randomUUID(), kind, entityId ?? null, JSON.stringify(payload));
   }
 
   listRecent(kind?: DebugEventKind, limit = 20): DebugEvent[] {
     const rows = kind
-      ? this.db.prepare(`
-          SELECT * FROM debug_events
-          WHERE kind = ?
-          ORDER BY created_at DESC
-          LIMIT ?
-        `).all(kind, limit) as DebugEventRow[]
-      : this.db.prepare(`
-          SELECT * FROM debug_events
-          ORDER BY created_at DESC
-          LIMIT ?
-        `).all(limit) as DebugEventRow[];
+      ? this.stmtListRecentByKind.all(kind, limit) as DebugEventRow[]
+      : this.stmtListRecentAll.all(limit) as DebugEventRow[];
 
     return rows.map(toDebugEvent);
   }

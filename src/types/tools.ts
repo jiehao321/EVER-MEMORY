@@ -81,6 +81,12 @@ export interface EverMemoryProfileToolResult {
     derivedHintFields: number;
     derivedGuardrail: 'weak_hint_only';
   };
+  /** B6: PreferenceGraph — top preferences and detected conflicts */
+  preferenceGraph?: {
+    topPreferences: Array<{ label: string; category: string; strength: number }>;
+    conflicts: Array<{ nodeA: string; nodeB: string; reason: string }>;
+    nodeCount: number;
+  };
 }
 
 export interface EverMemoryOnboardingToolInput {
@@ -106,6 +112,10 @@ export interface EverMemoryConsolidateToolResult {
   processed: number;
   merged: number;
   archivedStale: number;
+  detectedConflicts?: {
+    count: number;
+    samples: Array<{ memoryA: string; memoryB: string; reason: string }>;
+  };
 }
 
 export interface EverMemoryExportToolInput {
@@ -270,8 +280,10 @@ export interface EverMemoryRulesToolInput {
   replacementRuleId?: string;
 }
 
+export type BehaviorRuleListItem = BehaviorRule & { appliedCount?: number };
+
 export interface EverMemoryRulesToolResult {
-  rules: BehaviorRule[];
+  rules: BehaviorRuleListItem[];
   total: number;
   filters: {
     userId?: string;
@@ -295,6 +307,7 @@ export interface EverMemoryRulesToolResult {
     changed: boolean;
     reason: string;
     rule: BehaviorRule | null;
+    rolledBack?: boolean;
   };
 }
 
@@ -404,6 +417,24 @@ export interface EverMemoryStatusToolResult {
   };
   runtimeSession?: RuntimeSessionContext;
   recentDebugEvents: number;
+  semanticStatus?: 'ready' | 'degraded' | 'disabled';
+  atRiskMemories?: {
+    count: number;
+    items: Array<{
+      id: string;
+      content: string;
+      ageInDays: number;
+      accessCount: number;
+    }>;
+    nudge: string | null;
+  };
+  // B4: Auto-capture quality feedback dimension
+  autoCapture?: {
+    lastRun: string | null;
+    capturedCount: number;
+    rejectedCount: number;
+    topKinds: string[];
+  };
 }
 
 export interface EverMemoryStoreToolResult extends MemoryStoreResult {}

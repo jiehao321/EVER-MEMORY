@@ -3,12 +3,19 @@ import { NoOpEmbeddingProvider } from './provider.js';
 import { LocalEmbeddingProvider } from './local.js';
 import { OpenAIEmbeddingProvider } from './openai.js';
 
+/** C3: Progress stages emitted during local embedding provider initialization */
+export type EmbeddingInitStage = 'loading' | 'ready' | 'timeout' | 'error';
+
 export type EmbeddingConfig = {
   provider: 'local' | 'openai' | 'none';
   /** For 'local': model name override */
   localModel?: string;
   /** For 'openai': api key override (falls back to OPENAI_API_KEY env) */
   openaiApiKey?: string;
+  /** C3: Called at each initialization stage for cold-start feedback */
+  onInitProgress?: (stage: EmbeddingInitStage, detail?: string) => void;
+  /** C3: Timeout in ms for local provider init (default 120s) */
+  localInitTimeoutMs?: number;
 };
 
 type QueueResolver = (value: EmbeddingVector | null) => void;
@@ -176,11 +183,26 @@ export class EmbeddingManager {
 
   private async _setup(): Promise<EmbeddingProvider> {
     const provider = this._createProvider();
+    const onProgress = this._config.onInitProgress;
     try {
-      await this._initializeProvider(provider);
+      if (provider.kind === 'local') {
+        onProgress?.('loading', `Loading local model...`);
+        const timeoutMs = this._config.localInitTimeoutMs ?? 120_000;
+        await Promise.race([
+          this._initializeProvider(provider),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Local embedding init timed out after ${timeoutMs}ms`)), timeoutMs),
+          ),
+        ]);
+        onProgress?.('ready', 'Local embedding model ready.');
+      } else {
+        await this._initializeProvider(provider);
+      }
       return provider;
     } catch (error) {
       if (provider.kind === 'local') {
+        const isTimeout = error instanceof Error && error.message.includes('timed out');
+        onProgress?.(isTimeout ? 'timeout' : 'error', error instanceof Error ? error.message : String(error));
         console.warn(
           '[EmbeddingManager] Local embedding provider failed to initialize. Falling back to NoOp provider.',
           error

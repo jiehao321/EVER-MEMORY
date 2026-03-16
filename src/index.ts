@@ -34,7 +34,9 @@ import { ReflectionRepository } from './storage/reflectionRepo.js';
 import { SemanticRepository } from './storage/semanticRepo.js';
 import {
   evermemoryBriefing,
+  evermemoryBrowse,
   evermemoryConsolidate,
+  evermemoryEdit,
   evermemoryExplain,
   evermemoryExport,
   evermemoryImport,
@@ -90,6 +92,8 @@ import type {
   SessionStartInput,
   SessionStartResult,
 } from './types.js';
+import type { EverMemoryEditToolInput, EverMemoryEditToolResult } from './tools/edit.js';
+import type { EverMemoryBrowseToolInput, EverMemoryBrowseToolResult } from './tools/browse.js';
 
 export * from './errors.js';
 export * from './core/io/exportService.js';
@@ -120,7 +124,7 @@ export function initializeEverMemory(
 ) {
   const config = loadConfig(configInput);
   const database = openDatabase(config.databasePath);
-  runMigrations(database.connection);
+  runMigrations(database.connection, database.path);
 
   const memoryRepo = new MemoryRepository(database.connection);
   const briefingRepo = new BriefingRepository(database.connection);
@@ -146,7 +150,7 @@ export function initializeEverMemory(
     lifecycleService,
     profileProjectionService: profileService,
   });
-  const housekeepingService = new MemoryHousekeepingService(memoryRepo, lifecycleService);
+  const housekeepingService = new MemoryHousekeepingService(memoryRepo, lifecycleService, undefined, debugRepo, database);
   const smartnessMetricsService = new SmartnessMetricsService(memoryRepo, debugRepo);
   const onboardingService = new OnboardingService(
     memoryService,
@@ -279,8 +283,8 @@ export function initializeEverMemory(
     async evermemoryOnboard(input: EverMemoryOnboardingToolInput): Promise<EverMemoryOnboardingToolResult> {
       return evermemoryOnboard(onboardingService, input);
     },
-    evermemoryConsolidate(input: EverMemoryConsolidateToolInput = {}): EverMemoryConsolidateToolResult {
-      return evermemoryConsolidate(memoryService, input);
+    async evermemoryConsolidate(input: EverMemoryConsolidateToolInput = {}): Promise<EverMemoryConsolidateToolResult> {
+      return evermemoryConsolidate(memoryService, memoryRepo, semanticRepo, input);
     },
     evermemoryExplain(input: EverMemoryExplainToolInput = {}): EverMemoryExplainToolResult {
       return evermemoryExplain(debugRepo, input);
@@ -306,6 +310,12 @@ export function initializeEverMemory(
     },
     evermemoryRestore(input: EverMemoryRestoreToolInput): EverMemoryRestoreToolResult {
       return evermemoryRestore(archiveService, input);
+    },
+    async evermemoryEdit(input: EverMemoryEditToolInput, callerScope?: MemoryScope): Promise<EverMemoryEditToolResult> {
+      return evermemoryEdit(memoryRepo, debugRepo, semanticRepo, input, callerScope);
+    },
+    evermemoryBrowse(input: EverMemoryBrowseToolInput = {}): EverMemoryBrowseToolResult {
+      return evermemoryBrowse(memoryRepo, input);
     },
     evermemoryStatus(input: { userId?: string; sessionId?: string } = {}): EverMemoryStatusToolResult {
       return evermemoryStatus({

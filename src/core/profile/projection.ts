@@ -81,6 +81,11 @@ export class ProfileProjectionService {
     }
     try {
       const existingProfile = this.profileRepo.getByUserId(normalizedUserId);
+      const totalMemoryCount = this.memoryRepo.count({
+        scope: { userId: normalizedUserId },
+        activeOnly: true,
+        archived: false,
+      });
       const memories = this.memoryRepo.search({
         scope: { userId: normalizedUserId },
         activeOnly: true,
@@ -153,6 +158,7 @@ export class ProfileProjectionService {
         ],
       ).slice(0, PROFILE_MAX_BEHAVIOR_HINTS);
 
+      const scanned = memories.length;
       const profile: ProjectedProfile = {
         userId: normalizedUserId,
         updatedAt: nowIso(),
@@ -169,6 +175,11 @@ export class ProfileProjectionService {
           workPatterns,
         },
         behaviorHints,
+        scanCoverage: {
+          scanned,
+          total: totalMemoryCount,
+          isPartial: totalMemoryCount > scanned,
+        },
       };
 
       this.profileRepo.upsert(profile);

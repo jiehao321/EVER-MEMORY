@@ -218,8 +218,14 @@ function composeProjectSummary(input: {
     return null;
   }
 
+  // C1: Only include fields that have actual data — omit empty fields rather than using "待补充"
+  const parts: string[] = [];
+  if (status) parts.push(`状态：${status}`);
+  if (keyConstraint) parts.push(`关键约束：${keyConstraint}`);
+  if (recentDecision) parts.push(`最近决策：${recentDecision}`);
+  if (nextStep) parts.push(`下一步：${nextStep}`);
   return clip(
-    `项目连续性摘要（${input.projectName ?? 'current'}）：状态：${status || '待补充'}；关键约束：${keyConstraint || '待补充'}；最近决策：${recentDecision || '待补充'}；下一步：${nextStep || '待补充'}`,
+    `项目连续性摘要（${input.projectName ?? 'current'}）：${parts.join('；')}`,
     BRIEFING_CLIP_PROJECT_SUMMARY,
   );
 }
@@ -395,7 +401,10 @@ function toConciseProjectSummary(entry: string): string {
     return clip(entry, BRIEFING_CLIP_SHORT);
   }
   const keyField = parsed.status || parsed.nextStep || parsed.keyConstraint || parsed.recentDecision;
-  return clip(`项目状态（${parsed.projectName || 'current'}）：${keyField || '待补充'}`, BRIEFING_CLIP_SHORT);
+  if (!keyField) {
+    return clip(entry, BRIEFING_CLIP_SHORT);
+  }
+  return clip(`项目状态（${parsed.projectName || 'current'}）：${keyField}`, BRIEFING_CLIP_SHORT);
 }
 
 export function adaptSectionsByStyle(

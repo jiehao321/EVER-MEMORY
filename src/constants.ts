@@ -77,6 +77,7 @@ export const DEBUG_EVENT_KINDS = [
   'memory_import_applied',
   'memory_restore_reviewed',
   'memory_restore_applied',
+  'housekeeping_error',
 ] as const;
 
 export const INTENT_TYPES = [

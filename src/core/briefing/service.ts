@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { BriefingRepository } from '../../storage/briefingRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { ProfileRepository } from '../../storage/profileRepo.js';
-import type { BootBriefing, MemoryItem, MemoryScope } from '../../types.js';
+import type { BootBriefing, BootBriefingQuality, SessionContinuityScore, MemoryItem, MemoryScope } from '../../types.js';
 import { PreferenceGraphService } from '../profile/preferenceGraph.js';
 import { CrossProjectTransferService } from '../profile/crossProjectTransfer.js';
 import {
@@ -165,6 +165,36 @@ export class BriefingService {
       };
 
       briefing.actualApproxTokens = approxTokens(briefing.sections);
+
+      // C1: Compute briefing quality score
+      const sectionKeys: (keyof BootBriefing['sections'])[] = ['identity', 'constraints', 'recentContinuity', 'activeProjects'];
+      const emptySections = sectionKeys.filter((key) => briefing.sections[key].length === 0);
+      const nonEmptyCount = sectionKeys.length - emptySections.length;
+      const qualityScore = Number((nonEmptyCount / sectionKeys.length).toFixed(2));
+      const qualityLabel: BootBriefingQuality['qualityLabel'] = qualityScore >= 0.75 ? 'excellent'
+        : qualityScore >= 0.5 ? 'good'
+        : qualityScore >= 0.25 ? 'fair'
+        : 'low';
+      const nudge = qualityScore < 0.5
+        ? 'Run `evermemory_store` to record your current project context for better continuity.'
+        : null;
+      briefing.quality = { qualityScore, qualityLabel, emptySections, nudge };
+
+      // D3: Compute Session Continuity Score
+      const filledSections = nonEmptyCount;
+      const totalSections = sectionKeys.length;
+      const continuityRaw = filledSections / totalSections;
+      const continuityLabel: SessionContinuityScore['label'] = continuityRaw >= 0.75 ? 'rich'
+        : continuityRaw >= 0.5 ? 'moderate'
+        : continuityRaw > 0 ? 'sparse'
+        : 'empty';
+      briefing.continuityScore = {
+        score: Number(continuityRaw.toFixed(2)),
+        label: continuityLabel,
+        filledSections,
+        totalSections,
+      };
+
       this.briefingRepo.save(briefing);
       return briefing;
     } catch (error) {

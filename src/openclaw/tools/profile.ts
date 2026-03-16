@@ -252,7 +252,7 @@ export function registerProfileTools({ api, evermemory, sessionScopes }: OpenCla
       ),
       async execute(_toolCallId: string, params: UnknownRecord) {
         const baseScope = resolveToolScope(sessionScopes, toolContext);
-        const result = evermemory.evermemoryConsolidate({
+        const result = await evermemory.evermemoryConsolidate({
           mode: asOptionalEnum(params.mode, CONSOLIDATION_MODES),
           scope: mergeScope(baseScope, parseScope(params.scope)),
         });

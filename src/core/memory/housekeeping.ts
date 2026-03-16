@@ -1,5 +1,7 @@
 import type { MemoryLifecycleService } from './lifecycle.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
+import type { DebugRepository } from '../../storage/debugRepo.js';
+import type { DatabaseHandle } from '../../storage/db.js';
 import type { MemoryItem, MemoryScope } from '../../types.js';
 
 export interface HousekeepingConfig {
@@ -7,6 +9,8 @@ export interface HousekeepingConfig {
   readonly highFrequencyThreshold: number;
   readonly mergeSimThreshold: number;
   readonly maxMergePerRun: number;
+  readonly debugEventRetentionDays?: number;
+  readonly intentRecordRetentionDays?: number;
 }
 
 export interface HousekeepingResult {
@@ -14,6 +18,8 @@ export interface HousekeepingResult {
   readonly archivedCount: number;
   readonly reinforcedCount: number;
   readonly durationMs: number;
+  readonly prunedDebugEvents?: number;
+  readonly prunedIntentRecords?: number;
 }
 
 export const DEFAULT_CONFIG: HousekeepingConfig = {
@@ -21,6 +27,8 @@ export const DEFAULT_CONFIG: HousekeepingConfig = {
   highFrequencyThreshold: 5,
   mergeSimThreshold: 0.88,
   maxMergePerRun: 10,
+  debugEventRetentionDays: 30,
+  intentRecordRetentionDays: 14,
 };
 
 function nowIso(): string {
@@ -71,9 +79,11 @@ export class MemoryHousekeepingService {
     private readonly memoryRepo: MemoryRepository,
     private readonly lifecycleService: MemoryLifecycleService,
     private readonly config: HousekeepingConfig = DEFAULT_CONFIG,
+    private readonly debugRepo?: DebugRepository,
+    private readonly db?: DatabaseHandle,
   ) {}
 
-  async run(scope: MemoryScope): Promise<HousekeepingResult> {
+  run(scope: MemoryScope): HousekeepingResult {
     const startedAt = Date.now();
     const candidates = this.memoryRepo.search({
       scope,
@@ -86,12 +96,54 @@ export class MemoryHousekeepingService {
     const archivedCount = this.archiveStale(scope);
     const reinforcedCount = this.reinforceHighFrequency(scope);
 
+    // A7: Prune old debug events and intent records to prevent DB bloat
+    const prunedDebugEvents = this.pruneOldDebugEvents();
+    const prunedIntentRecords = this.pruneOldIntentRecords();
+
     return {
       mergedCount,
       archivedCount,
       reinforcedCount,
       durationMs: Date.now() - startedAt,
+      prunedDebugEvents,
+      prunedIntentRecords,
     };
+  }
+
+  private pruneOldDebugEvents(): number {
+    if (!this.db) return 0;
+    const retentionDays = this.config.debugEventRetentionDays ?? 30;
+    const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const cutoffIso = new Date(cutoffMs).toISOString();
+    try {
+      const result = this.db.connection.prepare(
+        `DELETE FROM debug_events WHERE created_at < ?`,
+      ).run(cutoffIso);
+      return result.changes;
+    } catch (error: unknown) {
+      this.debugRepo?.log('housekeeping_error', 'prune_debug_events', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
+  }
+
+  private pruneOldIntentRecords(): number {
+    if (!this.db) return 0;
+    const retentionDays = this.config.intentRecordRetentionDays ?? 14;
+    const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const cutoffIso = new Date(cutoffMs).toISOString();
+    try {
+      const result = this.db.connection.prepare(
+        `DELETE FROM intent_records WHERE created_at < ?`,
+      ).run(cutoffIso);
+      return result.changes;
+    } catch (error: unknown) {
+      this.debugRepo?.log('housekeeping_error', 'prune_intent_records', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 0;
+    }
   }
 
   async runIfNeeded(scope: MemoryScope, lastRunAt?: string): Promise<HousekeepingResult | null> {
@@ -99,7 +151,7 @@ export class MemoryHousekeepingService {
     if (lastRunTs > 0 && (Date.now() - lastRunTs) < 24 * 60 * 60 * 1000) {
       return null;
     }
-    return this.run(scope);
+    return Promise.resolve(this.run(scope));
   }
 
   private mergeNearDuplicates(candidates: readonly MemoryItem[]): number {

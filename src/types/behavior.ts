@@ -52,6 +52,7 @@ export interface BehaviorRuleTrace {
   promotedAt?: string;
   reviewSourceRefs?: string[];
   promotionEvidenceSummary?: string;
+  sourceExperienceIds?: string[];
   deactivatedByRuleId?: string;
   deactivatedByReflectionId?: string;
   deactivatedReason?: string;
@@ -130,6 +131,7 @@ export interface BehaviorRuleMutationResult {
   rule: BehaviorRule | null;
   changed: boolean;
   reason: string;
+  rolledBack?: boolean;
 }
 
 export interface BehaviorRuleReviewRecord {

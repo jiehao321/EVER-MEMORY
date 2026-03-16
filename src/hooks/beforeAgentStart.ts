@@ -1,6 +1,7 @@
 import { embeddingManager } from '../embedding/manager.js';
 import type { MemoryRepository } from '../storage/memoryRepo.js';
 import type { SemanticRepository } from '../storage/semanticRepo.js';
+import type { DebugRepository } from '../storage/debugRepo.js';
 import type { BehaviorRule, MemoryItem, MemoryScope, SemanticEmbeddingSearchHit } from '../types.js';
 
 export interface SemanticPreloadResult {
@@ -10,9 +11,18 @@ export interface SemanticPreloadResult {
   readonly relevantRules: readonly string[];
 }
 
+function hasAnyIdentifier(scope: MemoryScope | undefined): boolean {
+  return Boolean(scope?.userId) || Boolean(scope?.chatId) || Boolean(scope?.project) || scope?.global === true;
+}
+
 function matchesScope(scope: MemoryScope | undefined, memoryScope: MemoryScope | undefined): boolean {
   if (!scope) {
-    return true;
+    // A0: undefined scope matches no user-specific memories, only global ones
+    return memoryScope?.global === true;
+  }
+  // A0: empty scope object (no identifying fields) must not match everything
+  if (!hasAnyIdentifier(scope)) {
+    return memoryScope?.global === true;
   }
   if (scope.userId !== undefined && memoryScope?.userId !== scope.userId) {
     return false;
@@ -85,8 +95,14 @@ export async function semanticPreload(
   limit = 5,
   minScore = 0.35,
   activeRules: readonly BehaviorRule[] = [],
+  debugRepo?: DebugRepository,
 ): Promise<SemanticPreloadResult> {
   if (!embeddingManager.isReady()) {
+    // A1: Log semantic degradation so operators can detect embedding issues
+    debugRepo?.log('semantic_preload_failed', undefined, {
+      reason: 'embedding_not_ready',
+      provider: embeddingManager.providerKind,
+    });
     return {
       ids: [],
       hits: [],
@@ -97,6 +113,10 @@ export async function semanticPreload(
 
   const queryVector = await embeddingManager.embed(queryText);
   if (!queryVector || queryVector.values.length === 0) {
+    debugRepo?.log('semantic_preload_failed', undefined, {
+      reason: 'embed_returned_null',
+      provider: embeddingManager.providerKind,
+    });
     return {
       ids: [],
       hits: [],
@@ -147,7 +167,12 @@ export async function semanticPreload(
       ),
       relevantRules,
     };
-  } catch {
+  } catch (error) {
+    // A1: Log catch-path degradation for observability
+    debugRepo?.log('semantic_preload_failed', undefined, {
+      reason: 'search_error',
+      error: error instanceof Error ? error.message : String(error),
+    });
     return {
       ids: [],
       hits: [],

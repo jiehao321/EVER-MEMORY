@@ -123,6 +123,11 @@ function toBehaviorRule(row: BehaviorRuleRow): BehaviorRule {
 export class BehaviorRepository {
   constructor(private readonly db: Database.Database) {}
 
+  /** A9: Run a block of operations inside a single SQLite transaction */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
+
   insert(rule: BehaviorRule): void {
     this.db.prepare(`
       INSERT INTO behavior_rules (

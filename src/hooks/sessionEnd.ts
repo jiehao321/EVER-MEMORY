@@ -8,10 +8,12 @@ import type { ReflectionService } from '../core/reflection/service.js';
 import type { MemoryHousekeepingService } from '../core/memory/housekeeping.js';
 import type { MemoryService } from '../core/memory/service.js';
 import { processAutoCapture } from '../core/memory/autoCapture.js';
+import type { AutoCaptureResult } from '../core/memory/autoCapture.js';
 import { extractLearningInsights, storeInsights } from '../core/memory/activeLearning.js';
 import { autoPromoteRules } from '../core/behavior/autoPromotion.js';
 import type { SessionEndInput, SessionEndResult } from '../types.js';
 import { clearSessionContext, getInteractionContext } from '../runtime/context.js';
+import { withTimeout } from '../util/timeout.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -86,29 +88,66 @@ export async function handleSessionEnd(
         },
       }
     : undefined;
-  const autoPromotionResult = await autoPromoteRules(behaviorService);
-
-  const autoCapture = await processAutoCapture(
-    input,
-    {
-      intent: interaction?.intent,
-      experience,
-      reflection: reviewedReflection,
-    },
-    memoryService,
-    semanticRepo,
-    memoryRepo,
-  );
-  const extractedInsights = await extractLearningInsights(input, {
-    intent: interaction?.intent,
-    reflection: reviewedReflection,
+  const autoPromotionResult = await withTimeout(
+    autoPromoteRules(behaviorService),
+    5_000,
+    'autoPromoteRules',
+  ).catch((error: unknown) => {
+    debugRepo?.log('session_end_processed', input.sessionId, {
+      sessionId: input.sessionId,
+      autoPromotionFailed: true,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { promoted: 0 };
   });
-  const learningResult = await storeInsights(
-    extractedInsights,
-    input.scope ?? {},
-    memoryService,
-    semanticRepo,
-  );
+
+  const autoCapture = await withTimeout(
+    processAutoCapture(
+      input,
+      {
+        intent: interaction?.intent,
+        experience,
+        reflection: reviewedReflection,
+      },
+      memoryService,
+      semanticRepo,
+      memoryRepo,
+    ),
+    10_000,
+    'processAutoCapture',
+  ).catch((error: unknown) => {
+    debugRepo?.log('session_end_processed', input.sessionId, {
+      sessionId: input.sessionId,
+      autoCaptureFailed: true,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { generated: 0, accepted: 0, rejected: 0, storedIds: [], rejectedReasons: [], generatedByKind: {}, acceptedByKind: {}, acceptedIdsByKind: {} } as AutoCaptureResult;
+  });
+  const extractedInsights = await withTimeout(
+    extractLearningInsights(input, {
+      intent: interaction?.intent,
+      reflection: reviewedReflection,
+    }),
+    5_000,
+    'extractLearningInsights',
+  ).catch(() => []);
+  const learningResult = await withTimeout(
+    storeInsights(
+      extractedInsights,
+      input.scope ?? {},
+      memoryService,
+      semanticRepo,
+    ),
+    5_000,
+    'storeInsights',
+  ).catch((error: unknown) => {
+    debugRepo?.log('session_end_processed', input.sessionId, {
+      sessionId: input.sessionId,
+      storeInsightsFailed: true,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { storedCount: 0 };
+  });
   let profileUpdated = false;
   if (input.scope?.userId && profileProjection) {
     try {
@@ -148,19 +187,21 @@ export async function handleSessionEnd(
   });
 
   if (housekeepingService && memoryRepo && input.scope && memoryRepo.count({ scope: input.scope }) > 50) {
-    try {
-      const lastRunAt = memoryRepo.search({
-        scope: input.scope,
-        limit: 1,
-      })[0]?.timestamps.updatedAt;
-      await housekeepingService.runIfNeeded(input.scope, lastRunAt);
-    } catch (error) {
+    const lastRunAt = memoryRepo.search({
+      scope: input.scope,
+      limit: 1,
+    })[0]?.timestamps.updatedAt;
+    await withTimeout(
+      housekeepingService.runIfNeeded(input.scope, lastRunAt),
+      15_000,
+      'housekeeping',
+    ).catch((error: unknown) => {
       debugRepo?.log('session_end_processed', input.sessionId, {
         sessionId: input.sessionId,
         housekeepingFailed: true,
         housekeepingError: error instanceof Error ? error.message : String(error),
       });
-    }
+    });
   }
 
   // Clear session context to prevent memory leak
