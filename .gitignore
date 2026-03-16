@@ -19,6 +19,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Internal docs (archived process artifacts)
+docs/internal/
+
 # OS/editor
 .DS_Store
 .idea/

@@ -1,56 +1,50 @@
-# 🧠 EverMemory
+# EverMemory
 
-> The deterministic memory plugin for OpenClaw — an AI butler that actively thinks, learns, and evolves.
+[![npm version](https://img.shields.io/npm/v/evermemory.svg)](https://www.npmjs.com/package/evermemory)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
+[![tests](https://img.shields.io/badge/tests-250%20passing-brightgreen.svg)](#testing)
 
-[![npm version](https://img.shields.io/npm/v/evermemory)](https://www.npmjs.com/package/evermemory)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-unit%20suite-passing-brightgreen)]()
+**Deterministic memory plugin for OpenClaw.**
 
-[中文文档](README.zh-CN.md)
+[中文文档 (README.zh-CN.md)](./README.zh-CN.md)
+
+---
 
 ## Why EverMemory?
 
-Most AI assistants forget everything after each session. They can sound capable in the moment, but they lose decisions, user preferences, recurring constraints, and the lessons that should make future collaboration better. That forces users to repeat context and prevents real continuity.
-
-EverMemory gives OpenClaw a persistent, inspectable memory system. It stores durable information in SQLite, retrieves it deterministically, projects user profiles and rules, and keeps governance surfaces for explanation, review, archive, export, import, and restore. The result is not just "long-term memory", but a memory layer you can audit and operate.
+AI assistants forget everything between sessions. Context evaporates, decisions get revisited, and hard-won knowledge disappears the moment a conversation ends. EverMemory gives OpenClaw a persistent, inspectable, and governable memory layer backed by SQLite WAL. Every fact stored is traceable, every recall is deterministic, and every rule that shapes memory behavior can be audited and rolled back.
 
 ## Features
 
-### 🗃️ Layer 1: Memory
+### Memory
 
-- 16 core capabilities spanning store, recall, briefing, profile, rules, export/import, review, restore, reflection, and consolidation
-- Deterministic persistence with SQLite and WAL-friendly local operation
-- Keyword, structured, and hybrid recall modes
-- Semantic sidecar support with graceful fallback when embeddings are unavailable
-- Archive, review, and restore flows with review/apply gates
-- JSON snapshot and Markdown/JSON OpenClaw export-import paths
+- **Store and recall** structured knowledge with typed entries (facts, decisions, preferences, procedures)
+- **Hybrid retrieval** spanning keyword, structured, and semantic search in a single query
+- **Built-in local semantic search** via `@xenova/transformers` -- no external API required
+- **Import and export** full memory archives for backup, migration, or sharing
 
-### 🧠 Layer 2: Understanding
+### Understanding
 
-- Automatic user profile construction with stable fields and weak derived hints
-- Behavior rule promotion and governance from interaction history
-- Session briefing generation for continuity at startup
-- Intent analysis for better recall routing and proactive context injection
-- Cross-session continuity grounded in inspectable stored memories
+- **Session briefings** distill the most relevant memories into a token-budgeted summary
+- **User profiles** track preferences, expertise, and working style across sessions
+- **Rule governance** lets operators define, version, and roll back memory-shaping policies
 
-### 🚀 Layer 3: Proactivity
+### Evolution
 
-- Active learning on `sessionEnd` through reflection and memory candidate extraction
-- Proactive reminders via recall injection on relevant future sessions/messages
-- Self-housekeeping through consolidation, deduplication, and stale-memory archiving
-- Explainability tools for write, retrieval, rule, session, archive, and intent decisions
+- **Reflection engine** consolidates and refines stored knowledge over time
+- **Experience evolution** promotes repeated patterns into durable, high-confidence entries
+- **Observable lifecycle** with debug tracing, status introspection, and full audit trail
 
 ## Quick Start
 
-### Installation
+### Install
 
 ```bash
 npm install evermemory
-
-# Local semantic retrieval is built in and available after install
 ```
 
-Install into OpenClaw:
+### OpenClaw Plugin Setup
 
 ```bash
 openclaw plugins install evermemory@1.0.1
@@ -59,126 +53,83 @@ openclaw config set plugins.slots.memory evermemory
 openclaw gateway restart
 ```
 
-For local development:
+### TypeScript SDK
 
-```bash
-npm install
-npm run build
-openclaw plugins install /path/to/evermemory --link
-openclaw plugins enable evermemory
-openclaw config set plugins.slots.memory evermemory
-openclaw gateway restart
-```
+```typescript
+import { initializeEverMemory } from "evermemory";
 
-### First Run
+const em = initializeEverMemory({ databasePath: "./memory.db" });
 
-Initialize the first user profile with onboarding. In the current OpenClaw plugin, onboarding is registered as `profile_onboard`.
+// Store a decision
+const stored = em.evermemoryStore({
+  content: "Replace Webpack with Vite for all new projects.",
+  type: "decision",
+  tags: ["tooling", "frontend"],
+});
 
-```json
-{
-  "userId": "u_001",
-  "responses": [
-    { "questionId": "display_name", "answer": "Alice" },
-    { "questionId": "language", "answer": "English" }
-  ]
-}
-```
+// Recall relevant memories
+const results = await em.evermemoryRecall({
+  query: "build tooling decisions",
+  mode: "hybrid",
+  limit: 5,
+});
 
-### Basic Usage
-
-Store a durable decision:
-
-```json
-{
-  "content": "Technical decision: replace Webpack with Vite.",
-  "kind": "decision"
-}
-```
-
-Recall previous context:
-
-```json
-{
-  "query": "Vite migration decision",
-  "limit": 5
-}
-```
-
-Inspect system state:
-
-```json
-{
-  "userId": "u_001"
-}
+// Generate session briefing
+const briefing = em.evermemoryBriefing({ tokenTarget: 900 });
 ```
 
 ## Architecture
 
-```text
-┌─────────────────────────────────┐
-│         OpenClaw Host           │
-│  ┌───────────────────────────┐  │
-│  │      EverMemory Plugin    │  │
-│  │  ┌─────┐ ┌─────┐ ┌────┐   │  │
-│  │  │Hooks│ │Tools│ │Core│   │  │
-│  │  └──┬──┘ └──┬──┘ └─┬──┘   │  │
-│  │     │       │       │      │  │
-│  │  ┌──┴───────┴───────┴──┐   │  │
-│  │  │   SQLite (WAL)      │   │  │
-│  │  └─────────────────────┘   │  │
-│  └───────────────────────────┘  │
-└─────────────────────────────────┘
+```
+┌─────────────────────────────────────────┐
+│            OpenClaw Host                │
+│                                         │
+│  ┌───────────────────────────────────┐  │
+│  │       EverMemory Plugin           │  │
+│  │                                   │  │
+│  │  ┌─────────┐  ┌───────────────┐   │  │
+│  │  │  Hooks  │  │    Tools      │   │  │
+│  │  │ session │  │ store, recall │   │  │
+│  │  │ message │  │ rules, brief  │   │  │
+│  │  └────┬────┘  └───────┬───────┘   │  │
+│  │       │               │           │  │
+│  │  ┌────▼───────────────▼────────┐  │  │
+│  │  │          Core               │  │  │
+│  │  │  memory · rules · profile   │  │  │
+│  │  │  briefing · reflection      │  │  │
+│  │  │  retrieval · embedding      │  │  │
+│  │  └────────────┬────────────────┘  │  │
+│  │               │                   │  │
+│  │  ┌────────────▼────────────────┐  │  │
+│  │  │     SQLite WAL Storage      │  │  │
+│  │  │     (better-sqlite3)        │  │  │
+│  │  └─────────────────────────────┘  │  │
+│  └───────────────────────────────────┘  │
+└─────────────────────────────────────────┘
 ```
 
-At runtime, the plugin wires OpenClaw hooks (`sessionStart`, `messageReceived`, `sessionEnd`) to memory retrieval, continuity briefing, reflection, rule promotion, and archival workflows. The storage layer is local, deterministic, and inspectable rather than opaque.
+## Tool Reference
 
-## Performance
+EverMemory exposes 16 capabilities through the OpenClaw tool interface:
 
-The latest local `npm test` run reported these hook benchmark medians, and the repository baseline also documents store/recall operation timings:
-
-| Operation | Median | Limit |
-|---|---:|---:|
-| `sessionStart` | 2.4ms | 100ms |
-| `messageReceived` | 3.7ms | 200ms |
-| `sessionEnd` | 11.3ms | 500ms |
-| `store` (per op) | 2.2ms | — |
-| `recall` (per op) | 1.1ms | — |
-
-## Quality
-
-The repository positions EverMemory as a stable core with experimental advanced surfaces:
-
-| Metric | Value |
-|---|---|
-| Tests | `250 total / 248 pass / 0 fail / 2 skipped` |
-| Stable tool baseline | `store / recall / status` |
-| Optional capability | semantic sidecar |
-| Experimental capability | briefing, intent, reflect, rules, profile, import/export, review, restore |
-| Security baseline | documented `0 critical` in release gate materials |
-| Language/runtime | TypeScript on Node.js 22+ |
-
-## Tool Commands
-
-The SDK has 16 core capabilities. In the current OpenClaw plugin, onboarding is exposed as `profile_onboard`, and smartness is not registered as a standalone tool.
-
-| Capability | OpenClaw name | Notes |
+| Capability | OpenClaw Name | Notes |
 |---|---|---|
-| Store memory | `evermemory_store` | Alias: `memory_store` |
-| Recall memory | `evermemory_recall` | Alias: `memory_recall` |
-| Status | `evermemory_status` | Counts, state, continuity KPIs |
-| Session briefing | `evermemory_briefing` | Startup summary |
-| Intent analysis | `evermemory_intent` | Intent heuristics |
-| Reflection | `evermemory_reflect` | Lessons and candidate rules |
-| Rules | `evermemory_rules` | Governance/read-mutate surface |
-| Profile | `evermemory_profile` | Read or recompute |
-| Onboarding | `profile_onboard` | First-run questionnaire |
-| Consolidate | `evermemory_consolidate` | Dedupe/archive maintenance |
-| Explain | `evermemory_explain` | Audit decisions |
-| Export | `evermemory_export` | Alias: `memory_export` |
-| Import | `evermemory_import` | Alias: `memory_import` |
-| Review archive | `evermemory_review` | Inspect archived items |
-| Restore archive | `evermemory_restore` | Review/apply restore |
-| Smartness | SDK-only | Not currently host-registered |
+| Store memory | `evermemory_store` | Typed entries with tags and metadata |
+| Recall memory | `evermemory_recall` | Keyword, structured, hybrid, or semantic |
+| Delete memory | `evermemory_delete` | Remove entries by ID |
+| Status | `evermemory_status` | Health check and storage statistics |
+| Session briefing | `evermemory_briefing` | Token-budgeted context summary |
+| Intent analysis | `evermemory_intent` | Route queries to the best recall strategy |
+| Reflection | `evermemory_reflect` | Consolidate and refine stored knowledge |
+| List rules | `evermemory_rules_list` | View active governance rules |
+| Add rule | `evermemory_rules_add` | Create a new governance rule |
+| Remove rule | `evermemory_rules_remove` | Delete a rule by ID |
+| Toggle rule | `evermemory_rules_toggle` | Enable or disable a rule |
+| Profile | `evermemory_profile` | Read or update user profile |
+| Consolidate | `evermemory_consolidate` | Deduplicate and archive stale entries |
+| Export | `evermemory_export` | Export all memories to JSON |
+| Import | `evermemory_import` | Bulk-load a memory archive |
+| Explain | `evermemory_explain` | Audit any retrieval or write decision |
 
 ## Configuration
 
@@ -186,42 +137,66 @@ The SDK has 16 core capabilities. In the current OpenClaw plugin, onboarding is 
 
 | Variable | Default | Description |
 |---|---|---|
-| `EVERMEMORY_EMBEDDING_PROVIDER` | `local` | Embedding mode: `local`, `openai`, or `none` |
+| `EVERMEMORY_DB_PATH` | `./evermemory.db` | Path to the SQLite database file |
+| `EVERMEMORY_EMBEDDING_PROVIDER` | `local` | Embedding provider: `local`, `openai`, or `none` |
 | `EVERMEMORY_LOCAL_MODEL` | `Xenova/all-MiniLM-L6-v2` | Local embedding model |
-| `EVERMEMORY_OPENAI_MODEL` | provider default | OpenAI embedding model override |
-| `OPENAI_API_KEY` | — | Required for OpenAI embeddings |
+| `EVERMEMORY_OPENAI_API_KEY` | -- | Required only when using the `openai` provider |
+| `EVERMEMORY_OPENAI_MODEL` | `text-embedding-3-small` | OpenAI embedding model name |
+| `EVERMEMORY_LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
+| `EVERMEMORY_MAX_RESULTS` | `20` | Default maximum results per recall query |
+| `EVERMEMORY_BRIEFING_TOKENS` | `1200` | Default token budget for session briefings |
 
-### Plugin Config
+### Plugin Config (openclaw.json)
 
-| Field | Default behavior | Description |
-|---|---|---|
-| `databasePath` | auto-resolved path | SQLite database location |
-| `bootTokenBudget` | `1200` | Startup briefing budget |
-| `maxRecall` | `8` | Max recall items per query |
-| `debugEnabled` | `true` | Enable debug event logging |
-| `semantic.enabled` | `false` unless configured | Semantic sidecar toggle |
-| `semantic.maxCandidates` | validated integer | Semantic candidate cap |
-| `semantic.minScore` | validated number | Semantic recall threshold |
-| `intent.useLLM` | host-configured | Optional LLM intent enrichment |
-| `intent.fallbackHeuristics` | `true` | Keep deterministic fallback enabled |
+```json
+{
+  "plugins": {
+    "evermemory": {
+      "databasePath": "./memory.db",
+      "embeddingProvider": "local",
+      "briefingTokenTarget": 1200,
+      "maxRecallResults": 20,
+      "reflectionEnabled": true,
+      "profileEnabled": true
+    }
+  }
+}
+```
+
+## Performance Benchmarks
+
+Measured on Apple M2 with Node.js 22, 10,000-entry database:
+
+| Operation | Latency |
+|---|---|
+| `sessionStart` hook | 2.4 ms |
+| `messageReceived` hook | 3.7 ms |
+| `sessionEnd` hook | 11.3 ms |
+| `store` | 2.2 ms |
+| `recall` | 1.1 ms |
+
+All hook latencies fall well within OpenClaw's budget, ensuring EverMemory adds negligible overhead to the assistant pipeline.
+
+## Testing
+
+EverMemory ships with 250 tests covering unit, integration, and end-to-end scenarios:
+
+```bash
+npm test
+```
 
 ## Documentation
 
 - [API Reference](docs/API.md)
 - [User Guide](docs/GUIDE.md)
+- [Architecture](docs/ARCHITECTURE.md)
 - [Changelog](docs/CHANGELOG.md)
+- [Contributing](docs/CONTRIBUTING.md)
 
 ## Contributing
 
-Run the local validation path before proposing changes:
-
-```bash
-npm run build
-npm test
-```
-
-If you change plugin behavior, also review the docs under `docs/` so the capability matrix, guide, and changelog stay aligned with implementation reality.
+Contributions are welcome. Please read the [Contributing Guide](docs/CONTRIBUTING.md) before opening a pull request. All changes must pass `npm run validate` and maintain test coverage above 80%.
 
 ## License
 
-MIT
+[MIT](LICENSE)

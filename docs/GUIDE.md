@@ -1,140 +1,489 @@
-# EverMemory 用户指南
+# EverMemory User Guide
 
-## 什么是 EverMemory
+EverMemory is a deterministic memory plugin for [OpenClaw](https://github.com/openclaw). It provides structured knowledge storage, recall, rule governance, and user profiling as reliable, explainable, and rollback-safe workflows.
 
-EverMemory 是一个面向 OpenClaw 的长期记忆插件，提供可确定、可解释、可治理的记忆存储、检索、画像、反思与整理能力。
+- **Version**: 1.0.1
+- **Runtime**: Node.js 22+
+- **Language**: TypeScript (strict ESM)
+- **Storage**: SQLite with WAL mode (via better-sqlite3)
 
-核心能力：
+---
 
-- 结构化记忆存储与召回
-- 启动 briefing 与连续性注入
-- 意图识别、反思、规则治理
-- 用户画像与首次 onboarding
-- 导入导出、归档审查、恢复与整理
+## Getting Started
 
-## 安装
+### SDK Usage
 
-```bash
-npm install evermemory
+```typescript
+import { initializeEverMemory } from "evermemory";
 
-# 语义搜索已内置，安装后即可使用
+const em = initializeEverMemory({
+  databasePath: "./memory.db",
+  semantic: { enabled: true },
+});
 ```
 
-如果你在 OpenClaw 中以插件方式安装，也可以直接绑定仓库路径：
+The `initializeEverMemory` call provisions the SQLite database (creating it if necessary), runs idempotent migrations, and returns a configured EverMemory instance ready for use.
+
+When `semantic.enabled` is `true`, the built-in embedding provider (`@xenova/transformers`) is activated automatically. No additional installation or API keys are required.
+
+### OpenClaw Plugin
 
 ```bash
-openclaw plugins install /path/to/evermemory --link
+openclaw plugins install evermemory@1.0.1
 openclaw plugins enable evermemory
 openclaw config set plugins.slots.memory evermemory
 openclaw gateway restart
-openclaw plugins info evermemory
 ```
 
-## 快速开始
+After restarting the gateway, EverMemory registers its lifecycle hooks (`sessionStart`, `sessionEnd`) and exposes its tool commands to the agent runtime.
 
-### 1. 注册插件
+---
 
-```ts
-import { initializeEverMemory } from "evermemory";
+## Core Concepts
 
-const evermemory = initializeEverMemory();
+### Memory Types
+
+Every stored memory carries a `type` field drawn from a fixed vocabulary:
+
+| Type | Purpose |
+|------|---------|
+| `identity` | Who the user is -- name, role, background |
+| `fact` | Verified objective information |
+| `preference` | User likes, dislikes, and stylistic choices |
+| `decision` | Choices made and their rationale |
+| `commitment` | Promises or agreements the agent has made |
+| `relationship` | Connections between people, projects, or concepts |
+| `task` | Action items and their status |
+| `project` | Ongoing projects and their context |
+| `style` | Communication and formatting preferences |
+| `summary` | Condensed overviews of longer interactions |
+| `constraint` | Hard rules or boundaries the user has set |
+
+Choosing the correct type ensures that recall queries and briefings surface the right memories at the right time.
+
+### Memory Lifecycle
+
+Memories progress through four stages:
+
+1. **working** -- Short-lived, session-scoped memories. Created during active conversation and not yet validated for long-term retention.
+2. **episodic** -- Memories that have been confirmed as worth keeping. They retain full contextual detail (session, timestamp, surrounding conversation).
+3. **semantic** -- Distilled knowledge. Episodic memories that have been consolidated, merged, or generalized lose their session-specific context and become reusable facts.
+4. **archive** -- Memories that are no longer actively surfaced but are preserved for audit, rollback, or historical reference. Archived memories can be restored.
+
+Consolidation operations (`evermemory_consolidate`) drive memories forward through these stages. The `evermemory_restore` command can move archived memories back into active circulation.
+
+### Memory Scope
+
+Each memory is scoped to control its visibility:
+
+- **userId** -- Visible only within a specific user's sessions.
+- **chatId** -- Visible only within a specific conversation thread.
+- **project** -- Shared across all sessions within a named project.
+- **global** -- Available everywhere, regardless of user or project context.
+
+### Source Tracking
+
+Every memory records its provenance:
+
+- **kind** -- How the memory was created (e.g., `user_stated`, `agent_inferred`, `imported`).
+- **actor** -- Who created it (user ID or agent ID).
+- **sessionId** -- The session in which the memory was created.
+- **messageId** -- The specific message that triggered creation.
+- **channel** -- The communication channel (e.g., `chat`, `api`, `import`).
+
+Source tracking powers the audit trail exposed by `evermemory_explain`.
+
+---
+
+## Storing and Recalling Memories
+
+### Storing Memories
+
+Use `evermemory_store` to write a memory:
+
+```typescript
+await em.tools.store({
+  content: "User prefers dark mode in all code editors",
+  type: "preference",
+  lifecycle: "episodic",
+  scope: { userId: "user-123" },
+  tags: ["ui", "editor", "dark-mode"],
+});
 ```
 
-### 2. 首次运行 `profile_onboard`
+The store command validates input against the schema, assigns a unique ID, computes an embedding (when semantic search is enabled), and persists the memory atomically.
 
-首次接入建议先收集基础偏好，建立稳定画像。
+### Recalling Memories
 
-```json
-{
-  "userId": "u_001",
-  "responses": [
-    { "questionId": "display_name", "answer": "Alice" },
-    { "questionId": "language", "answer": "中文" }
-  ]
-}
+Use `evermemory_recall` to retrieve memories. Three retrieval modes are available:
+
+**Structured mode** -- Filters by type, scope, lifecycle, and tags:
+
+```typescript
+const results = await em.tools.recall({
+  mode: "structured",
+  filter: {
+    type: "preference",
+    scope: { userId: "user-123" },
+    tags: ["editor"],
+  },
+  limit: 10,
+});
 ```
 
-### 3. 开始使用
+**Keyword mode** -- Full-text search across memory content:
 
-最小调用链通常是：
+```typescript
+const results = await em.tools.recall({
+  mode: "keyword",
+  query: "dark mode editor",
+  limit: 10,
+});
+```
 
-1. `evermemory_store` 写入显式信息。
-2. `evermemory_recall` 在新会话中召回相关上下文。
-3. `evermemory_briefing` 在 session 启动时生成启动摘要。
-4. `evermemory_profile` / `evermemory_rules` / `evermemory_explain` 在治理和排障时查看状态。
+**Hybrid mode** -- Combines keyword matching with semantic similarity for the best of both approaches:
 
-## 核心功能
+```typescript
+const results = await em.tools.recall({
+  mode: "hybrid",
+  query: "user's preferred color scheme for development tools",
+  filter: { type: "preference" },
+  limit: 10,
+});
+```
 
-### 记忆存储与召回
+### Semantic Search
 
-- `evermemory_store` 写入结构化记忆，支持类型、生命周期、作用域、标签与来源。
-- `evermemory_recall` 支持 `structured`、`keyword`、`hybrid` 三种检索模式。
-- 语义检索依赖已内置；启用语义检索后，`hybrid` 可使用本地 embedding 增强召回。
+Semantic search is powered by `@xenova/transformers`, which is bundled as a direct dependency. No external API calls or keys are needed. When enabled, embeddings are computed at store time and used during `keyword` and `hybrid` recall to surface semantically related memories even when exact keywords do not match.
 
-### 智能 Briefing
+---
 
-- `evermemory_briefing` 输出四类启动块：`identity`、`constraints`、`recentContinuity`、`activeProjects`。
-- 适合在 `session_start` 前注入，帮助 agent 保持跨会话连续性。
+## Session Briefing and Continuity
 
-### 主动学习
+### Generating Briefings
 
-- `evermemory_intent` 将消息解析为确定性 intent record。
-- `evermemory_reflect` 从经验日志生成 reflection 与 candidate rules。
-- `evermemory_rules` 可读取、冻结、弃用或回滚行为规则。
+`evermemory_briefing` generates a startup context document for the agent at the beginning of each session. The briefing assembles relevant memories and profile data into structured sections:
 
-### 用户画像
+- **identity** -- Who the user is, based on stored identity memories and the canonical profile.
+- **constraints** -- Hard rules and boundaries the user has established.
+- **recentContinuity** -- What happened in recent sessions, so the agent can resume naturally.
+- **activeProjects** -- Ongoing projects and their current status.
 
-- `profile_onboard` 收集首次使用信息。
-- `evermemory_profile` 提供稳定字段与弱提示字段两层画像。
-- 派生字段被限制为 `weak_hint_only`，避免把不确定推断写成硬约束。
+```typescript
+const briefing = await em.tools.briefing({
+  tokenTarget: 2000,
+});
+```
 
-### 记忆整理
+The `tokenTarget` parameter controls how much context the briefing should aim for, allowing you to balance richness against token budget.
 
-- `evermemory_consolidate` 执行 manual consolidation。
-- `evermemory_review` 审查归档候选与规则来源。
-- `evermemory_restore` 以 `review/apply` 两阶段恢复归档项。
-- `evermemory_export` / `evermemory_import` 支持快照迁移与备份。
+### Cross-Session Continuity
 
-## 配置选项
+Briefings pull from stored memories and profiles, ensuring that the agent retains context across sessions without requiring the user to repeat themselves. When the `sessionStart` lifecycle hook fires, EverMemory automatically generates a briefing and injects it into the agent's context.
 
-常见环境变量：
+### Hook Integration
 
-- `EVERMEMORY_EMBEDDING_PROVIDER`
-  可选 provider。常见值是本地 embedding 或 OpenAI provider。
-- `EVERMEMORY_LOCAL_MODEL`
-  本地 embedding 模型名。默认会回退到 `Xenova/all-MiniLM-L6-v2`。
-- `OPENAI_API_KEY`
-  当 embedding provider 使用 OpenAI 时需要。
+EverMemory registers two lifecycle hooks with OpenClaw:
 
-常见默认行为：
+- **sessionStart** -- Generates a briefing and injects it as system context.
+- **sessionEnd** -- Captures experience logs and triggers reflection (see below).
 
-- 数据库默认路径：`.openclaw/memory/evermemory/store/evermemory.db`
-- 默认最大召回：`8`
-- 默认 token 预算：`1200`
-- 默认语义 sidecar：关闭；缺少依赖时会优雅降级
+---
 
-## 常见问题 (FAQ)
+## Intent Analysis and Reflection
 
-**Q: 语义搜索需要什么？**
+### Intent Analysis
 
-`@xenova/transformers` 已作为正式依赖内置。只有在依赖被手动删除或安装异常时，EverMemory 才会退化为无语义增强的检索路径。
+`evermemory_intent` analyzes incoming messages to determine:
 
-**Q: 记忆数据存在哪里？**
+- **Intent type** -- What the user is trying to accomplish.
+- **Urgency** -- How time-sensitive the request is.
+- **Emotional tone** -- The user's apparent emotional state.
+- **Action need** -- Whether the message requires the agent to take action.
+- **Memory need** -- Whether the message contains information worth storing.
 
-默认保存在 `.openclaw/memory/evermemory/store/evermemory.db` 的 SQLite 数据库中。
+```typescript
+const analysis = await em.tools.intent({
+  message: "Please remember that I never want to use tabs for indentation",
+});
+// analysis.memoryNeed -> true
+// analysis.intentType -> "preference_statement"
+```
 
-**Q: 如何导出/导入记忆？**
+### Reflection
 
-使用 `evermemory_export` 生成 `evermemory.snapshot.v1` 快照，或在 OpenClaw 注册层使用 `format=json|markdown` 导出文本。导入时使用 `evermemory_import`，推荐先走 `mode=review`，确认后再 `apply`。
+`evermemory_reflect` processes experience logs from completed sessions to generate reflections and candidate rules:
 
-**Q: 如何查看智能度？**
+```typescript
+const reflection = await em.tools.reflect({
+  sessionId: "session-456",
+});
+```
 
-SDK 可直接调用 `evermemorySmartness`。它返回文本报告，展示整体分数和各维度趋势。当前该能力尚未注册为 OpenClaw 工具名。
+Reflections summarize what went well, what could be improved, and propose candidate rules for future behavior. These candidate rules feed into the governance system described below.
 
-**Q: `profile_onboard` 和 `evermemory_profile` 有什么区别？**
+### Active Learning
 
-`profile_onboard` 负责首次采集与初始化，`evermemory_profile` 负责读取或重算当前画像。
+On `sessionEnd`, EverMemory automatically captures experience data and runs reflection. This creates a feedback loop: interactions produce experiences, experiences produce reflections, and reflections produce rules that improve future interactions.
 
-**Q: 导入/恢复为什么有 `review` 和 `apply` 两步？**
+---
 
-这是治理设计的一部分。EverMemory 默认先展示计划和拒绝项，避免直接覆盖已有状态。
+## Behavior Rules and Governance
+
+### How Rules Work
+
+Rules are behavioral directives extracted from reflections and user statements. They govern how the agent behaves in future sessions. Examples:
+
+- "Always use TypeScript strict mode in code examples"
+- "Never suggest refactoring unless the user asks"
+
+### Rule Lifecycle
+
+Rules progress through a defined lifecycle:
+
+1. **candidate** -- Newly proposed rules, awaiting evidence.
+2. **active** -- Rules that have accumulated sufficient evidence and confidence.
+3. **frozen** -- Rules that are locked and cannot be modified (typically by operator decision).
+4. **deprecated** -- Rules that have been retired but are preserved for audit.
+
+### Auto-Promotion
+
+A candidate rule is automatically promoted to `active` when:
+- Its confidence score reaches **0.85 or higher**, and
+- It has been supported by **2 or more** independent pieces of evidence.
+
+### Managing Rules
+
+Use `evermemory_rules` to manage the rule lifecycle:
+
+```typescript
+// List all active rules
+await em.tools.rules({ action: "list", filter: { status: "active" } });
+
+// Freeze a rule to prevent modification
+await em.tools.rules({ action: "freeze", ruleId: "rule-789" });
+
+// Deprecate a rule
+await em.tools.rules({ action: "deprecate", ruleId: "rule-789" });
+
+// Rollback a rule to its previous state
+await em.tools.rules({ action: "rollback", ruleId: "rule-789" });
+```
+
+---
+
+## User Profiles
+
+### First-Run Onboarding
+
+`profile_onboard` runs a questionnaire to collect baseline user information:
+
+```typescript
+await em.tools.profileOnboard({
+  displayName: "Alice",
+  language: "en",
+  timezone: "America/New_York",
+});
+```
+
+This establishes the canonical profile fields used by briefings and personalization.
+
+### Reading and Recomputing Profiles
+
+`evermemory_profile` reads the current profile or triggers a recomputation from stored memories:
+
+```typescript
+// Read current profile
+const profile = await em.tools.profile({ action: "read" });
+
+// Recompute derived fields from stored memories
+const updated = await em.tools.profile({ action: "recompute" });
+```
+
+### Two-Layer Design
+
+Profiles use a two-layer architecture:
+
+- **Canonical fields** -- Stable, user-confirmed data (display name, language, timezone). These are authoritative and only change when the user explicitly updates them.
+- **Derived fields** -- Inferred from stored memories and marked as `weak_hint_only`. These include preferences, communication style, and behavioral patterns. They inform agent behavior but are never treated as ground truth.
+
+The guardrail ensures that derived fields cannot override explicit user statements or canonical profile data.
+
+---
+
+## Memory Maintenance
+
+### Consolidation
+
+`evermemory_consolidate` performs housekeeping on the memory store. Three modes are available:
+
+- **light** -- Quick pass: merges near-duplicates and reinforces high-frequency memories.
+- **daily** -- Standard maintenance: includes light operations plus archival of stale working memories.
+- **deep** -- Full consolidation: includes daily operations plus semantic deduplication and lifecycle promotion.
+
+```typescript
+await em.tools.consolidate({ mode: "daily" });
+```
+
+### Reviewing Archived Memories
+
+`evermemory_review` lets you inspect archived memories and check rule provenance:
+
+```typescript
+const archived = await em.tools.review({
+  filter: { lifecycle: "archive" },
+  limit: 20,
+});
+```
+
+### Restoring Memories
+
+`evermemory_restore` uses a two-phase process for safety:
+
+```typescript
+// Phase 1: Review what would be restored
+const preview = await em.tools.restore({
+  mode: "review",
+  memoryIds: ["mem-001", "mem-002"],
+});
+
+// Phase 2: Apply the restoration after reviewing
+await em.tools.restore({
+  mode: "apply",
+  memoryIds: ["mem-001", "mem-002"],
+});
+```
+
+### Automatic Housekeeping
+
+During consolidation, EverMemory automatically:
+
+- Merges near-duplicate memories (same content, similar embeddings).
+- Archives stale working memories that have not been accessed recently.
+- Reinforces high-frequency memories by boosting their retrieval weight.
+
+---
+
+## Import and Export
+
+### Exporting Memories
+
+`evermemory_export` generates a snapshot in the `evermemory.snapshot.v1` format:
+
+```typescript
+const snapshot = await em.tools.export({ format: "json" });
+```
+
+The OpenClaw integration layer supports three output formats:
+
+- **json** -- Machine-readable, suitable for programmatic import.
+- **markdown** -- Human-readable, suitable for review and documentation.
+- **snapshot** -- Full binary snapshot including embeddings and metadata.
+
+### Importing Memories
+
+`evermemory_import` follows the same two-phase governance pattern as restore:
+
+```typescript
+// Phase 1: Review the import
+const preview = await em.tools.import({
+  mode: "review",
+  source: "./backup.json",
+  format: "json",
+});
+
+// Phase 2: Apply after reviewing
+await em.tools.import({
+  mode: "apply",
+  source: "./backup.json",
+  format: "json",
+});
+```
+
+Supported import formats: `snapshot`, `json`, `markdown`.
+
+### Use Cases
+
+- **Migration** -- Move memories between environments (dev, staging, production).
+- **Backup** -- Create periodic snapshots for disaster recovery.
+- **Cross-environment transfer** -- Share memory sets across different OpenClaw instances.
+
+---
+
+## Operations
+
+### Troubleshooting
+
+**Database location**: The default database path is:
+
+```
+.openclaw/memory/evermemory/store/evermemory.db
+```
+
+**Diagnostic commands**:
+
+| Command | Purpose |
+|---------|---------|
+| `npm run doctor` | Diagnoses database integrity, migration state, embeddings health, and rules consistency |
+| `npm run validate` | Full validation: runs doctor, type checking, and the complete test suite |
+| `evermemory_status` | Runtime state inspection -- reports database size, memory counts, rule counts, and embedding provider status |
+| `evermemory_explain` | Audit trail for any operation: write, retrieval, rule change, session event, archive action, or intent analysis |
+
+### Rollback
+
+**Rule rollback** -- Revert a rule to its previous state:
+
+```typescript
+await em.tools.rules({ action: "rollback", ruleId: "rule-789" });
+```
+
+**Memory restore** -- Bring archived memories back into active circulation using the two-phase `evermemory_restore` process described above.
+
+**Database backup** -- Before performing destructive operations, copy the database file:
+
+```bash
+cp .openclaw/memory/evermemory/store/evermemory.db ./evermemory-backup.db
+```
+
+### Test Data Cleanup
+
+To purge test data from a development environment:
+
+```bash
+# Dry run first -- see what would be removed
+npm run openclaw:cleanup:test-data:dry
+
+# Purge test data
+npm run openclaw:cleanup:test-data
+```
+
+---
+
+## FAQ
+
+**Q: What does semantic search require?**
+A: Nothing beyond EverMemory itself. `@xenova/transformers` is bundled as a direct dependency. Semantic search works out of the box with no external APIs or additional installation steps.
+
+**Q: Where is data stored?**
+A: By default, data is stored in `.openclaw/memory/evermemory/store/evermemory.db`, a SQLite database running in WAL mode.
+
+**Q: How do I export and import memories?**
+A: Use `evermemory_export` to create snapshots in json, markdown, or snapshot format. Use `evermemory_import` with `mode: "review"` first to preview changes, then `mode: "apply"` to commit them.
+
+**Q: What is the difference between `profile_onboard` and `evermemory_profile`?**
+A: `profile_onboard` handles first-run data collection, establishing canonical profile fields through a guided questionnaire. `evermemory_profile` reads or recomputes the current profile from stored memories at any time after onboarding.
+
+**Q: Why do import and restore have separate review and apply steps?**
+A: This is a governance design choice. The review phase lets you preview exactly what will change -- including any rejections -- before committing. It prevents accidental overwrites and supports auditability.
+
+**Q: How do I check system health?**
+A: Run `npm run doctor` from the command line for a comprehensive diagnostic, or call `evermemory_status` at runtime for live state inspection.
+
+**Q: Can I use EverMemory without OpenClaw?**
+A: Yes. The SDK can be imported directly into any Node.js 22+ application via `initializeEverMemory`. The OpenClaw integration is an optional plugin layer.
+
+**Q: How are near-duplicate memories handled?**
+A: During consolidation, EverMemory detects near-duplicates using content comparison and embedding similarity, then merges them into a single memory with combined metadata.
+
+**Q: What happens if the embedding provider fails?**
+A: EverMemory uses a fallback strategy. If the local embedding provider encounters an error, semantic search degrades gracefully to keyword-only retrieval. The `evermemory_status` command reports the current provider state.

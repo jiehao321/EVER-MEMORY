@@ -2,31 +2,30 @@
 
 ## Tools
 
-EverMemory currently exports 16 tool functions from `src/tools/index.ts`.
+EverMemory exports 16 tool functions from `src/tools/index.ts`.
 
-- TypeScript SDK names use camelCase, for example `evermemoryStore`.
-- OpenClaw registered tool names use snake_case, for example `evermemory_store`.
-- `evermemorySmartness` is exported by the SDK but is not currently registered in `src/openclaw/tools/`.
+- TypeScript SDK names use camelCase (e.g. `evermemoryStore`).
+- OpenClaw registered names use snake_case (e.g. `evermemory_store`).
+- `evermemorySmartness` is exported by the SDK but not currently registered in OpenClaw.
 
 ### evermemoryStore
 OpenClaw: `evermemory_store` (`memory_store`)
 
-存储记忆项。
+Store a memory item.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| content | string | 是 | 记忆内容。 |
-| type | `MemoryType` | 否 | 记忆类型：`identity` `fact` `preference` `decision` `commitment` `relationship` `task` `project` `style` `summary` `constraint`。 |
-| lifecycle | `MemoryLifecycle` | 否 | 生命周期：`working` `episodic` `semantic` `archive`。 |
-| scope | `MemoryScope` | 否 | 作用域：`{ userId?, chatId?, project?, global? }`。 |
-| source | `MemorySource` | 否 | 写入来源：`{ kind, actor?, sessionId?, messageId?, channel? }`。默认 `{ kind: "tool", actor: "system" }`。 |
-| tags | string[] | 否 | 标签。 |
-| relatedEntities | string[] | 否 | 关联实体 ID。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| content | string | Yes | Memory content. |
+| type | `MemoryType` | No | Memory type: `identity` `fact` `preference` `decision` `commitment` `relationship` `task` `project` `style` `summary` `constraint`. |
+| lifecycle | `MemoryLifecycle` | No | Lifecycle stage: `working` `episodic` `semantic` `archive`. |
+| scope | `MemoryScope` | No | Scope: `{ userId?, chatId?, project?, global? }`. |
+| source | `MemorySource` | No | Write source: `{ kind, actor?, sessionId?, messageId?, channel? }`. Defaults to `{ kind: "tool", actor: "system" }`. |
+| tags | string[] | No | Tags. |
+| relatedEntities | string[] | No | Related entity IDs. |
 
-**返回值**: `EverMemoryStoreToolResult`
-
+**Returns**: `EverMemoryStoreToolResult`
 ```ts
 {
   accepted: boolean;
@@ -35,11 +34,10 @@ OpenClaw: `evermemory_store` (`memory_store`)
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
-  "content": "用户偏好 TypeScript",
+  "content": "User prefers TypeScript",
   "type": "preference",
   "lifecycle": "semantic",
   "tags": ["language", "engineering"]
@@ -49,21 +47,20 @@ OpenClaw: `evermemory_store` (`memory_store`)
 ### evermemoryRecall
 OpenClaw: `evermemory_recall` (`memory_recall`)
 
-召回相关记忆。
+Recall relevant memories.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| query | string | 是 | 查询文本。 |
-| scope | `MemoryScope` | 否 | 召回作用域。 |
-| types | `MemoryType[]` | 否 | 仅召回指定类型。 |
-| lifecycles | `MemoryLifecycle[]` | 否 | 仅召回指定生命周期。 |
-| mode | `RetrievalMode` | 否 | 检索模式：`structured` `keyword` `hybrid`。 |
-| limit | number | 否 | 返回上限。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| query | string | Yes | Query text. |
+| scope | `MemoryScope` | No | Recall scope. |
+| types | `MemoryType[]` | No | Filter by memory types. |
+| lifecycles | `MemoryLifecycle[]` | No | Filter by lifecycle stages. |
+| mode | `RetrievalMode` | No | Retrieval mode: `structured` `keyword` `hybrid`. |
+| limit | number | No | Maximum items to return. |
 
-**返回值**: `RecallResult`
-
+**Returns**: `RecallResult`
 ```ts
 {
   items: MemoryItem[];
@@ -72,11 +69,10 @@ OpenClaw: `evermemory_recall` (`memory_recall`)
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
-  "query": "用户对代码风格的偏好",
+  "query": "code style preferences",
   "mode": "hybrid",
   "limit": 5
 }
@@ -85,18 +81,17 @@ OpenClaw: `evermemory_recall` (`memory_recall`)
 ### evermemoryBriefing
 OpenClaw: `evermemory_briefing`
 
-构建启动 briefing。
+Generate a session startup briefing.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| sessionId | string | 否 | 目标会话 ID。 |
-| scope | `MemoryScope` | 否 | briefing 作用域。 |
-| tokenTarget | number | 否 | 目标 token 预算。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| sessionId | string | No | Target session ID. |
+| scope | `MemoryScope` | No | Briefing scope. |
+| tokenTarget | number | No | Target token budget. |
 
-**返回值**: `BootBriefing`
-
+**Returns**: `BootBriefing`
 ```ts
 {
   id: string;
@@ -119,8 +114,7 @@ OpenClaw: `evermemory_briefing`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "sessionId": "sess_123",
@@ -131,17 +125,16 @@ OpenClaw: `evermemory_briefing`
 ### evermemoryStatus
 OpenClaw: `evermemory_status`
 
-返回系统状态摘要。
+Return system status summary.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| userId | string | 否 | 按用户过滤状态。 |
-| sessionId | string | 否 | 关联会话 ID。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| userId | string | No | Filter status by user. |
+| sessionId | string | No | Associated session ID. |
 
-**返回值**: `EverMemoryStatusToolResult`
-
+**Returns**: `EverMemoryStatusToolResult`
 ```ts
 {
   schemaVersion: number;
@@ -176,8 +169,7 @@ OpenClaw: `evermemory_status`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "userId": "u_001"
@@ -185,24 +177,19 @@ OpenClaw: `evermemory_status`
 ```
 
 ### evermemorySmartness
-OpenClaw: 未注册
+OpenClaw: Not registered
 
-生成人类可读的智能度报告。
+Generate a human-readable smartness report.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| userId | string | 否 | 目标用户 ID。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| userId | string | No | Target user ID. |
 
-**返回值**: `string`
+**Returns**: `string`
 
-```ts
-"🧠 智能度评分：87/100\n  ├─ Recall： 85分 (↑ improved)\n  └─ Governance： 90分 (→ stable)"
-```
-
-**示例**:
-
+**Example**:
 ```json
 {
   "userId": "u_001"
@@ -212,19 +199,18 @@ OpenClaw: 未注册
 ### evermemoryIntent
 OpenClaw: `evermemory_intent`
 
-分析消息意图并落库。
+Analyze message intent and persist the record.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| message | string | 是 | 用户消息文本。 |
-| sessionId | string | 否 | 会话 ID。 |
-| messageId | string | 否 | 消息 ID。 |
-| scope | `MemoryScope` | 否 | 分析作用域。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| message | string | Yes | User message text. |
+| sessionId | string | No | Session ID. |
+| messageId | string | No | Message ID. |
+| scope | `MemoryScope` | No | Analysis scope. |
 
-**返回值**: `IntentRecord`
-
+**Returns**: `IntentRecord`
 ```ts
 {
   id: string;
@@ -250,28 +236,26 @@ OpenClaw: `evermemory_intent`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
-  "message": "以后代码示例优先用 TypeScript，并尽量简洁。"
+  "message": "From now on, prefer TypeScript for code examples and keep them concise."
 }
 ```
 
 ### evermemoryReflect
 OpenClaw: `evermemory_reflect`
 
-从经验记录生成反思与候选规则。
+Generate reflections and candidate rules from experience records.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| sessionId | string | 否 | 仅处理指定会话的经验。 |
-| mode | `"light" \| "full"` | 否 | 反思深度。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| sessionId | string | No | Only process experiences from this session. |
+| mode | `"light" \| "full"` | No | Reflection depth. |
 
-**返回值**: `EverMemoryReflectToolResult`
-
+**Returns**: `EverMemoryReflectToolResult`
 ```ts
 {
   reflections: ReflectionRecord[];
@@ -283,8 +267,7 @@ OpenClaw: `evermemory_reflect`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "sessionId": "sess_123",
@@ -295,28 +278,27 @@ OpenClaw: `evermemory_reflect`
 ### evermemoryRules
 OpenClaw: `evermemory_rules`
 
-查询规则，或对指定规则执行治理动作。
+Query rules or execute governance actions on a specific rule.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| scope | `MemoryScope` | 否 | 规则作用域。 |
-| intentType | `IntentType` | 否 | 按意图过滤。 |
-| channel | string | 否 | 按渠道过滤。 |
-| contexts | string[] | 否 | 按上下文标签过滤。 |
-| limit | number | 否 | 返回上限。 |
-| includeInactive | boolean | 否 | 包含 inactive 规则。 |
-| includeDeprecated | boolean | 否 | 包含 deprecated 规则。 |
-| includeFrozen | boolean | 否 | 包含 frozen 规则。 |
-| action | `"freeze" \| "deprecate" \| "rollback"` | 否 | 治理动作；提供时需要 `ruleId`。 |
-| ruleId | string | 否 | 目标规则 ID。 |
-| reason | string | 否 | 动作原因。 |
-| reflectionId | string | 否 | 关联反思 ID。 |
-| replacementRuleId | string | 否 | 替代规则 ID。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| scope | `MemoryScope` | No | Rule scope. |
+| intentType | `IntentType` | No | Filter by intent type. |
+| channel | string | No | Filter by channel. |
+| contexts | string[] | No | Filter by context tags. |
+| limit | number | No | Maximum items to return. |
+| includeInactive | boolean | No | Include inactive rules. |
+| includeDeprecated | boolean | No | Include deprecated rules. |
+| includeFrozen | boolean | No | Include frozen rules. |
+| action | `"freeze" \| "deprecate" \| "rollback"` | No | Governance action; requires `ruleId`. |
+| ruleId | string | No | Target rule ID. |
+| reason | string | No | Action reason. |
+| reflectionId | string | No | Associated reflection ID. |
+| replacementRuleId | string | No | Replacement rule ID. |
 
-**返回值**: `EverMemoryRulesToolResult`
-
+**Returns**: `EverMemoryRulesToolResult`
 ```ts
 {
   rules: BehaviorRule[];
@@ -347,8 +329,7 @@ OpenClaw: `evermemory_rules`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "intentType": "instruction",
@@ -359,17 +340,16 @@ OpenClaw: `evermemory_rules`
 ### evermemoryProfile
 OpenClaw: `evermemory_profile`
 
-读取或重算用户画像。
+Read or recompute a user profile.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| userId | string | 否 | 用户 ID；为空时返回最近画像。 |
-| recompute | boolean | 否 | 是否强制重算。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| userId | string | No | User ID; returns latest profile if empty. |
+| recompute | boolean | No | Force recomputation. |
 
-**返回值**: `EverMemoryProfileToolResult`
-
+**Returns**: `EverMemoryProfileToolResult`
 ```ts
 {
   profile: ProjectedProfile | null;
@@ -382,8 +362,7 @@ OpenClaw: `evermemory_profile`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "userId": "u_001",
@@ -394,17 +373,16 @@ OpenClaw: `evermemory_profile`
 ### evermemoryOnboard
 OpenClaw: `profile_onboard`
 
-执行首次画像 onboarding。
+Execute first-run profile onboarding.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| userId | string | 否 | 用户 ID；OpenClaw 注册层要求必须能解析出用户 ID。 |
-| responses | `OnboardingResponse[]` | 否 | 回答列表：`[{ questionId, answer }]`。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| userId | string | No | User ID; OpenClaw registration layer requires a resolvable user ID. |
+| responses | `OnboardingResponse[]` | No | Response list: `[{ questionId, answer }]`. |
 
-**返回值**: `EverMemoryOnboardingToolResult`
-
+**Returns**: `EverMemoryOnboardingToolResult`
 ```ts
 {
   needsOnboarding: boolean;
@@ -415,14 +393,13 @@ OpenClaw: `profile_onboard`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "userId": "u_001",
   "responses": [
     { "questionId": "display_name", "answer": "Alice" },
-    { "questionId": "language", "answer": "中文" }
+    { "questionId": "language", "answer": "English" }
   ]
 }
 ```
@@ -430,17 +407,16 @@ OpenClaw: `profile_onboard`
 ### evermemoryConsolidate
 OpenClaw: `evermemory_consolidate`
 
-执行记忆整理与生命周期维护。
+Execute memory consolidation and lifecycle maintenance.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| mode | `ConsolidationMode` | 否 | 模式：`light` `daily` `deep`。 |
-| scope | `MemoryScope` | 否 | 仅整理指定作用域。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| mode | `ConsolidationMode` | No | Mode: `light` `daily` `deep`. |
+| scope | `MemoryScope` | No | Only consolidate within this scope. |
 
-**返回值**: `EverMemoryConsolidateToolResult`
-
+**Returns**: `EverMemoryConsolidateToolResult`
 ```ts
 {
   mode: ConsolidationMode;
@@ -450,8 +426,7 @@ OpenClaw: `evermemory_consolidate`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "mode": "daily"
@@ -461,18 +436,17 @@ OpenClaw: `evermemory_consolidate`
 ### evermemoryExplain
 OpenClaw: `evermemory_explain`
 
-解释写入、检索、规则、session、归档、intent 决策。
+Explain write, retrieval, rule, session, archive, or intent decisions.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| topic | `EverMemoryExplainTopic` | 否 | 主题：`write` `retrieval` `rule` `session` `archive` `intent`。默认 `write`。 |
-| entityId | string | 否 | 仅查看指定实体。 |
-| limit | number | 否 | 返回条数，内部会限制在 1..20。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| topic | `EverMemoryExplainTopic` | No | Topic: `write` `retrieval` `rule` `session` `archive` `intent`. Defaults to `write`. |
+| entityId | string | No | Filter to a specific entity. |
+| limit | number | No | Number of items to return (clamped to 1..20). |
 
-**返回值**: `EverMemoryExplainToolResult`
-
+**Returns**: `EverMemoryExplainToolResult`
 ```ts
 {
   topic: EverMemoryExplainTopic;
@@ -494,8 +468,7 @@ OpenClaw: `evermemory_explain`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "topic": "retrieval",
@@ -506,24 +479,23 @@ OpenClaw: `evermemory_explain`
 ### evermemoryExport
 OpenClaw: `evermemory_export` (`memory_export`)
 
-导出记忆快照。SDK 版本返回结构化 snapshot；OpenClaw 注册层额外支持 `format=json|markdown` 文本导出。
+Export a memory snapshot. SDK returns a structured snapshot; OpenClaw registration layer additionally supports `format=json|markdown` text export.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| scope | `MemoryScope` | 否 | 导出作用域。 |
-| includeArchived | boolean | 否 | 是否包含 archive。 |
-| limit | number | 否 | 导出上限。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| scope | `MemoryScope` | No | Export scope. |
+| includeArchived | boolean | No | Include archived items. |
+| limit | number | No | Export limit. |
 
-**OpenClaw 扩展参数**:
+**OpenClaw Extended Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| format | `"json" \| "markdown"` | 否 | 返回纯文本导出，而不是 snapshot 对象。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| format | `"json" \| "markdown"` | No | Return plain text export instead of snapshot object. |
 
-**返回值**: `EverMemoryExportToolResult`
-
+**Returns**: `EverMemoryExportToolResult`
 ```ts
 {
   snapshot: {
@@ -540,8 +512,7 @@ OpenClaw: `evermemory_export` (`memory_export`)
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "scope": { "userId": "u_001" },
@@ -553,27 +524,26 @@ OpenClaw: `evermemory_export` (`memory_export`)
 ### evermemoryImport
 OpenClaw: `evermemory_import` (`memory_import`)
 
-导入记忆快照。SDK 版本接受 snapshot；OpenClaw 注册层额外支持 `content + format` 的 JSON/Markdown 导入。
+Import a memory snapshot. SDK accepts a snapshot; OpenClaw registration layer additionally supports `content + format` for JSON/Markdown import.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| snapshot | `EverMemorySnapshotV1` | 是 | 待导入快照。 |
-| mode | `"review" \| "apply"` | 否 | 导入模式。 |
-| approved | boolean | 否 | 是否批准应用导入。 |
-| allowOverwrite | boolean | 否 | 是否允许覆盖同 ID 项。 |
-| scopeOverride | `MemoryScope` | 否 | 导入时强制覆盖 scope。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| snapshot | `EverMemorySnapshotV1` | Yes | Snapshot to import. |
+| mode | `"review" \| "apply"` | No | Import mode. |
+| approved | boolean | No | Whether to approve the import. |
+| allowOverwrite | boolean | No | Allow overwriting items with the same ID. |
+| scopeOverride | `MemoryScope` | No | Force scope override during import. |
 
-**OpenClaw 扩展参数**:
+**OpenClaw Extended Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| content | string | 否 | JSON 或 Markdown 文本。 |
-| format | `"json" \| "markdown"` | 否 | `content` 的格式。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| content | string | No | JSON or Markdown text. |
+| format | `"json" \| "markdown"` | No | Format of `content`. |
 
-**返回值**: `EverMemoryImportToolResult`
-
+**Returns**: `EverMemoryImportToolResult`
 ```ts
 {
   mode: "review" | "apply";
@@ -595,8 +565,7 @@ OpenClaw: `evermemory_import` (`memory_import`)
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "snapshot": {
@@ -612,20 +581,19 @@ OpenClaw: `evermemory_import` (`memory_import`)
 ### evermemoryReview
 OpenClaw: `evermemory_review`
 
-审查已归档记忆，或附带查看规则溯源。
+Review archived memories, optionally with rule provenance.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| scope | `MemoryScope` | 否 | 审查作用域。 |
-| query | string | 否 | 关键词过滤。 |
-| limit | number | 否 | 返回上限。 |
-| includeSuperseded | boolean | 否 | 是否包含已被 supersede 的项。 |
-| ruleId | string | 否 | 附带返回该规则的 review 结果。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| scope | `MemoryScope` | No | Review scope. |
+| query | string | No | Keyword filter. |
+| limit | number | No | Maximum items to return. |
+| includeSuperseded | boolean | No | Include superseded items. |
+| ruleId | string | No | Also return the review result for this rule. |
 
-**返回值**: `EverMemoryReviewToolResult`
-
+**Returns**: `EverMemoryReviewToolResult`
 ```ts
 {
   total: number;
@@ -644,8 +612,7 @@ OpenClaw: `evermemory_review`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "query": "TypeScript",
@@ -657,20 +624,19 @@ OpenClaw: `evermemory_review`
 ### evermemoryRestore
 OpenClaw: `evermemory_restore`
 
-恢复归档记忆。
+Restore archived memories.
 
-**参数**:
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| ids | string[] | 是 | 待恢复记忆 ID 列表。 |
-| mode | `"review" \| "apply"` | 否 | 恢复模式。 |
-| approved | boolean | 否 | 是否批准执行。 |
-| targetLifecycle | `"working" \| "episodic" \| "semantic"` | 否 | 恢复后的生命周期。 |
-| allowSuperseded | boolean | 否 | 是否允许恢复已被 supersede 的项。 |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| ids | string[] | Yes | Memory IDs to restore. |
+| mode | `"review" \| "apply"` | No | Restore mode. |
+| approved | boolean | No | Whether to approve execution. |
+| targetLifecycle | `"working" \| "episodic" \| "semantic"` | No | Lifecycle after restoration. |
+| allowSuperseded | boolean | No | Allow restoring superseded items. |
 
-**返回值**: `EverMemoryRestoreToolResult`
-
+**Returns**: `EverMemoryRestoreToolResult`
 ```ts
 {
   mode: "review" | "apply";
@@ -689,8 +655,7 @@ OpenClaw: `evermemory_restore`
 }
 ```
 
-**示例**:
-
+**Example**:
 ```json
 {
   "ids": ["mem_001", "mem_002"],
@@ -699,15 +664,15 @@ OpenClaw: `evermemory_restore`
 }
 ```
 
-## OpenClaw 注册名对照
+## OpenClaw Name Mapping
 
-| SDK 名称 | OpenClaw 名称 |
-|------|------|
+| SDK Name | OpenClaw Name |
+|----------|---------------|
 | evermemoryStore | `evermemory_store`, `memory_store` |
 | evermemoryRecall | `evermemory_recall`, `memory_recall` |
 | evermemoryBriefing | `evermemory_briefing` |
 | evermemoryStatus | `evermemory_status` |
-| evermemorySmartness | 未注册 |
+| evermemorySmartness | Not registered |
 | evermemoryIntent | `evermemory_intent` |
 | evermemoryReflect | `evermemory_reflect` |
 | evermemoryRules | `evermemory_rules` |
