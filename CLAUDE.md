@@ -1,7 +1,7 @@
 # EverMemory Guide (CLAUDE)
 
 ## Project Overview
-- EverMemory: deterministic memory plugin for OpenClaw, current version v1.0.1.
+- EverMemory: deterministic memory plugin for OpenClaw, current version v1.0.2.
 - Goal: reliable, explainable, rollback-capable workflows for knowledge storage, recall, rule governance, and user profiling.
 - Stack: Node.js 22.x, TypeScript strict ESM, SQLite WAL, better-sqlite3, TypeBox.
 - Principles: determinism first, operator first, progressive hardening.
@@ -42,10 +42,11 @@ npm run teams:release  # Release gate
 - Run `npm run validate` before commits; `teams:release` before publishing.
 
 ## Current Status
-- Version: v1.0.1 (2026-03-16)
-- Tests: all pass (npm test now uses glob pattern, no RTK dependency).
-- KPI: recall accuracy=1.0, unit pass=1.0, continuity=true, teams:dev ~17s.
-- 18 tools (+ evermemory_edit, evermemory_browse), 9 schema migrations, built-in semantic search.
+- Version: v1.0.2 (2026-03-16)
+- Tests: 110/110 pass; stability check 全绿（recall accuracy=1.0, unitTestPassRate=1.0）.
+- KPI: recall accuracy=1.0, unit pass=1.0, continuity=true, autoCaptureAcceptRate=0.75.
+- 18 tools (evermemory_edit + evermemory_browse 已注册), 9 schema migrations, built-in semantic search.
+- Track A/B/C/D 质量冲刺全部完成，B4 autoCapture 维度已补全。
 
 ## Recent Changes (2026-03-16 Quality Sprint)
 
@@ -55,6 +56,7 @@ npm run teams:release  # Release gate
 - **A2**: Housekeeping `run()` is synchronous SQLite; async wrapper retained for interface compat.
 - **A3**: AutoPromotion type-checked via proper `BehaviorService` type import.
 - **A4**: SessionEnd steps wrapped with `withTimeout()` (5–15s limits) to prevent indefinite blocking.
+- **A4b**: SessionStart briefing generation wrapped in try-catch with degraded fallback.
 - **A4c**: Embedding manager `dispose()` called on plugin `stop()`.
 - **A5**: Decay formula unified — `decay.ts` now imports half-life/stability constants from `tuning/memory.ts`.
 - **A7**: DB unbounded growth — `MemoryHousekeepingService` prunes old `debug_events` and `intent_records`.
@@ -66,6 +68,7 @@ npm run teams:release  # Release gate
 - **B1**: Conflict detection results surfaced in `evermemory_consolidate` output.
 - **B2**: Profile scan coverage warning (`scanCoverage`) added to `ProjectedProfile`.
 - **B3**: Rule rollback support (`action: "rollback"`) added to `evermemory_rules`.
+- **B4**: Auto-capture 质量反馈 — `evermemory_status` 新增 `autoCapture { lastRun, capturedCount, rejectedCount, topKinds }` 维度.
 - **B5**: Candidate rule provenance (`sourceExperienceIds`) added to `BehaviorRule.trace`.
 - **B6**: PreferenceGraph (top preferences + conflicts) surfaced in `evermemory_profile`.
 - **B7**: Pre-migration backup — `.db.bak.{timestamp}` created before any schema upgrade.
