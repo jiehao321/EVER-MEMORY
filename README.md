@@ -44,14 +44,13 @@ AI assistants forget everything between sessions. Context evaporates, decisions 
 npm install evermemory
 ```
 
-### OpenClaw Plugin Setup
+### OpenClaw Plugin (One Command)
 
 ```bash
-openclaw plugins install evermemory@1.0.1
-openclaw plugins enable evermemory
-openclaw config set plugins.slots.memory evermemory
-openclaw gateway restart
+npx evermemory
 ```
+
+This builds the project, registers the plugin in OpenClaw, and restarts the gateway. If OpenClaw is not installed, EverMemory runs as a standalone SDK.
 
 ### TypeScript SDK
 
@@ -114,22 +113,22 @@ EverMemory exposes 16 capabilities through the OpenClaw tool interface:
 
 | Capability | OpenClaw Name | Notes |
 |---|---|---|
-| Store memory | `evermemory_store` | Typed entries with tags and metadata |
-| Recall memory | `evermemory_recall` | Keyword, structured, hybrid, or semantic |
-| Delete memory | `evermemory_delete` | Remove entries by ID |
-| Status | `evermemory_status` | Health check and storage statistics |
-| Session briefing | `evermemory_briefing` | Token-budgeted context summary |
-| Intent analysis | `evermemory_intent` | Route queries to the best recall strategy |
-| Reflection | `evermemory_reflect` | Consolidate and refine stored knowledge |
-| List rules | `evermemory_rules_list` | View active governance rules |
-| Add rule | `evermemory_rules_add` | Create a new governance rule |
-| Remove rule | `evermemory_rules_remove` | Delete a rule by ID |
-| Toggle rule | `evermemory_rules_toggle` | Enable or disable a rule |
-| Profile | `evermemory_profile` | Read or update user profile |
-| Consolidate | `evermemory_consolidate` | Deduplicate and archive stale entries |
-| Export | `evermemory_export` | Export all memories to JSON |
-| Import | `evermemory_import` | Bulk-load a memory archive |
-| Explain | `evermemory_explain` | Audit any retrieval or write decision |
+| Store memory | `evermemory_store` | Alias: `memory_store` |
+| Recall memory | `evermemory_recall` | Alias: `memory_recall` |
+| Status | `evermemory_status` | Counts, state, continuity KPIs |
+| Session briefing | `evermemory_briefing` | Token-budgeted startup context |
+| Intent analysis | `evermemory_intent` | Deterministic heuristics + optional LLM |
+| Reflection | `evermemory_reflect` | Experience to lessons and candidate rules |
+| Rules | `evermemory_rules` | List, freeze, deprecate, rollback |
+| Profile | `evermemory_profile` | Read or recompute user profile |
+| Onboarding | `profile_onboard` | First-run questionnaire |
+| Consolidate | `evermemory_consolidate` | Merge duplicates, archive stale items |
+| Explain | `evermemory_explain` | Audit write, retrieval, rule decisions |
+| Export | `evermemory_export` | Alias: `memory_export` |
+| Import | `evermemory_import` | Alias: `memory_import` |
+| Review archive | `evermemory_review` | Inspect archived items |
+| Restore archive | `evermemory_restore` | Two-phase review/apply restore |
+| Smartness | SDK-only | Intelligence score dashboard |
 
 ## Configuration
 
@@ -137,31 +136,24 @@ EverMemory exposes 16 capabilities through the OpenClaw tool interface:
 
 | Variable | Default | Description |
 |---|---|---|
-| `EVERMEMORY_DB_PATH` | `./evermemory.db` | Path to the SQLite database file |
 | `EVERMEMORY_EMBEDDING_PROVIDER` | `local` | Embedding provider: `local`, `openai`, or `none` |
 | `EVERMEMORY_LOCAL_MODEL` | `Xenova/all-MiniLM-L6-v2` | Local embedding model |
-| `EVERMEMORY_OPENAI_API_KEY` | -- | Required only when using the `openai` provider |
-| `EVERMEMORY_OPENAI_MODEL` | `text-embedding-3-small` | OpenAI embedding model name |
-| `EVERMEMORY_LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
-| `EVERMEMORY_MAX_RESULTS` | `20` | Default maximum results per recall query |
-| `EVERMEMORY_BRIEFING_TOKENS` | `1200` | Default token budget for session briefings |
+| `EVERMEMORY_OPENAI_MODEL` | provider default | OpenAI embedding model override |
+| `OPENAI_API_KEY` | -- | Required when using the `openai` provider |
 
-### Plugin Config (openclaw.json)
+### Plugin Config
 
-```json
-{
-  "plugins": {
-    "evermemory": {
-      "databasePath": "./memory.db",
-      "embeddingProvider": "local",
-      "briefingTokenTarget": 1200,
-      "maxRecallResults": 20,
-      "reflectionEnabled": true,
-      "profileEnabled": true
-    }
-  }
-}
-```
+| Field | Default | Description |
+|---|---|---|
+| `databasePath` | auto-resolved | SQLite database location |
+| `bootTokenBudget` | `1200` | Startup briefing token budget |
+| `maxRecall` | `8` | Max recall items per query |
+| `debugEnabled` | `true` | Enable debug event logging |
+| `semantic.enabled` | `true` | Semantic search (built-in) |
+| `semantic.maxCandidates` | `200` | Semantic candidate cap |
+| `semantic.minScore` | `0.15` | Semantic recall threshold |
+| `intent.useLLM` | `false` | Optional LLM intent enrichment |
+| `intent.fallbackHeuristics` | `true` | Deterministic fallback |
 
 ## Performance Benchmarks
 

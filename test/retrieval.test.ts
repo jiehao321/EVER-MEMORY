@@ -434,7 +434,7 @@ test('structured mode ignores keyword query and returns filter-matched memories'
 
 test('hybrid mode falls back to keyword when semantic sidecar is disabled', async () => {
   const databasePath = createTempDbPath('retrieval-hybrid-fallback');
-  const app = initializeEverMemory({ databasePath });
+  const app = initializeEverMemory({ databasePath, semantic: { enabled: false } });
 
   app.evermemoryStore({
     content: '部署前先确认回滚方案。',

@@ -4,9 +4,9 @@ import { rmSync } from 'node:fs';
 import { initializeEverMemory } from '../src/index.js';
 import { createTempDbPath } from './helpers.js';
 
-test('semantic sidecar is disabled by default and does not index memories', () => {
+test('semantic sidecar is disabled when explicitly configured off', () => {
   const databasePath = createTempDbPath('semantic-disabled');
-  const app = initializeEverMemory({ databasePath });
+  const app = initializeEverMemory({ databasePath, semantic: { enabled: false } });
 
   const write = app.evermemoryStore({
     content: '部署策略：先检查风险再执行。',

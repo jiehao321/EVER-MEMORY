@@ -6,7 +6,7 @@ import { createTempDbPath } from './helpers.js';
 
 test('recall, briefing, and status return structured outputs with improved status counts', async () => {
   const databasePath = createTempDbPath('tools');
-  const app = initializeEverMemory({ databasePath });
+  const app = initializeEverMemory({ databasePath, semantic: { enabled: false } });
 
   app.evermemoryStore({
     content: '我偏好中文输出。',

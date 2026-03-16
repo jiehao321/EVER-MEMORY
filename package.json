@@ -2,8 +2,29 @@
   "name": "evermemory",
   "version": "1.0.1",
   "private": false,
-  "description": "EverMemory deterministic memory plugin for OpenClaw with intent and reflection baseline.",
+  "description": "Deterministic memory plugin for OpenClaw — persistent, inspectable, governable AI memory.",
+  "author": "jiehao321",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiehao321/EVER-MEMORY.git"
+  },
+  "homepage": "https://github.com/jiehao321/EVER-MEMORY#readme",
+  "bugs": {
+    "url": "https://github.com/jiehao321/EVER-MEMORY/issues"
+  },
+  "keywords": [
+    "memory",
+    "openclaw",
+    "ai",
+    "llm",
+    "plugin",
+    "sqlite",
+    "retrieval",
+    "semantic-search",
+    "embeddings",
+    "deterministic"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,9 +33,13 @@
   },
   "files": [
     "dist",
+    "scripts/setup.mjs",
     "LICENSE",
     "README.md"
   ],
+  "bin": {
+    "evermemory": "./scripts/setup.mjs"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -28,6 +53,7 @@
     ]
   },
   "scripts": {
+    "setup": "node ./scripts/setup.mjs",
     "clean": "rm -rf dist dist-test",
     "build": "node ./scripts/build-with-fingerprint.mjs",
     "build:test": "rm -rf dist-test .tsbuildinfo-test && tsc -p tsconfig.test.json",
@@ -61,6 +87,7 @@
     "test:recall:benchmark:baseline": "node ./scripts/build-if-needed.mjs && node ./scripts/recall-benchmark.mjs --update-baseline",
     "perf:benchmark": "node scripts/perf-benchmark.mjs",
     "dashboard": "node scripts/dashboard.mjs",
+    "release": "node ./scripts/release-publish.mjs",
     "release:evaluate": "node ./scripts/release-evaluate.mjs",
     "release:pack": "node ./scripts/release-pack.mjs",
     "release:1.0.1:evaluate": "node ./scripts/release-evaluate.mjs --version 1.0.1",
@@ -77,11 +104,6 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "typescript": "^5.9.2"
-  },
-  "peerDependenciesMeta": {
-    "@xenova/transformers": {
-      "optional": true
-    }
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
