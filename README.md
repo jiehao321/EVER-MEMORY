@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/evermemory.svg)](https://www.npmjs.com/package/evermemory)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
-[![tests](https://img.shields.io/badge/tests-250%20passing-brightgreen.svg)](#testing)
+[![tests](https://img.shields.io/badge/tests-110%20passing-brightgreen.svg)](#testing)
 
 **Deterministic memory plugin for OpenClaw.**
 
@@ -109,26 +109,28 @@ const briefing = em.evermemoryBriefing({ tokenTarget: 900 });
 
 ## Tool Reference
 
-EverMemory exposes 16 capabilities through the OpenClaw tool interface:
+EverMemory exposes 18 capabilities through the OpenClaw tool interface:
 
 | Capability | OpenClaw Name | Notes |
 |---|---|---|
-| Store memory | `evermemory_store` | Alias: `memory_store` |
-| Recall memory | `evermemory_recall` | Alias: `memory_recall` |
-| Status | `evermemory_status` | Counts, state, continuity KPIs |
-| Session briefing | `evermemory_briefing` | Token-budgeted startup context |
-| Intent analysis | `evermemory_intent` | Deterministic heuristics + optional LLM |
-| Reflection | `evermemory_reflect` | Experience to lessons and candidate rules |
-| Rules | `evermemory_rules` | List, freeze, deprecate, rollback |
-| Profile | `evermemory_profile` | Read or recompute user profile |
+| Store memory | `evermemory_store` | Alias: `memory_store`; returns `inferredType`, `inferredLifecycle` |
+| Recall memory | `evermemory_recall` | Alias: `memory_recall`; returns `strategyUsed`, `semanticFallback` |
+| **Edit memory** | `evermemory_edit` | update / delete / correct with ownership check and re-embedding |
+| **Browse memories** | `evermemory_browse` | Filtered list with `atRiskOfArchival` flagging |
+| Status | `evermemory_status` | Counts, KPIs, `semanticStatus`, `atRiskMemories`, `autoCapture` |
+| Session briefing | `evermemory_briefing` | Token-budgeted startup context with `continuityScore` |
+| Intent analysis | `evermemory_intent` | Deterministic heuristics + optional LLM; Chinese question support |
+| Reflection | `evermemory_reflect` | Experience to lessons and candidate rules with `sourceExperienceIds` |
+| Rules | `evermemory_rules` | List, freeze, deprecate, rollback; `appliedCount` per rule |
+| Profile | `evermemory_profile` | Read or recompute; optional `PreferenceGraph` analysis |
 | Onboarding | `profile_onboard` | First-run questionnaire |
-| Consolidate | `evermemory_consolidate` | Merge duplicates, archive stale items |
+| Consolidate | `evermemory_consolidate` | Merge duplicates, archive stale items; surfaces conflict pairs |
 | Explain | `evermemory_explain` | Audit write, retrieval, rule decisions |
 | Export | `evermemory_export` | Alias: `memory_export` |
 | Import | `evermemory_import` | Alias: `memory_import` |
 | Review archive | `evermemory_review` | Inspect archived items |
 | Restore archive | `evermemory_restore` | Two-phase review/apply restore |
-| Smartness | SDK-only | Intelligence score dashboard |
+| Smartness | SDK-only | Intelligence score dashboard with `advice` per dimension |
 
 ## Configuration
 
@@ -171,7 +173,7 @@ All hook latencies fall well within OpenClaw's budget, ensuring EverMemory adds 
 
 ## Testing
 
-EverMemory ships with 250 tests covering unit, integration, and end-to-end scenarios:
+EverMemory ships with 110 tests covering unit, integration, and end-to-end scenarios:
 
 ```bash
 npm test

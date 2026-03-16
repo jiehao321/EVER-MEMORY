@@ -3,6 +3,43 @@
 All notable changes to EverMemory are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.2] - 2026-03-16
+
+### Added
+- **`evermemory_edit`** — update / delete / correct memory actions with ownership validation and re-embedding (D1 + SEC-1)
+- **`evermemory_browse`** — filtered/sorted memory browser with `atRiskOfArchival` flagging (D2)
+- **`autoCapture` dimension in `evermemory_status`** — `lastRun`, `capturedCount`, `rejectedCount`, `topKinds` (B4)
+- **Session Continuity Score** — `continuityScore` (0–1), `continuityLabel`, `nudge` attached to `BootBriefing` (D3)
+- **At-risk memory warnings** — `atRiskMemories` in `evermemory_status`; age > 25d && accessCount < 2 (D4)
+- **Rule rollback** — `action: "rollback"` in `evermemory_rules` restores active rule to candidate state (B3)
+- **Conflict resolution** — `evermemory_consolidate` now surfaces detected conflict pairs in output (B1)
+- **PreferenceGraph** — `evermemory_profile` with `includeAnalysis: true` returns `topPreferences` and conflicts (B6)
+- **Profile scan coverage** — `scanCoverage` + `partialWarning` when scan exceeds 300 memories (B2)
+- **Rule provenance** — `BehaviorRule.trace.sourceExperienceIds` links candidate rules to source experiences (B5)
+- **Briefing quality score** — `qualityScore`, `qualityLabel`, `nudge`; "待补充" placeholders removed (C1)
+- **Chinese intent heuristics** — question particles 吗/呢/啊 and confirmation patterns 对吗/是这样吗 (C2)
+- **Embedding cold-start feedback** — 120s timeout + `onInitProgress` stage callbacks (C3)
+- **Store tool** — `inferredType`, `inferredLifecycle`, `policyDecision` in result (C4a)
+- **Recall tool** — `strategyUsed`, `semanticFallback`, `nudge` in result (C4)
+- **Rules tool** — `appliedCount` and `lastAppliedAt` per rule (C4b)
+- **Smartness metrics** — `advice` string per dimension; shown in report when score < 0.6 (C5)
+- **Config descriptions** — `openclaw.plugin.json` all properties enriched with `description` (C6)
+- **Pre-migration backup** — `.db.bak.{timestamp}` created before any schema upgrade (B7)
+
+### Fixed
+- **A0 Scope isolation** — empty scope `{}` no longer silently matches all-users data; system actor stores exempt
+- **A4b Session startup** — briefing generation failure now degrades gracefully instead of crashing the session
+- **A4 Session end timeouts** — all 9 serial steps wrapped with `withTimeout()` (5–15s each)
+- **A4c Embedding resource leak** — `embeddingManager.dispose()` called on plugin stop
+- **A7 Database growth** — housekeeping prunes `debug_events` (30d TTL) and `intent_records` (14d TTL)
+- **A8 Empty content** — whitespace-only content rejected at write boundary with explicit error
+- **A9 Rule promotion atomicity** — entire promotion loop wrapped in SQLite transaction
+- **A10 Prepared statements** — `DebugRepository` statements pre-compiled in constructor
+- **A5 Decay formula** — decay constants unified from `tuning/memory.ts`; no more magic numbers
+- **A6 Weight validation** — hybrid retrieval weights normalized and validated at config load
+- **SEC-2 Error swallowing** — housekeeping prune errors logged via `debugRepo` instead of silently dropped
+- **SEC-3 Timestamp consistency** — `promoteFromReflection` uses single `batchTimestamp` for the entire batch
+
 ## [1.0.1] - 2026-03-15
 
 ### Fixed
