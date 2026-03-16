@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/evermemory.svg)](https://www.npmjs.com/package/evermemory)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
-[![tests](https://img.shields.io/badge/tests-110%20passing-brightgreen.svg)](#testing)
+[![tests](https://img.shields.io/badge/tests-370%20passing-brightgreen.svg)](#testing)
 
 **Deterministic memory plugin for OpenClaw.**
 
@@ -173,7 +173,7 @@ All hook latencies fall well within OpenClaw's budget, ensuring EverMemory adds 
 
 ## Testing
 
-EverMemory ships with 110 tests covering unit, integration, and end-to-end scenarios:
+EverMemory ships with 370 tests covering unit, integration, and end-to-end scenarios:
 
 ```bash
 npm test
