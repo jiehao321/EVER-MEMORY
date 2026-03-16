@@ -142,7 +142,7 @@ if (!skipNpm) {
 // Check clawhub login
 if (!skipSkill) {
   if (hasCommand('clawhub')) {
-    const clawUser = runQuiet('clawhub whoami 2>/dev/null');
+    const clawUser = runQuiet('clawhub whoami 2>&1');
     if (clawUser) {
       console.log(`  clawhub: logged in as ${clawUser}`);
     } else {
