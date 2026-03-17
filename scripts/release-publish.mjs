@@ -143,7 +143,7 @@ if (!skipNpm) {
 // Check clawhub login
 if (!skipSkill) {
   if (hasCommand('clawhub')) {
-    const clawUser = runQuiet('clawhub whoami 2>&1');
+    const clawUser = runQuiet('clawhub whoami');
     if (clawUser) {
       console.log(`  clawhub: logged in as ${clawUser}`);
     } else {
@@ -162,6 +162,7 @@ if (!skipSkill) {
 console.log('\n== Quality Gates ==\n');
 
 if (!run('npm run build')) fail('Build failed.');
+if (!run('node ./scripts/release-preflight.mjs')) fail('Release preflight check failed.');
 if (!run('npm test')) fail('Tests failed.');
 
 console.log('\n  Quality gates passed.\n');

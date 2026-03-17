@@ -11,9 +11,17 @@ function fail(message) {
   process.exit(1);
 }
 
+function loadPackageVersionDefault() {
+  try {
+    return JSON.parse(readFileSync(resolve('./package.json'), 'utf8')).version;
+  } catch {
+    return '0.0.0';
+  }
+}
+
 function parseArgs(argv) {
   const parsed = {
-    version: '1.0.1',
+    version: loadPackageVersionDefault(),
     outDir: join(tmpdir(), 'evermemory-release'),
     reportPath: undefined,
     evidenceDir: join(tmpdir(), 'evermemory-release-evidence'),

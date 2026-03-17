@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -11,9 +11,17 @@ function fail(message) {
   process.exit(1);
 }
 
+function loadPackageVersionDefault() {
+  try {
+    return JSON.parse(readFileSync(resolve('./package.json'), 'utf8')).version;
+  } catch {
+    return '0.0.0';
+  }
+}
+
 function parseArgs(argv) {
   const parsed = {
-    version: '1.0.1',
+    version: loadPackageVersionDefault(),
     reportPath: undefined,
     soakIterations: 2,
     soakSecurityEvery: 2,

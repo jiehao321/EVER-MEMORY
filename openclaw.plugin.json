@@ -2,7 +2,7 @@
   "id": "evermemory",
   "name": "EverMemory",
   "description": "Deterministic memory plugin for OpenClaw with governed write/recall behavior.",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "kind": "memory",
   "configSchema": {
     "type": "object",
@@ -14,7 +14,7 @@
       },
       "databasePath": {
         "type": "string",
-        "description": "File path for the SQLite database (WAL mode). Use ':memory:' for ephemeral in-memory storage (no persistence). Default: ~/.evermemory/memory.db"
+        "description": "File path for the SQLite database (WAL mode). Use ':memory:' for ephemeral in-memory storage (no persistence). Default: .openclaw/memory/evermemory/store/evermemory.db (relative to OpenClaw context directory)."
       },
       "bootTokenBudget": {
         "type": "integer",

@@ -23,6 +23,7 @@ npm test               # Unit tests
 npm run validate       # Full: doctor + check + test
 npm run teams:dev      # Dev gate (~17s)
 npm run teams:release  # Release gate
+npm run release:preflight  # Cross-platform install & version consistency check
 ```
 
 ## Development Rules
@@ -113,3 +114,27 @@ npm run kpi:update
 npm run quality:gate:full
 npm run growth:report
 ```
+
+## Release Checklist (MANDATORY before every publish)
+1. `npm run build` — rebuild dist/
+2. `npm run release:preflight` — **跨平台安装 & 版本一致性自动检查**
+   - 版本号一致性（package.json, constants.ts, dist/, openclaw.plugin.json, plugin.json, lockfile, docs）
+   - npm tarball 完整性（plugin 配置文件、入口文件全部在包中）
+   - 跨平台兼容性（无 shell 特有语法、shebang 正确、Node 版本检查宽松）
+   - 入口 & exports 验证（main, types, openclaw.extensions 全部指向存在的文件）
+   - 陈旧版本号扫描（源码和脚本中不允许残留旧版本号）
+3. `npm run validate` — doctor + typecheck + 全部测试
+4. `npm run release -- --version X.Y.Z --dry-run` — 先空跑确认
+5. `npm run release -- --version X.Y.Z` — 正式发布（npm + ClawHub + git tag）
+
+### 版本号变更时必须同步的文件
+| 文件 | 字段 |
+|------|------|
+| `package.json` | `version` |
+| `src/constants.ts` | `PLUGIN_VERSION` |
+| `openclaw.plugin.json` | `version` |
+| `plugin.json` | `version` |
+| `docs/GUIDE.md` | 版本引用 |
+| `docs/ARCHITECTURE.md` | 版本引用 |
+| `package-lock.json` | 运行 `npm install --package-lock-only` |
+| `dist/` | 运行 `npm run build` |

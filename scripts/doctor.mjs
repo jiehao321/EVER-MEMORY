@@ -34,8 +34,8 @@ function formatCheck(ok, label, detail) {
 }
 
 const major = parseMajor(process.version);
-if (major !== 22) {
-  fail(`Unsupported Node.js version ${process.version}. Use Node 22.x for this repository.`);
+if (major < 22) {
+  fail(`Unsupported Node.js version ${process.version}. Node 22 or later is required.`);
 }
 
 let Database;
