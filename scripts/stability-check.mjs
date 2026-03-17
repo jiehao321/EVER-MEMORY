@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { recordEvidence, resolveEvidenceDir } from './report-evidence.mjs';
 
@@ -214,9 +215,9 @@ function resolveUnitTestFiles() {
 const parsed = parseArgs(process.argv.slice(2));
 const stamp = new Date().toISOString().replaceAll(':', '-');
 const reportPath = resolve(parsed.reportPath ?? defaultReportPath(stamp));
-const recallReportPath = `/tmp/evermemory-stability-recall-${stamp}.json`;
-const kpiReportPath = `/tmp/evermemory-stability-kpi-${stamp}.json`;
-const soakReportPath = parsed.withSoak ? `/tmp/evermemory-stability-soak-${stamp}.json` : undefined;
+const recallReportPath = join(tmpdir(), `evermemory-stability-recall-${stamp}.json`);
+const kpiReportPath = join(tmpdir(), `evermemory-stability-kpi-${stamp}.json`);
+const soakReportPath = parsed.withSoak ? join(tmpdir(), `evermemory-stability-soak-${stamp}.json`) : undefined;
 const totalSteps = 4 + (parsed.withSoak ? 1 : 0);
 
 const metrics = {

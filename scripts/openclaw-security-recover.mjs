@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { recordEvidence } from './report-evidence.mjs';
 
@@ -15,7 +16,7 @@ function parseArgs(argv) {
     deep: false,
     withRelease: false,
     forceHarden: false,
-    configPath: '/root/.openclaw/openclaw.json',
+    configPath: join(homedir(), '.openclaw', 'openclaw.json'),
     reportPath: undefined,
   };
 
@@ -66,11 +67,11 @@ function stamp() {
 }
 
 function defaultReportPath() {
-  return `/tmp/evermemory-openclaw-security-recover-${stamp()}.json`;
+  return join(tmpdir(), `evermemory-openclaw-security-recover-${stamp()}.json`);
 }
 
 function resolveSecurityGateReportPath(tag) {
-  return `/tmp/evermemory-openclaw-security-gate-${tag}-${stamp()}.json`;
+  return join(tmpdir(), `evermemory-openclaw-security-gate-${tag}-${stamp()}.json`);
 }
 
 function runStep(name, command, args) {

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
 import Database from 'better-sqlite3';
 import { cleanupOpenClawTestArtifacts } from './openclaw-test-cleanup.mjs';
 
-const DEFAULT_DB_PATH = '/root/.openclaw/memory/evermemory/store/evermemory.db';
+const DEFAULT_DB_PATH = join(homedir(), '.openclaw', 'memory', 'evermemory', 'store', 'evermemory.db');
 const DEFAULT_AGENT_ID = process.env.EVERMEMORY_FEISHU_AGENT_ID ?? 'main';
 const EXPLICIT_SESSION_ID = process.env.EVERMEMORY_FEISHU_SESSION_ID;
 const SESSION_KEY_HINT = process.env.EVERMEMORY_FEISHU_SESSION_KEY_HINT ?? 'feishu:default:direct';

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { recordEvidence } from './report-evidence.mjs';
@@ -65,7 +66,7 @@ function parseArgs(argv) {
 
 function resolveDefaultReportPath() {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-openclaw-continuity-matrix-${stamp}.json`;
+  return join(tmpdir(), `evermemory-openclaw-continuity-matrix-${stamp}.json`);
 }
 
 function safeReadJson(path) {
@@ -109,7 +110,7 @@ let failed = false;
 console.log(`[evermemory:openclaw-continuity-matrix] start runs=${parsed.runs} keepGoing=${parsed.keepGoing}`);
 
 for (let runIndex = 1; runIndex <= parsed.runs; runIndex += 1) {
-  const childReportPath = resolve(`/tmp/evermemory-openclaw-continuity-run-${runIndex}-${stamp}.json`);
+  const childReportPath = join(tmpdir(), `evermemory-openclaw-continuity-run-${runIndex}-${stamp}.json`);
   console.log(`[evermemory:openclaw-continuity-matrix] run=${runIndex}/${parsed.runs}`);
   const execution = runContinuity(childReportPath);
   const report = safeReadJson(childReportPath);

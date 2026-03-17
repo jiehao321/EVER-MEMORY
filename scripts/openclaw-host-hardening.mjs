@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
 
 function fail(message) {
@@ -11,7 +12,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   const parsed = {
-    configPath: '/root/.openclaw/openclaw.json',
+    configPath: join(homedir(), '.openclaw', 'openclaw.json'),
   };
 
   for (let index = 0; index < argv.length; index += 1) {

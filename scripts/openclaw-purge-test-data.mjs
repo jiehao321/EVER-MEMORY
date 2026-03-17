@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import Database from 'better-sqlite3';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
 
-const DEFAULT_DB_PATH = '/root/.openclaw/memory/evermemory/store/evermemory.db';
+const DEFAULT_DB_PATH = join(homedir(), '.openclaw', 'memory', 'evermemory', 'store', 'evermemory.db');
 
 const MEMORY_WHERE = `
   content LIKE '%openclaw-smoke%'

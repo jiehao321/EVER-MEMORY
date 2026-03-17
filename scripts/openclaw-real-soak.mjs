@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { recordEvidence } from './report-evidence.mjs';
@@ -113,7 +114,7 @@ function runStep(command, args) {
 
 function resolveDefaultReportPath() {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-openclaw-soak-${stamp}.json`;
+  return join(tmpdir(), `evermemory-openclaw-soak-${stamp}.json`);
 }
 
 const parsed = parseArgs(process.argv.slice(2));

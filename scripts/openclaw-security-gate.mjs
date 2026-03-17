@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 
 function fail(message) {
@@ -48,7 +49,7 @@ function parseArgs(argv) {
 
 function defaultReportPath() {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-openclaw-security-gate-${stamp}.json`;
+  return join(tmpdir(), `evermemory-openclaw-security-gate-${stamp}.json`);
 }
 
 function parseAuditJson(output) {

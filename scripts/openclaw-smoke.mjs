@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
 import Database from 'better-sqlite3';
 import { cleanupOpenClawTestArtifacts } from './openclaw-test-cleanup.mjs';
 
-const DEFAULT_DB_PATH = '/root/.openclaw/memory/evermemory/store/evermemory.db';
+const DEFAULT_DB_PATH = join(homedir(), '.openclaw', 'memory', 'evermemory', 'store', 'evermemory.db');
 
 function fail(message) {
   throw new Error(message);

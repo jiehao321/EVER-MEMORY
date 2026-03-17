@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { recordEvidence } from './report-evidence.mjs';
 
@@ -70,7 +71,7 @@ function parseArgs(argv) {
 
 function resolveDefaultReportPath() {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-quality-gate-${stamp}.json`;
+  return join(tmpdir(), `evermemory-quality-gate-${stamp}.json`);
 }
 
 function runStep(command, args) {

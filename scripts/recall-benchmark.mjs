@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { recordEvidence, resolveEvidenceDir } from './report-evidence.mjs';
 
@@ -76,7 +77,7 @@ function parseArgs(argv) {
 
 function defaultReportPath() {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-recall-benchmark-${stamp}.json`;
+  return join(tmpdir(), `evermemory-recall-benchmark-${stamp}.json`);
 }
 
 function defaultBaselinePath() {
@@ -194,8 +195,8 @@ if (samples.length < 20) {
 }
 
 const initializeEverMemory = await loadInitializer();
-const databasePath = `/tmp/evermemory-recall-benchmark-db-${Date.now()}.db`;
-  const app = initializeEverMemory({ databasePath, maxRecall: 8 });
+const databasePath = join(tmpdir(), `evermemory-recall-benchmark-db-${Date.now()}.db`);
+const app = initializeEverMemory({ databasePath, maxRecall: 8 });
 
 const startedAt = new Date().toISOString();
 

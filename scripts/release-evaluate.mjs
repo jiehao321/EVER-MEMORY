@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { recordEvidence } from './report-evidence.mjs';
@@ -16,7 +17,7 @@ function parseArgs(argv) {
     reportPath: undefined,
     soakIterations: 2,
     soakSecurityEvery: 2,
-    evidenceDir: '/tmp/evermemory-release-evidence',
+    evidenceDir: join(tmpdir(), 'evermemory-release-evidence'),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -82,7 +83,7 @@ function parseArgs(argv) {
 
 function defaultReportPath(version) {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-release-evaluate-v${version}-${stamp}.json`;
+  return join(tmpdir(), `evermemory-release-evaluate-v${version}-${stamp}.json`);
 }
 
 function runStep(name, command, args, env) {

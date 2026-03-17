@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { recordEvidence } from './report-evidence.mjs';
@@ -77,7 +78,7 @@ function parseArgs(argv) {
 
 function resolveDefaultReportPath(mode) {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-agent-teams-${mode}-${stamp}.json`;
+  return join(tmpdir(), `evermemory-agent-teams-${mode}-${stamp}.json`);
 }
 
 function run(command, args, options = {}) {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 
@@ -97,7 +98,7 @@ function parseBoolean(label, value) {
 
 function defaultReportPath() {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-kpi-report-${stamp}.json`;
+  return join(tmpdir(), `evermemory-kpi-report-${stamp}.json`);
 }
 
 function formatNumber(value) {
@@ -151,10 +152,10 @@ function findRecallBenchmarkReport(explicitPath) {
 
   let entries;
   try {
-    entries = readdirSync('/tmp');
+    entries = readdirSync(tmpdir());
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    fail(`unable to read /tmp for recall benchmark reports (${detail})`);
+    fail(`unable to read ${tmpdir()} for recall benchmark reports (${detail})`);
   }
 
   let latestPath;
@@ -163,7 +164,7 @@ function findRecallBenchmarkReport(explicitPath) {
     if (!entry.startsWith('evermemory-recall-benchmark-') || !entry.endsWith('.json')) {
       continue;
     }
-    const fullPath = join('/tmp', entry);
+    const fullPath = join(tmpdir(), entry);
     let stats;
     try {
       stats = statSync(fullPath);
@@ -180,7 +181,7 @@ function findRecallBenchmarkReport(explicitPath) {
   }
 
   if (!latestPath) {
-    fail('no recall benchmark report found under /tmp (expected evermemory-recall-benchmark-*.json)');
+    fail(`no recall benchmark report found under ${tmpdir()} (expected evermemory-recall-benchmark-*.json)`);
   }
   return latestPath;
 }

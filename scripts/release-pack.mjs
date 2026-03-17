@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { recordEvidence } from './report-evidence.mjs';
@@ -13,9 +14,9 @@ function fail(message) {
 function parseArgs(argv) {
   const parsed = {
     version: '1.0.1',
-    outDir: '/tmp/evermemory-release',
+    outDir: join(tmpdir(), 'evermemory-release'),
     reportPath: undefined,
-    evidenceDir: '/tmp/evermemory-release-evidence',
+    evidenceDir: join(tmpdir(), 'evermemory-release-evidence'),
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -64,7 +65,7 @@ function parseArgs(argv) {
 
 function defaultReportPath(version) {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-release-pack-v${version}-${stamp}.json`;
+  return join(tmpdir(), `evermemory-release-pack-v${version}-${stamp}.json`);
 }
 
 function run(command, args, capture = false, env = process.env) {

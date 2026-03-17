@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import Database from 'better-sqlite3';
 import { cleanupOpenClawTestArtifacts } from './openclaw-test-cleanup.mjs';
 import { recordEvidence } from './report-evidence.mjs';
 
-const DEFAULT_DB_PATH = '/root/.openclaw/memory/evermemory/store/evermemory.db';
+const DEFAULT_DB_PATH = join(homedir(), '.openclaw', 'memory', 'evermemory', 'store', 'evermemory.db');
 const DEFAULT_AGENT_ID = process.env.EVERMEMORY_AGENT_ID ?? 'main';
 const DEFAULT_LOOKBACK_MINUTES = 15;
 const RETRYABLE_TURN_PATTERNS = [
@@ -105,7 +106,7 @@ function parseArgs(argv) {
 
 function resolveDefaultReportPath() {
   const stamp = new Date().toISOString().replaceAll(':', '-');
-  return `/tmp/evermemory-openclaw-continuity-${stamp}.json`;
+  return join(tmpdir(), `evermemory-openclaw-continuity-${stamp}.json`);
 }
 
 function runOpenClaw(args) {
