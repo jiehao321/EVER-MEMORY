@@ -26,3 +26,4 @@ docs/internal/
 .DS_Store
 .idea/
 .vscode/
+.claude/
