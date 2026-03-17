@@ -54,9 +54,9 @@
   },
   "scripts": {
     "setup": "node ./scripts/setup.mjs",
-    "clean": "rm -rf dist dist-test",
+    "clean": "node -e \"['dist','dist-test'].forEach(d=>{try{require('fs').rmSync(d,{recursive:true,force:true})}catch{}})\"",
     "build": "node ./scripts/build-with-fingerprint.mjs",
-    "build:test": "rm -rf dist-test .tsbuildinfo-test && tsc -p tsconfig.test.json",
+    "build:test": "node -e \"['dist-test','.tsbuildinfo-test'].forEach(d=>{try{require('fs').rmSync(d,{recursive:true,force:true})}catch{}})\" && tsc -p tsconfig.test.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "doctor": "node ./scripts/doctor.mjs",
     "repo:guard": "node ./scripts/git-branch-guard.mjs",

@@ -34,8 +34,9 @@ function run(cmd, opts = {}) {
 }
 
 function hasCommand(cmd) {
+  const check = process.platform === 'win32' ? `where ${cmd}` : `which ${cmd}`;
   try {
-    execSync(`which ${cmd}`, { stdio: 'ignore' });
+    execSync(check, { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -71,7 +72,10 @@ if (!hasCommand('openclaw')) {
 
 // Step 3: Install and enable plugin
 console.log('[2/4] Installing plugin...');
-run(`openclaw plugins install ${root} --link`);
+// --link uses symlinks; on Windows, symlinks require Developer Mode or admin rights.
+// Fall back to a regular (copy) install on Windows.
+const linkFlag = process.platform === 'win32' ? '' : '--link';
+run(`openclaw plugins install "${root}" ${linkFlag}`.trim());
 
 console.log('[3/4] Enabling and configuring...');
 run('openclaw plugins enable evermemory');

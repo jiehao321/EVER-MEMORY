@@ -88,7 +88,8 @@ function runQuiet(cmd) {
 }
 
 function hasCommand(cmd) {
-  try { execSync(`which ${cmd}`, { stdio: 'ignore' }); return true; } catch { return false; }
+  const check = process.platform === 'win32' ? `where ${cmd}` : `which ${cmd}`;
+  try { execSync(check, { stdio: 'ignore' }); return true; } catch { return false; }
 }
 
 function fail(msg) {
@@ -128,7 +129,7 @@ if (gitStatus) {
 
 // Check npm login
 if (!skipNpm) {
-  const npmUser = runQuiet('npm whoami 2>/dev/null');
+  const npmUser = runQuiet('npm whoami');
   if (npmUser) {
     console.log(`  npm: logged in as ${npmUser}`);
   } else {
@@ -182,9 +183,10 @@ if (!skipNpm) {
 // --- Step 3: ClawHub skill publish ---
 if (!skipSkill) {
   console.log('== ClawHub Skill Publish ==\n');
-  const skillScript = resolve(root, 'skills/openclaw-evermemory-installer/scripts/publish_skill.sh');
+  const skillDir = resolve(root, 'skills/openclaw-evermemory-installer');
   const changelogArg = changelog || `Release v${version}`;
-  const skillCmd = `bash "${skillScript}" --version "${version}" --changelog "${changelogArg}"`;
+  // Call clawhub directly — no bash required (cross-platform)
+  const skillCmd = `clawhub publish "${skillDir}" --slug "openclaw-evermemory-installer" --name "OpenClaw EverMemory Installer" --version "${version}" --changelog "${changelogArg}" --tags latest`;
   if (dryRun) {
     console.log(`  Would run: ${skillCmd}`);
   } else {
