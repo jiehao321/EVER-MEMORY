@@ -128,6 +128,21 @@ export class SemanticRepository {
     }
   }
 
+  deleteFromIndex(memoryId: string): void {
+    try {
+      this.db.prepare('DELETE FROM semantic_index WHERE memory_id = ?').run(memoryId);
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to delete semantic index entry.', {
+        code: 'STORAGE_SEMANTIC_DELETE_FAILED',
+        context: { memoryId },
+        cause: error,
+      });
+    }
+  }
+
   findByMemoryId(memoryId: string): SemanticIndexRecord | null {
     const row = this.db.prepare('SELECT * FROM semantic_index WHERE memory_id = ? LIMIT 1').get(memoryId) as
       | SemanticIndexRow

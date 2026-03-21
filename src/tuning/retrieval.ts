@@ -40,12 +40,20 @@ export const PROJECT_PRIORITY_PROJECT = 0.84;
 export const PROJECT_PRIORITY_CONSTRAINT = 0.72;
 export const PROJECT_PRIORITY_DEFAULT = 0.45;
 
-/** Data quality scores */
-export const DATA_QUALITY_RUNTIME = 1;
+/** Quality score for user-explicit sources (tool/manual store) — highest priority */
+export const DATA_QUALITY_UNKNOWN = 0.92;
+/** Quality score for runtime sources (runtime_user, runtime_project, message) */
+export const DATA_QUALITY_RUNTIME = 0.85;
+/** Quality score for summary-type memories */
+export const DATA_QUALITY_SUMMARY = 0.72;
+/** Quality score for inference-derived memories */
+export const DATA_QUALITY_INFERENCE = 0.68;
+/** Quality score for low-value runtime content */
 export const DATA_QUALITY_RUNTIME_LOW_VALUE = 0.48;
-export const DATA_QUALITY_TEST = 0.2;
-export const DATA_QUALITY_UNKNOWN = 0.72;
+/** Quality score for low-value unknown content */
 export const DATA_QUALITY_UNKNOWN_LOW_VALUE = 0.4;
+/** Quality score for test content */
+export const DATA_QUALITY_TEST = 0.2;
 
 /** High-value project priority threshold for selection */
 export const HIGH_VALUE_PROJECT_PRIORITY_THRESHOLD = 0.84;

@@ -9,6 +9,7 @@ import {
   buildPromotedRuleGovernance,
   evaluatePromotionCandidate,
   freezeConflictingRules,
+  inferRuleDuration,
 } from './promotion.js';
 import { rankBehaviorRules } from './ranking.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
@@ -20,9 +21,12 @@ import {
   BEHAVIOR_DEFAULT_RECENT_RULES_LIMIT,
   BEHAVIOR_MIN_CANDIDATE_FETCH,
   BEHAVIOR_PROMOTION_CANDIDATE_LIMIT,
+  EMERGING_AUTO_DEMOTE_DAYS,
 } from '../../tuning.js';
 import type {
   BehaviorRule,
+  BehaviorRuleDuration,
+  BehaviorRuleFreezeReason,
   BehaviorRuleLookupInput,
   BehaviorRuleMutationInput,
   BehaviorRuleMutationResult,
@@ -136,6 +140,15 @@ export class BehaviorService {
         }
 
         const timestamp = batchTimestamp;
+        const lifecycle = {
+          ...buildPromotedRuleGovernance({
+            priority: decision.priority,
+            confidence: reflection.evidence.confidence,
+            recurrenceCount: reflection.evidence.recurrenceCount,
+            now: timestamp,
+          }),
+          duration: inferRuleDuration(decision.statement),
+        };
         const rule: BehaviorRule = {
           id: randomUUID(),
           statement: decision.statement,
@@ -155,12 +168,7 @@ export class BehaviorService {
             confidence: reflection.evidence.confidence,
             recurrenceCount: reflection.evidence.recurrenceCount,
           },
-          lifecycle: buildPromotedRuleGovernance({
-            priority: decision.priority,
-            confidence: reflection.evidence.confidence,
-            recurrenceCount: reflection.evidence.recurrenceCount,
-            now: timestamp,
-          }),
+          lifecycle,
           state: {
             active: true,
             deprecated: false,
@@ -513,6 +521,110 @@ export class BehaviorService {
 
   listRecentRules(limit = BEHAVIOR_DEFAULT_RECENT_RULES_LIMIT): BehaviorRule[] {
     return this.behaviorRepo.listRecent(limit);
+  }
+
+  freezeRulesByDuration(input: {
+    duration: BehaviorRuleDuration;
+    reason: BehaviorRuleFreezeReason;
+    userId?: string;
+    channel?: string;
+  }): BehaviorRule[] {
+    const timestamp = nowIso();
+    const timestampDate = new Date(timestamp);
+    const rules = this.behaviorRepo.listByDuration({
+      duration: input.duration,
+      userId: input.userId,
+      channel: input.channel,
+    });
+
+    const buildFrozenRule = (rule: BehaviorRule): BehaviorRule => {
+      const frozen = freezeBehaviorRule(rule, input.reason, timestampDate);
+      return {
+        ...frozen,
+        updatedAt: timestamp,
+        state: {
+          ...frozen.state,
+          active: false,
+          deprecated: true,
+          frozen: true,
+          statusReason: input.reason,
+          statusChangedAt: timestamp,
+        },
+        lifecycle: {
+          ...frozen.lifecycle,
+          freezeReason: input.reason,
+          frozenAt: timestamp,
+          lastReviewedAt: timestamp,
+          maturity: 'frozen',
+          level: 'candidate',
+        },
+        trace: {
+          ...rule.trace,
+          deactivatedReason: input.reason,
+          deactivatedAt: timestamp,
+        },
+      };
+    };
+
+    const frozenRules = this.behaviorRepo.transaction(() =>
+      rules.map((rule) => {
+        const frozenRule = buildFrozenRule(rule);
+        this.behaviorRepo.insert(frozenRule);
+        return frozenRule;
+      }),
+    );
+
+    for (const frozenRule of frozenRules) {
+      this.debugRepo?.log('rule_frozen', frozenRule.id, {
+        reason: input.reason,
+        statement: frozenRule.statement,
+        duration: frozenRule.lifecycle.duration,
+        statusChangedAt: timestamp,
+      });
+    }
+
+    return frozenRules;
+  }
+
+  demoteStaleEmergingRules(): number {
+    const staleRules = this.behaviorRepo.listStaleEmerging(EMERGING_AUTO_DEMOTE_DAYS);
+    if (staleRules.length === 0) {
+      return 0;
+    }
+
+    const timestamp = nowIso();
+    const demotedRules = this.behaviorRepo.transaction(() =>
+      staleRules.map((rule) => {
+        const demoted: BehaviorRule = {
+          ...rule,
+          updatedAt: timestamp,
+          lifecycle: {
+            ...rule.lifecycle,
+            maturity: 'emerging',
+            level: 'candidate',
+          },
+          state: {
+            ...rule.state,
+            active: false,
+            statusReason: 'stale_emerging_demoted',
+            statusChangedAt: timestamp,
+          },
+        };
+        this.behaviorRepo.insert(demoted);
+        return demoted;
+      }),
+    );
+
+    for (const rule of demotedRules) {
+      this.debugRepo?.log('rule_stale_demoted', rule.id, {
+        statement: rule.statement,
+        category: rule.category,
+        demotedAt: timestamp,
+        reason: 'stale_emerging_demoted',
+      });
+    }
+
+    return demotedRules.length;
   }
 
   countActiveRules(userId?: string): number {

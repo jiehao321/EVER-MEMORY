@@ -5,6 +5,7 @@ import { OpenAIEmbeddingProvider } from './openai.js';
 
 /** C3: Progress stages emitted during local embedding provider initialization */
 export type EmbeddingInitStage = 'loading' | 'ready' | 'timeout' | 'error';
+export const EMBEDDING_QUEUE_LIMIT = 1_000;
 
 export type EmbeddingConfig = {
   provider: 'local' | 'openai' | 'none';
@@ -14,6 +15,8 @@ export type EmbeddingConfig = {
   openaiApiKey?: string;
   /** C3: Called at each initialization stage for cold-start feedback */
   onInitProgress?: (stage: EmbeddingInitStage, detail?: string) => void;
+  /** Optional debug hook for non-fatal queue and lifecycle events */
+  onDebugEvent?: (payload: Record<string, unknown>) => void;
   /** C3: Timeout in ms for local provider init (default 120s) */
   localInitTimeoutMs?: number;
 };
@@ -61,6 +64,10 @@ export class EmbeddingManager {
     return this._initialized && this._provider.isReady();
   }
 
+  getQueueDepth(): number {
+    return this._queueTexts.length;
+  }
+
   get providerKind(): EmbeddingProviderKind {
     return this._provider.kind;
   }
@@ -74,10 +81,50 @@ export class EmbeddingManager {
     this._initializing = null;
   }
 
+  async warmup(): Promise<{ ready: boolean; provider: string; elapsedMs: number }> {
+    const start = Date.now();
+    try {
+      await this.embed('');
+      const elapsedMs = Date.now() - start;
+      return {
+        ready: this.isReady(),
+        provider: this.providerKind,
+        elapsedMs,
+      };
+    } catch {
+      const elapsedMs = Date.now() - start;
+      return {
+        ready: false,
+        provider: this.providerKind,
+        elapsedMs,
+      };
+    }
+  }
+
   private _enqueue(text: string): Promise<EmbeddingVector | null> {
     return new Promise<EmbeddingVector | null>((resolve) => {
-      this._queueTexts.push(text);
-      this._queueResolvers.push(resolve);
+      const nextTexts = [...this._queueTexts, text];
+      const nextResolvers = [...this._queueResolvers, resolve];
+      const overflow = Math.max(0, nextTexts.length - EMBEDDING_QUEUE_LIMIT);
+
+      if (overflow > 0) {
+        const droppedResolvers = nextResolvers.slice(0, overflow);
+        this._queueTexts = nextTexts.slice(overflow);
+        this._queueResolvers = nextResolvers.slice(overflow);
+        this._emitDebugEvent({
+          stage: 'queue_backpressure',
+          dropped: overflow,
+          limit: EMBEDDING_QUEUE_LIMIT,
+          queueDepth: this._queueTexts.length,
+        });
+        for (const droppedResolve of droppedResolvers) {
+          droppedResolve(null);
+        }
+      } else {
+        this._queueTexts = nextTexts;
+        this._queueResolvers = nextResolvers;
+      }
+
       this._scheduleFlush();
     });
   }
@@ -188,12 +235,22 @@ export class EmbeddingManager {
       if (provider.kind === 'local') {
         onProgress?.('loading', `Loading local model...`);
         const timeoutMs = this._config.localInitTimeoutMs ?? 120_000;
-        await Promise.race([
-          this._initializeProvider(provider),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Local embedding init timed out after ${timeoutMs}ms`)), timeoutMs),
-          ),
-        ]);
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            this._initializeProvider(provider),
+            new Promise<never>((_, reject) => {
+              timeoutHandle = setTimeout(
+                () => reject(new Error(`Local embedding init timed out after ${timeoutMs}ms`)),
+                timeoutMs,
+              );
+            }),
+          ]);
+        } finally {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+          }
+        }
         onProgress?.('ready', 'Local embedding model ready.');
       } else {
         await this._initializeProvider(provider);
@@ -252,6 +309,10 @@ export class EmbeddingManager {
       `[EmbeddingManager] Provider error (${this._provider.kind}):`,
       error
     );
+  }
+
+  private _emitDebugEvent(payload: Record<string, unknown>): void {
+    this._config.onDebugEvent?.(payload);
   }
 
   private _clearBatchTimer(): void {

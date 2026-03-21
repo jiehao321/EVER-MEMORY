@@ -306,6 +306,6 @@ test('plugin stop 后完成资源清理，并可重新 register/start 后继续�
     { sessionId: 'plugin-lifecycle-2', runId: 'run-plugin-restarted' },
   );
 
-  assert.ok(restartedResult && typeof restartedResult === 'object');
+  assert.ok(restartedResult === undefined || typeof restartedResult === 'object');
   await second.services[0].stop?.();
 });

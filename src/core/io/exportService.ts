@@ -130,6 +130,7 @@ function toMemoryItem(entry: ImportShape, scope: MemoryScope): MemoryItem | null
     evidence: { references: [] },
     tags: normalizeTags(entry.tags),
     relatedEntities: [],
+    sourceGrade: 'primary',
     stats: { accessCount: 0, retrievalCount: 0 },
   };
 }

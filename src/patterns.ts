@@ -159,6 +159,12 @@ export const COMMITMENT_PATTERNS: RegExp[] = [
   /(我会|我们会|待办|跟进|后续做)/,
 ];
 
+/** One-shot / temporary rule cues used for duration inference. */
+export const EPHEMERAL_RULE_PATTERNS: RegExp[] = [
+  /\b(this time|just now|for now|for this|right now|this once)\b/i,
+  /(这次|暂时|临时|现在|这一次|仅此一次)/,
+];
+
 /** Identity patterns. */
 export const IDENTITY_PATTERNS: RegExp[] = [
   /\bmy name is\b/i,

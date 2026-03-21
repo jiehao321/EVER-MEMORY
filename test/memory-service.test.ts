@@ -79,3 +79,37 @@ test('memory write policy rejects empty or low-value content with explicit reaso
   app.database.connection.close();
   rmSync(databasePath, { force: true });
 });
+
+test('memory service stores memory when semantic indexing fails and marks it embedding_pending', () => {
+  const databasePath = createTempDbPath('memory-service-semantic-failure');
+  const app = initializeEverMemory({ databasePath });
+  const originalUpsert = app.semanticRepo.upsertFromMemory;
+
+  app.semanticRepo.upsertFromMemory = (() => {
+    throw new Error('semantic index unavailable');
+  }) as typeof app.semanticRepo.upsertFromMemory;
+
+  try {
+    const result = app.memoryService.store({
+      content: '部署前必须确认回滚方案和负责人。',
+      scope: { userId: 'user-semantic-failure', project: 'evermemory' },
+      source: { kind: 'manual', actor: 'user' },
+    });
+
+    assert.equal(result.accepted, true);
+    assert.ok(result.memory);
+    assert.ok(result.memory?.tags.includes('embedding_pending'));
+
+    const stored = app.memoryRepo.findById(result.memory!.id);
+    assert.ok(stored?.tags.includes('embedding_pending'));
+
+    const semanticEvent = app.debugRepo.listRecent('semantic_indexed', 1)[0];
+    assert.equal(semanticEvent?.entityId, result.memory?.id);
+    assert.equal(semanticEvent?.payload.success, false);
+    assert.equal(semanticEvent?.payload.error, 'semantic index unavailable');
+  } finally {
+    app.semanticRepo.upsertFromMemory = originalUpsert;
+    app.database.connection.close();
+    rmSync(databasePath, { force: true });
+  }
+});

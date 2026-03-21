@@ -26,8 +26,14 @@ function createMemory(input: {
     evidence: { references: [] },
     tags: input.tags ?? [],
     relatedEntities: [],
+    sourceGrade: 'primary',
     stats: { accessCount: 0, retrievalCount: 0 },
   };
+}
+
+function isoDaysAgo(daysAgo: number): string {
+  const date = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+  return date.toISOString();
 }
 
 function insertRulesLoaded(app: ReturnType<typeof initializeEverMemory>, createdAt: string, rules: number): void {
@@ -109,12 +115,12 @@ test('smartness metrics compute trend from recent 7 days versus previous 7 days'
   const app = initializeEverMemory({ databasePath });
 
   try {
-    app.memoryRepo.insert(createMemory({ createdAt: '2026-03-14T00:00:00.000Z' }));
-    app.memoryRepo.insert(createMemory({ createdAt: '2026-03-13T00:00:00.000Z' }));
-    app.memoryRepo.insert(createMemory({ createdAt: '2026-03-12T00:00:00.000Z' }));
-    app.memoryRepo.insert(createMemory({ createdAt: '2026-03-05T00:00:00.000Z' }));
-    insertRulesLoaded(app, '2026-03-14T00:00:00.000Z', 6);
-    insertRulesLoaded(app, '2026-03-04T00:00:00.000Z', 2);
+    app.memoryRepo.insert(createMemory({ createdAt: isoDaysAgo(1) }));
+    app.memoryRepo.insert(createMemory({ createdAt: isoDaysAgo(2) }));
+    app.memoryRepo.insert(createMemory({ createdAt: isoDaysAgo(3) }));
+    app.memoryRepo.insert(createMemory({ createdAt: isoDaysAgo(10) }));
+    insertRulesLoaded(app, isoDaysAgo(1), 6);
+    insertRulesLoaded(app, isoDaysAgo(10), 2);
 
     const service = new SmartnessMetricsService(app.memoryRepo, app.debugRepo);
     const summary = await service.compute('u-smartness-1');

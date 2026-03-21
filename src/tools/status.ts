@@ -10,7 +10,46 @@ import type { SemanticRepository } from '../storage/semanticRepo.js';
 import type { SmartnessMetricsService, SmartnessSummary } from '../core/analytics/smartnessMetrics.js';
 import { getSchemaVersion } from '../storage/migrations.js';
 import { embeddingManager } from '../embedding/manager.js';
-import type { EverMemoryStatusToolResult, RuntimeSessionContext } from '../types.js';
+import type { EverMemoryStatusSummary, EverMemoryStatusToolResult, RuntimeSessionContext } from '../types.js';
+
+function resolveStatusHealth(status: EverMemoryStatusToolResult): EverMemoryStatusSummary['health'] {
+  if (status.memoryCount === 0 || status.semanticStatus === 'disabled') {
+    return 'critical';
+  }
+  if ((status.atRiskMemories?.count ?? 0) > 0 || status.semanticStatus === 'degraded') {
+    return 'warning';
+  }
+  return 'healthy';
+}
+
+function buildStatusAlerts(status: EverMemoryStatusToolResult): EverMemoryStatusSummary['alerts'] {
+  const alerts: EverMemoryStatusSummary['alerts'] = [];
+
+  if (status.memoryCount === 0) {
+    alerts.push({ level: 'critical', code: 'memory_empty', message: 'No memories are stored in the current scope.' });
+  }
+  if (status.semanticStatus === 'disabled') {
+    alerts.push({ level: 'critical', code: 'semantic_disabled', message: 'Semantic retrieval is disabled.' });
+  }
+  if (status.semanticStatus === 'degraded') {
+    alerts.push({ level: 'warning', code: 'semantic_degraded', message: 'Semantic retrieval is degraded.' });
+  }
+  if ((status.atRiskMemories?.count ?? 0) > 0) {
+    alerts.push({ level: 'warning', code: 'at_risk_memories', message: `${status.atRiskMemories?.count ?? 0} memories are at risk of archiving.` });
+  }
+
+  return alerts.slice(0, 3);
+}
+
+function buildStatusSummary(status: EverMemoryStatusToolResult): EverMemoryStatusSummary {
+  return {
+    health: resolveStatusHealth(status),
+    memoryCount: status.memoryCount,
+    semanticStatus: status.semanticStatus ?? 'disabled',
+    atRiskCount: status.atRiskMemories?.count ?? 0,
+    alerts: buildStatusAlerts(status),
+  };
+}
 
 export function evermemoryStatus(input: {
   database: DatabaseHandle;
@@ -26,6 +65,8 @@ export function evermemoryStatus(input: {
   userId?: string;
   sessionId?: string;
 }): EverMemoryStatusToolResult {
+  const AUTO_CAPTURE_PREVIEW_LENGTH = 120;
+
   function toNumber(value: unknown): number | undefined {
     return typeof value === 'number' ? value : undefined;
   }
@@ -45,13 +86,19 @@ export function evermemoryStatus(input: {
     return value as Record<string, unknown>;
   }
 
+  const scopeResolvedFrom: EverMemoryStatusToolResult['scopeResolvedFrom'] = input.userId
+    ? 'user'
+    : input.sessionId && input.runtimeSession
+      ? 'runtime_session'
+      : 'global';
+  const effectiveScope = input.userId
+    ? { userId: input.userId }
+    : input.sessionId && input.runtimeSession
+      ? input.runtimeSession.scope
+      : undefined;
   const effectiveUserId = input.userId ?? input.runtimeSession?.scope.userId;
   const filters = {
-    scope: input.userId || input.sessionId
-      ? {
-          userId: effectiveUserId,
-        }
-      : undefined,
+    scope: effectiveScope,
   };
 
   const memoryCount = input.memoryRepo.count(filters);
@@ -184,6 +231,48 @@ export function evermemoryStatus(input: {
     const touchedAt = lastTouched ? Date.parse(lastTouched) : 0;
     return touchedAt > 0 && touchedAt < atRiskCutoff && m.stats.accessCount < 2;
   }).slice(0, 5);
+  const healthSample = input.memoryRepo.search({
+    scope: filters.scope,
+    activeOnly: true,
+    archived: false,
+    limit: 50,
+  });
+  const healthSampleCount = healthSample.length || 1;
+  const totalMemories = memoryCount || 1;
+  const allScopedMemories = input.memoryRepo.search({
+    scope: filters.scope,
+    limit: memoryCount > 0 ? memoryCount : 1,
+  });
+  const summaryCount = countsByType.summary ?? 0;
+  const inferenceCount = allScopedMemories.filter((memory) => memory.source.kind === 'inference').length;
+  const factCount = countsByType.fact ?? 0;
+  const avgContentLength = healthSample.reduce((sum, memory) => sum + memory.content.length, 0) / healthSampleCount;
+  const avgConfidence = healthSample.reduce((sum, memory) => sum + memory.scores.confidence, 0) / healthSampleCount;
+  const pinnedCount = allScopedMemories.filter((memory) => memory.tags.includes('pinned')).length;
+  const healthMetrics = {
+    summaryToFactRatio: summaryCount / (factCount || 1),
+    systemArtifactProportion: (summaryCount + inferenceCount) / totalMemories,
+    avgContentLength,
+    avgConfidence,
+    pinnedCount,
+  };
+  const recentAutoCaptureItems = input.memoryRepo.search({
+    scope: filters.scope,
+    activeOnly: true,
+    archived: false,
+    limit: 200,
+  })
+    .filter((memory) => memory.tags.includes('auto_capture'))
+    .sort((a, b) => b.timestamps.createdAt.localeCompare(a.timestamps.createdAt))
+    .slice(0, 5)
+    .map((memory) => ({
+      id: memory.id,
+      content: memory.content.length > AUTO_CAPTURE_PREVIEW_LENGTH
+        ? `${memory.content.slice(0, AUTO_CAPTURE_PREVIEW_LENGTH - 1)}…`
+        : memory.content,
+      kind: memory.tags.find((tag) => tag !== 'auto_capture') ?? memory.type,
+      createdAt: memory.timestamps.createdAt,
+    }));
   const atRiskMemories = {
     count: atRiskItems.length,
     items: atRiskItems.map((m) => ({
@@ -197,9 +286,10 @@ export function evermemoryStatus(input: {
       : null,
   };
 
-  return {
+  const status: EverMemoryStatusToolResult = {
     schemaVersion,
     databasePath: input.database.path,
+    scopeResolvedFrom,
     memoryCount,
     activeMemoryCount,
     archivedMemoryCount,
@@ -324,8 +414,67 @@ export function evermemoryStatus(input: {
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3)
         .map(([kind]) => kind),
+      recentItems: recentAutoCaptureItems,
+    },
+    healthMetrics,
+    semanticHealth: {
+      embeddingProvider: embeddingManager.providerKind,
+      embeddingReady: embeddingManager.isReady(),
+      indexedCount: semanticIndexCount,
+      embeddingCount: (() => {
+        try {
+          const row = input.database.connection.prepare(
+            'SELECT COUNT(*) as count FROM embedding_meta'
+          ).get() as { count: number } | undefined;
+          return row?.count ?? 0;
+        } catch {
+          return 0;
+        }
+      })(),
+      recentRetrievalModes: recentRetrievalEvents.slice(0, 5).map(
+        (event) => toString(event.payload.mode) ?? 'unknown'
+      ),
+      recentSemanticHits: recentRetrievalEvents.slice(0, 5).map(
+        (event) => toNumber(event.payload.semanticHits) ?? 0
+      ),
     },
   };
+
+  return {
+    ...status,
+    summary: buildStatusSummary(status),
+  };
+}
+
+type EverMemoryStatusToolBaseInput = {
+  database: DatabaseHandle;
+  memoryRepo: MemoryRepository;
+  briefingRepo: BriefingRepository;
+  debugRepo: DebugRepository;
+  experienceRepo: ExperienceRepository;
+  reflectionRepo: ReflectionRepository;
+  behaviorRepo: BehaviorRepository;
+  semanticRepo: SemanticRepository;
+  profileRepo: ProfileRepository;
+  runtimeSession?: RuntimeSessionContext;
+  userId?: string;
+  sessionId?: string;
+};
+
+export function evermemoryStatusLayered(
+  input: EverMemoryStatusToolBaseInput & { output?: 'summary' },
+): EverMemoryStatusSummary;
+export function evermemoryStatusLayered(
+  input: EverMemoryStatusToolBaseInput & { output: 'detail' | 'debug' },
+): EverMemoryStatusToolResult;
+export function evermemoryStatusLayered(input: EverMemoryStatusToolBaseInput & {
+  output?: 'summary' | 'detail' | 'debug';
+}): EverMemoryStatusSummary | EverMemoryStatusToolResult {
+  const status = evermemoryStatus(input);
+  if ((input.output ?? 'summary') === 'summary') {
+    return status.summary ?? buildStatusSummary(status);
+  }
+  return status;
 }
 
 function toPercent(score: number): number {

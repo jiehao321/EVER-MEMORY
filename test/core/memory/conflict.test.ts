@@ -21,6 +21,7 @@ function createMemory(overrides: Partial<MemoryItem> = {}): MemoryItem {
     evidence: overrides.evidence ?? { references: [] },
     tags: overrides.tags ?? ['user_preference'],
     relatedEntities: overrides.relatedEntities ?? [],
+    sourceGrade: overrides.sourceGrade ?? 'primary',
     stats: overrides.stats ?? { accessCount: 0, retrievalCount: 0 },
   };
 }

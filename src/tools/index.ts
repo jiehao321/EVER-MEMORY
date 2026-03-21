@@ -16,3 +16,4 @@ export { evermemoryExport } from './export.js';
 export { evermemoryImport } from './import.js';
 export { evermemoryReview } from './review.js';
 export { evermemoryRestore } from './restore.js';
+export { evermemoryRelations } from './relations.js';

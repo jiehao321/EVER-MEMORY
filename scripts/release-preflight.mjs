@@ -109,7 +109,7 @@ for (const docFile of ['docs/GUIDE.md', 'docs/ARCHITECTURE.md']) {
     const content = readText(docFile);
     // Check for stale version patterns (e.g. "Version: X.Y.Z" or "evermemory@X.Y.Z")
     const staleVersions = [];
-    for (const match of content.matchAll(/(?:Version[:\s]*|evermemory@)(\d+\.\d+\.\d+)/g)) {
+    for (const match of content.matchAll(/(?:Version[:\s]*|evermemory@)(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)/g)) {
       if (match[1] !== version) {
         staleVersions.push(match[1]);
       }

@@ -6,6 +6,7 @@ import {
 } from '../constants.js';
 import type { DebugRepository } from '../storage/debugRepo.js';
 import type { MemoryRepository } from '../storage/memoryRepo.js';
+import type { RelationRepository } from '../storage/relationRepo.js';
 import type { SemanticRepository } from '../storage/semanticRepo.js';
 import type {
   RecallForIntentRequest,
@@ -26,12 +27,14 @@ import {
   resolvePositiveInteger,
 } from './strategies/support.js';
 import { RetrievalError } from '../errors.js';
+import { embeddingManager } from '../embedding/manager.js';
 
 interface RetrievalServiceOptions {
   semanticEnabled?: boolean;
   semanticRepo?: SemanticRepository;
   semanticCandidateLimit?: number;
   semanticMinScore?: number;
+  relationRepo?: RelationRepository;
   maxRecall?: number;
   keywordWeights?: Partial<RetrievalKeywordWeights>;
   hybridWeights?: Partial<RetrievalHybridWeights>;
@@ -123,6 +126,7 @@ export class RetrievalService {
       semanticMinScore,
       this.keywordWeights,
       this.hybridWeights,
+      options.relationRepo,
     );
   }
 
@@ -147,6 +151,8 @@ export class RetrievalService {
         fallback: requestedMode === 'hybrid' && mode !== 'hybrid',
         semanticEnabled: this.semanticEnabled,
         semanticHits: result.semanticHitCount,
+        embeddingReady: embeddingManager.isReady(),
+        degradationReason: result.degradationReason,
         returned: items.length,
         limit,
         maxRecall: this.maxRecall,
@@ -182,6 +188,9 @@ export class RetrievalService {
       const nudge = items.length === 0
         ? 'No memories matched. Try broader terms or check if memories exist via evermemory_status.'
         : undefined;
+      const degradedReason = result.degradationReason
+        ?? (semanticFallback ? 'semantic_disabled' : undefined);
+      const degraded = semanticFallback || Boolean(result.degradationReason);
 
       return {
         items,
@@ -189,7 +198,13 @@ export class RetrievalService {
         limit,
         strategyUsed: mode,
         semanticFallback,
+        degraded: degraded || undefined,
+        degradedReason,
         nudge,
+        meta: {
+          degraded: degraded || undefined,
+          degradedReason,
+        },
       };
     } catch (error) {
       if (error instanceof RetrievalError) {

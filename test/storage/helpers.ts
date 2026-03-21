@@ -61,6 +61,7 @@ export function buildMemory(overrides: Partial<MemoryItem> = {}): MemoryItem {
     },
     tags: overrides.tags ?? [],
     relatedEntities: overrides.relatedEntities ?? [],
+    sourceGrade: overrides.sourceGrade ?? 'primary',
     stats: {
       accessCount: overrides.stats?.accessCount ?? 0,
       retrievalCount: overrides.stats?.retrievalCount ?? 0,

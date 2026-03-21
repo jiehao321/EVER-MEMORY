@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { evaluateBehaviorLifecycle } from '../core/behavior/lifecycle.js';
-import type { BehaviorRule, BehaviorRuleCategory, IntentType } from '../types.js';
+import type { BehaviorRule, BehaviorRuleCategory, BehaviorRuleDuration, IntentType } from '../types.js';
 import { safeJsonParse } from '../util/json.js';
 
 interface BehaviorRuleRow {
@@ -18,6 +18,7 @@ interface BehaviorRuleRow {
   memory_ids_json: string;
   evidence_confidence: number;
   recurrence_count: number;
+  duration: string | null;
   level: string | null;
   maturity: string | null;
   apply_count: number | null;
@@ -80,6 +81,7 @@ function toBehaviorRule(row: BehaviorRuleRow): BehaviorRule {
       recurrenceCount: row.recurrence_count,
     },
     lifecycle: {
+      duration: (row.duration as BehaviorRuleDuration | null) ?? undefined,
       level: (row.level as BehaviorRule['lifecycle']['level'] | null) ?? 'baseline',
       maturity: (row.maturity as BehaviorRule['lifecycle']['maturity'] | null) ?? 'emerging',
       applyCount: row.apply_count ?? 0,
@@ -135,7 +137,7 @@ export class BehaviorRepository {
         applies_to_user_id, applies_to_channel, intent_types_json, contexts_json,
         category, priority,
         reflection_ids_json, memory_ids_json, evidence_confidence, recurrence_count,
-        level, maturity, apply_count, contradiction_count,
+        duration, level, maturity, apply_count, contradiction_count,
         last_applied_at, last_contradicted_at, last_reviewed_at,
         stale, staleness, decay_score, frozen_at, freeze_reason, expires_at,
         active, deprecated, superseded_by,
@@ -143,7 +145,7 @@ export class BehaviorRepository {
         promoted_from_reflection_id, promoted_reason, promoted_at, review_source_refs_json,
         promotion_evidence_summary, deactivated_by_rule_id, deactivated_by_reflection_id,
         deactivated_reason, deactivated_at, tags_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         statement = excluded.statement,
         created_at = excluded.created_at,
@@ -158,6 +160,7 @@ export class BehaviorRepository {
         memory_ids_json = excluded.memory_ids_json,
         evidence_confidence = excluded.evidence_confidence,
         recurrence_count = excluded.recurrence_count,
+        duration = excluded.duration,
         level = excluded.level,
         maturity = excluded.maturity,
         apply_count = excluded.apply_count,
@@ -203,6 +206,7 @@ export class BehaviorRepository {
       JSON.stringify(rule.evidence.memoryIds),
       rule.evidence.confidence,
       rule.evidence.recurrenceCount,
+      rule.lifecycle.duration ?? null,
       rule.lifecycle.level,
       rule.lifecycle.maturity,
       rule.lifecycle.applyCount,
@@ -249,6 +253,44 @@ export class BehaviorRepository {
       ORDER BY updated_at DESC
       LIMIT ?
     `).all(limit) as BehaviorRuleRow[];
+
+    return rows.map((row) => this.refreshLifecycle(row));
+  }
+
+  listByDuration(input: {
+    duration: BehaviorRuleDuration;
+    userId?: string;
+    channel?: string;
+    includeInactive?: boolean;
+    includeDeprecated?: boolean;
+    includeFrozen?: boolean;
+  }): BehaviorRule[] {
+    const clauses = ['duration = ?'];
+    const params: unknown[] = [input.duration];
+
+    if (!input.includeInactive) {
+      clauses.push('active = 1');
+    }
+    if (!input.includeDeprecated) {
+      clauses.push('deprecated = 0');
+    }
+    if (!input.includeFrozen) {
+      clauses.push('(frozen IS NULL OR frozen = 0)');
+    }
+    if (input.userId) {
+      clauses.push('(applies_to_user_id IS NULL OR applies_to_user_id = ?)');
+      params.push(input.userId);
+    }
+    if (input.channel) {
+      clauses.push('(applies_to_channel IS NULL OR applies_to_channel = ?)');
+      params.push(input.channel);
+    }
+
+    const rows = this.db.prepare(`
+      SELECT * FROM behavior_rules
+      WHERE ${clauses.join(' AND ')}
+      ORDER BY updated_at DESC
+    `).all(...params) as BehaviorRuleRow[];
 
     return rows.map((row) => this.refreshLifecycle(row));
   }
@@ -323,6 +365,21 @@ export class BehaviorRepository {
         `).get() as { count: number };
 
     return row.count;
+  }
+
+  listStaleEmerging(olderThanDays: number): BehaviorRule[] {
+    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000).toISOString();
+    const rows = this.db.prepare(`
+      SELECT * FROM behavior_rules
+      WHERE maturity = 'emerging'
+        AND (apply_count IS NULL OR apply_count = 0)
+        AND created_at < ?
+        AND active = 1
+        AND deprecated = 0
+      ORDER BY created_at ASC
+    `).all(cutoff) as BehaviorRuleRow[];
+
+    return rows.map((row) => this.refreshLifecycle(row));
   }
 
   private refreshLifecycle(row: BehaviorRuleRow): BehaviorRule {

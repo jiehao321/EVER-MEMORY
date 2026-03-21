@@ -11,6 +11,7 @@ import { processAutoCapture } from '../core/memory/autoCapture.js';
 import type { AutoCaptureResult } from '../core/memory/autoCapture.js';
 import { extractLearningInsights, storeInsights } from '../core/memory/activeLearning.js';
 import { autoPromoteRules } from '../core/behavior/autoPromotion.js';
+import { sanitizeContent } from '../core/policy/sanitize.js';
 import type { SessionEndInput, SessionEndResult } from '../types.js';
 import { clearSessionContext, getInteractionContext } from '../runtime/context.js';
 import { withTimeout } from '../util/timeout.js';
@@ -32,6 +33,22 @@ function pickTriggerKind(input: SessionEndInput, correction: boolean, repeat: bo
   return null;
 }
 
+function sanitizeOptionalText(value: string | undefined): string | undefined {
+  if (!value) {
+    return value;
+  }
+  const cleaned = sanitizeContent(value).cleaned;
+  return cleaned || undefined;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('timed out');
+}
+
 export async function handleSessionEnd(
   input: SessionEndInput,
   experienceService: ExperienceService,
@@ -44,19 +61,25 @@ export async function handleSessionEnd(
   profileProjection?: ProfileProjectionService,
   housekeepingService?: MemoryHousekeepingService,
 ): Promise<SessionEndResult> {
+  const sanitizedInput: SessionEndInput = {
+    ...input,
+    inputText: sanitizeOptionalText(input.inputText),
+    actionSummary: sanitizeOptionalText(input.actionSummary),
+    outcomeSummary: sanitizeOptionalText(input.outcomeSummary),
+  };
   const interaction = getInteractionContext(input.sessionId);
   const experience = experienceService.log({
-    sessionId: input.sessionId,
-    messageId: input.messageId,
-    inputText: input.inputText,
-    actionSummary: input.actionSummary,
-    outcomeSummary: input.outcomeSummary,
+    sessionId: sanitizedInput.sessionId,
+    messageId: sanitizedInput.messageId,
+    inputText: sanitizedInput.inputText,
+    actionSummary: sanitizedInput.actionSummary,
+    outcomeSummary: sanitizedInput.outcomeSummary,
     intent: interaction?.intent,
-    evidenceRefs: input.evidenceRefs,
+    evidenceRefs: sanitizedInput.evidenceRefs,
   });
 
   const triggerKind = pickTriggerKind(
-    input,
+    sanitizedInput,
     experience.indicators.userCorrection,
     experience.indicators.repeatMistakeSignal,
   );
@@ -100,16 +123,26 @@ export async function handleSessionEnd(
     });
     return { promoted: 0 };
   });
+  // RC4: Demote stale emerging rules (applyCount=0 after EMERGING_AUTO_DEMOTE_DAYS days)
+  const staleDemoted = behaviorService.demoteStaleEmergingRules();
+
+  const expiredEphemeralRules = behaviorService.freezeRulesByDuration({
+    duration: 'ephemeral',
+    reason: 'session_expired',
+    userId: input.scope?.userId,
+    channel: input.channel,
+  });
 
   const autoCapture = await withTimeout(
     processAutoCapture(
-      input,
+      sanitizedInput,
       {
         intent: interaction?.intent,
         experience,
         reflection: reviewedReflection,
       },
       memoryService,
+      profileProjection,
       semanticRepo,
       memoryRepo,
     ),
@@ -124,7 +157,7 @@ export async function handleSessionEnd(
     return { generated: 0, accepted: 0, rejected: 0, storedIds: [], rejectedReasons: [], generatedByKind: {}, acceptedByKind: {}, acceptedIdsByKind: {} } as AutoCaptureResult;
   });
   const extractedInsights = await withTimeout(
-    extractLearningInsights(input, {
+    extractLearningInsights(sanitizedInput, {
       intent: interaction?.intent,
       reflection: reviewedReflection,
     }),
@@ -134,7 +167,7 @@ export async function handleSessionEnd(
   const learningResult = await withTimeout(
     storeInsights(
       extractedInsights,
-      input.scope ?? {},
+      sanitizedInput.scope ?? {},
       memoryService,
       semanticRepo,
     ),
@@ -151,7 +184,11 @@ export async function handleSessionEnd(
   let profileUpdated = false;
   if (input.scope?.userId && profileProjection) {
     try {
-      profileProjection.recomputeForUser(input.scope.userId);
+      await withTimeout(
+        Promise.resolve(profileProjection.recomputeForUser(input.scope.userId)),
+        3_000,
+        'recomputeForUser',
+      );
       profileUpdated = true;
     } catch (error) {
       // Profile refresh is best-effort and must never block session teardown.
@@ -172,7 +209,9 @@ export async function handleSessionEnd(
     reflectionId: reviewedReflection?.id,
     reflected: Boolean(reviewedReflection),
     promotedRules: promotionResult?.promotedRules.length ?? 0,
+    expiredEphemeralRules: expiredEphemeralRules.length,
     autoPromotedRules: autoPromotionResult.promoted,
+    staleDemotedRules: staleDemoted,
     learningInsights: learningResult.storedCount,
     autoMemoryGenerated: autoCapture.generated,
     autoMemoryAccepted: autoCapture.accepted,
@@ -191,17 +230,19 @@ export async function handleSessionEnd(
       scope: input.scope,
       limit: 1,
     })[0]?.timestamps.updatedAt;
-    await withTimeout(
-      housekeepingService.runIfNeeded(input.scope, lastRunAt),
-      15_000,
-      'housekeeping',
-    ).catch((error: unknown) => {
-      debugRepo?.log('session_end_processed', input.sessionId, {
+    try {
+      await withTimeout(
+        housekeepingService.runIfNeeded(input.scope, lastRunAt),
+        8_000,
+        'housekeeping',
+      );
+    } catch (error) {
+      debugRepo?.log('housekeeping_error', input.sessionId, {
         sessionId: input.sessionId,
-        housekeepingFailed: true,
-        housekeepingError: error instanceof Error ? error.message : String(error),
+        reason: isTimeoutError(error) ? 'timeout' : 'failed',
+        error: getErrorMessage(error),
       });
-    });
+    }
   }
 
   // Clear session context to prevent memory leak
@@ -214,6 +255,7 @@ export async function handleSessionEnd(
     promotedRules: promotionResult?.promotedRules,
     learningInsights: learningResult.storedCount,
     autoPromotedRules: autoPromotionResult.promoted,
+    staleDemotedRules: staleDemoted,
     profileUpdated,
     autoMemory: {
       generated: autoCapture.generated,

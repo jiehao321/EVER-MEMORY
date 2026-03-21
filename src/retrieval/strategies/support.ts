@@ -66,6 +66,7 @@ export interface RankedStrategyResult {
   candidates: MemoryItem[];
   semanticHitCount: number;
   candidatePolicy: CandidatePolicyStats;
+  degradationReason?: string;
 }
 
 export function sanitizeInputText(rawText: string): string {
@@ -218,4 +219,31 @@ export function resolvePositiveInteger(value: number | undefined, fallback: numb
 
 export function resolveRecallLimit(value: number | undefined, maxRecall: number): number {
   return Math.min(resolvePositiveInteger(value, DEFAULT_RECALL_LIMIT), maxRecall);
+}
+
+export interface EmptyQueryDiagnostic {
+  originalLength: number;
+  filteredLength: number;
+  droppedStopwords: string[];
+}
+
+export function diagnoseEmptyQuery(rawText: string, memoryNeed: string): EmptyQueryDiagnostic | null {
+  const trimmed = sanitizeInputText(rawText);
+  const query = pickIntentQuery(rawText, memoryNeed as 'none' | 'light' | 'targeted' | 'deep');
+  if (query.length > 0) {
+    return null;
+  }
+
+  const normalized = trimmed
+    .toLowerCase()
+    .replace(/[^a-z0-9_\u4e00-\u9fff\s]+/g, ' ')
+    .trim();
+  const tokens = normalized.split(/\s+/g).filter((t) => t.length > 0);
+  const droppedStopwords = tokens.filter((t) => DEEP_QUERY_STOPWORDS.has(t));
+
+  return {
+    originalLength: rawText.length,
+    filteredLength: trimmed.length,
+    droppedStopwords,
+  };
 }

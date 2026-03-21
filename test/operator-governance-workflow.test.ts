@@ -113,7 +113,34 @@ test('operator workflow B: sessionEnd rule promotion → explain → deprecate l
       outcomeSummary: '用户要求先确认',
       evidenceRefs: ['ops-msg-b-1'],
     });
-    const promotedRule = sessionResult.promotedRules?.[0];
+
+    assert.ok(sessionResult.reflection);
+
+    await app.messageReceived({
+      sessionId: 'ops-session-b-2',
+      messageId: 'ops-msg-b-2a',
+      text: '再次强调，高风险动作先确认再执行。',
+      scope,
+    });
+
+    await app.sessionEnd({
+      sessionId: 'ops-session-b-2',
+      messageId: 'ops-msg-b-2',
+      scope,
+      inputText: '再次更正，高风险动作必须先确认再执行。',
+      actionSummary: '再次直接执行了高风险动作',
+      outcomeSummary: '用户再次要求先确认',
+      evidenceRefs: ['ops-msg-b-2'],
+    });
+
+    const aggregatedReflection = app.evermemoryReflect({ mode: 'light' });
+    assert.ok(aggregatedReflection.reflections.length >= 1);
+
+    const promotion = app.behaviorService.promoteFromReflection({
+      reflectionId: aggregatedReflection.reflections[0]!.id,
+      appliesTo: { userId: scope.userId },
+    });
+    const promotedRule = promotion.promotedRules?.[0];
     assert.ok(promotedRule);
     const ruleId = promotedRule!.id;
 

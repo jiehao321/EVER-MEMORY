@@ -1,10 +1,14 @@
 import type { BehaviorRepository } from '../../storage/behaviorRepo.js';
+import type { SourceGrade } from '../../types/memory.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { ProfileRepository } from '../../storage/profileRepo.js';
 import type { MemoryItem, ProfileStableField, ProjectedProfile } from '../../types.js';
 import {
+  PROFILE_DERIVED_WEIGHT_CAP,
+  PROFILE_EXCLUDED_SOURCE_KINDS,
   PROFILE_EXPLICIT_THRESHOLD,
+  PROFILE_INFERRED_WEIGHT_CAP,
   PROFILE_MAX_BEHAVIOR_HINTS,
   PROFILE_MAX_MEMORY_SCAN,
 } from '../../tuning.js';
@@ -32,6 +36,38 @@ function nowIso(): string {
 
 function isExplicit(memory: MemoryItem): boolean {
   return memory.source.kind !== 'inference' && memory.scores.explicitness >= PROFILE_EXPLICIT_THRESHOLD;
+}
+
+function isExcludedSource(memory: MemoryItem): boolean {
+  return (PROFILE_EXCLUDED_SOURCE_KINDS as readonly string[]).includes(memory.source.kind);
+}
+
+function sourceGradeWeightCap(grade: SourceGrade): number {
+  switch (grade) {
+    case 'inferred':
+      return PROFILE_INFERRED_WEIGHT_CAP;
+    case 'derived':
+      return PROFILE_DERIVED_WEIGHT_CAP;
+    case 'primary':
+    default:
+      return 1.0;
+  }
+}
+
+function applySourceGradeWeight(memory: MemoryItem): MemoryItem {
+  const cap = sourceGradeWeightCap(memory.sourceGrade);
+  if (cap >= 1.0) {
+    return memory;
+  }
+  return {
+    ...memory,
+    scores: {
+      ...memory.scores,
+      confidence: memory.scores.confidence * cap,
+      importance: memory.scores.importance * cap,
+      explicitness: memory.scores.explicitness * cap,
+    },
+  };
 }
 
 function createStableField<T extends string>(value: T, evidenceRefs: Iterable<string>): ProfileStableField<T> {
@@ -92,7 +128,10 @@ export class ProfileProjectionService {
         archived: false,
         limit: this.maxMemoryScan,
       });
-      const explicitMemories = memories.filter(isExplicit)
+      const eligibleMemories = memories
+        .filter((memory) => !isExcludedSource(memory))
+        .map(applySourceGradeWeight);
+      const explicitMemories = eligibleMemories.filter(isExplicit)
         .sort((left, right) => {
           const scoreGap = memoryWeight(right) - memoryWeight(left);
           if (Math.abs(scoreGap) > 0.0001) {
@@ -145,10 +184,10 @@ export class ProfileProjectionService {
 
       const communicationStyle = explicitPreferences.communication_style
         ? undefined
-        : collectCommunicationStyle(memories);
+        : collectCommunicationStyle(eligibleMemories);
 
-      const likelyInterests = collectLikelyInterests(memories, explicitPreferences, explicitConstraints);
-      const workPatterns = collectWorkPatterns(memories, explicitConstraints);
+      const likelyInterests = collectLikelyInterests(eligibleMemories, explicitPreferences, explicitConstraints);
+      const workPatterns = collectWorkPatterns(eligibleMemories, explicitConstraints);
       const behaviorHints = dedupeStrings(
         [
           ...(existingProfile?.behaviorHints.filter(isReservedBehaviorHint) ?? []),
@@ -158,7 +197,7 @@ export class ProfileProjectionService {
         ],
       ).slice(0, PROFILE_MAX_BEHAVIOR_HINTS);
 
-      const scanned = memories.length;
+      const scanned = eligibleMemories.length;
       const profile: ProjectedProfile = {
         userId: normalizedUserId,
         updatedAt: nowIso(),
@@ -185,7 +224,7 @@ export class ProfileProjectionService {
       this.profileRepo.upsert(profile);
       this.debugRepo?.log('profile_recomputed', normalizedUserId, {
         userId: normalizedUserId,
-        memoryCount: memories.length,
+        memoryCount: eligibleMemories.length,
         stable: {
           displayName: profile.stable.displayName?.value,
           preferredAddress: profile.stable.preferredAddress?.value,

@@ -23,6 +23,9 @@ export function openDatabase(storagePath: string): DatabaseHandle {
     const connection = new Database(path);
     connection.pragma('journal_mode = WAL');
     connection.pragma('foreign_keys = ON');
+    connection.pragma('synchronous = NORMAL');
+    connection.pragma('cache_size = -8000');
+    connection.pragma('mmap_size = 30000000');
 
     return { path, connection };
   } catch (error) {

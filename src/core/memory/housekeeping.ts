@@ -2,7 +2,16 @@ import type { MemoryLifecycleService } from './lifecycle.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { DatabaseHandle } from '../../storage/db.js';
-import type { MemoryItem, MemoryScope } from '../../types.js';
+import type { SemanticRepository } from '../../storage/semanticRepo.js';
+import type { MemoryItem, MemoryScope, MemoryType } from '../../types.js';
+import {
+  STALE_THRESHOLD_DAYS_PRIMARY,
+  STALE_THRESHOLD_DAYS_DERIVED,
+  STALE_THRESHOLD_DAYS_INFERRED,
+  ARCHIVE_PROTECTION_MIN_RETRIEVALS,
+  MAX_SUMMARY_PER_PROJECT,
+  MAX_PROJECT_PER_PROJECT,
+} from '../../tuning/memory.js';
 
 export interface HousekeepingConfig {
   readonly staleThresholdDays: number;
@@ -11,15 +20,22 @@ export interface HousekeepingConfig {
   readonly maxMergePerRun: number;
   readonly debugEventRetentionDays?: number;
   readonly intentRecordRetentionDays?: number;
+  readonly bootBriefingRetentionDays?: number;
+  readonly experienceLogRetentionDays?: number;
+  readonly reflectionRecordRetentionDays?: number;
 }
 
 export interface HousekeepingResult {
   readonly mergedCount: number;
   readonly archivedCount: number;
   readonly reinforcedCount: number;
+  readonly kindLimitArchivedCount: number;
   readonly durationMs: number;
   readonly prunedDebugEvents?: number;
   readonly prunedIntentRecords?: number;
+  readonly prunedBootBriefings?: number;
+  readonly prunedExperienceLogs?: number;
+  readonly prunedReflectionRecords?: number;
 }
 
 export const DEFAULT_CONFIG: HousekeepingConfig = {
@@ -29,7 +45,14 @@ export const DEFAULT_CONFIG: HousekeepingConfig = {
   maxMergePerRun: 10,
   debugEventRetentionDays: 30,
   intentRecordRetentionDays: 14,
+  bootBriefingRetentionDays: 60,
+  experienceLogRetentionDays: 30,
+  reflectionRecordRetentionDays: 60,
 };
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+/** Upper bound when fetching all memories of a type for kind-limit enforcement */
+const KIND_LIMIT_FETCH_MAX = 10_000;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -81,6 +104,7 @@ export class MemoryHousekeepingService {
     private readonly config: HousekeepingConfig = DEFAULT_CONFIG,
     private readonly debugRepo?: DebugRepository,
     private readonly db?: DatabaseHandle,
+    private readonly semanticRepo?: SemanticRepository,
   ) {}
 
   run(scope: MemoryScope): HousekeepingResult {
@@ -95,54 +119,56 @@ export class MemoryHousekeepingService {
     const mergedCount = this.mergeNearDuplicates(candidates);
     const archivedCount = this.archiveStale(scope);
     const reinforcedCount = this.reinforceHighFrequency(scope);
+    const kindLimitArchivedCount = this.enforceKindLimits(scope);
 
-    // A7: Prune old debug events and intent records to prevent DB bloat
-    const prunedDebugEvents = this.pruneOldDebugEvents();
-    const prunedIntentRecords = this.pruneOldIntentRecords();
+    // A7: Prune old records to prevent DB bloat
+    const prunedDebugEvents = this.pruneTable('debug_events', 'created_at', this.config.debugEventRetentionDays ?? 30, 'prune_debug_events');
+    const prunedIntentRecords = this.pruneTable('intent_records', 'created_at', this.config.intentRecordRetentionDays ?? 14, 'prune_intent_records');
+    const prunedBootBriefings = this.pruneTable('boot_briefings', 'generated_at', this.config.bootBriefingRetentionDays ?? 60, 'prune_boot_briefings');
+    const prunedExperienceLogs = this.pruneTable('experience_logs', 'created_at', this.config.experienceLogRetentionDays ?? 30, 'prune_experience_logs');
+    const prunedReflectionRecords = this.pruneTable('reflection_records', 'created_at', this.config.reflectionRecordRetentionDays ?? 60, 'prune_reflection_records');
 
     return {
       mergedCount,
       archivedCount,
       reinforcedCount,
+      kindLimitArchivedCount,
       durationMs: Date.now() - startedAt,
       prunedDebugEvents,
       prunedIntentRecords,
+      prunedBootBriefings,
+      prunedExperienceLogs,
+      prunedReflectionRecords,
     };
   }
 
-  private pruneOldDebugEvents(): number {
+  /** Shared helper: delete rows older than retentionDays from any date-stamped table. */
+  private pruneTable(table: string, column: string, retentionDays: number, errorLabel: string): number {
     if (!this.db) return 0;
-    const retentionDays = this.config.debugEventRetentionDays ?? 30;
-    const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-    const cutoffIso = new Date(cutoffMs).toISOString();
+    const cutoffIso = new Date(Date.now() - retentionDays * MS_PER_DAY).toISOString();
     try {
       const result = this.db.connection.prepare(
-        `DELETE FROM debug_events WHERE created_at < ?`,
+        `DELETE FROM ${table} WHERE ${column} < ?`,
       ).run(cutoffIso);
       return result.changes;
     } catch (error: unknown) {
-      this.debugRepo?.log('housekeeping_error', 'prune_debug_events', {
+      this.debugRepo?.log('housekeeping_error', errorLabel, {
         error: error instanceof Error ? error.message : String(error),
       });
       return 0;
     }
   }
 
-  private pruneOldIntentRecords(): number {
-    if (!this.db) return 0;
-    const retentionDays = this.config.intentRecordRetentionDays ?? 14;
-    const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-    const cutoffIso = new Date(cutoffMs).toISOString();
+  /** Shared helper: remove a memory from the semantic index, logging on failure. */
+  private deleteFromIndexBestEffort(memoryId: string, errorLabel: string): void {
+    if (!this.semanticRepo) return;
     try {
-      const result = this.db.connection.prepare(
-        `DELETE FROM intent_records WHERE created_at < ?`,
-      ).run(cutoffIso);
-      return result.changes;
+      this.semanticRepo.deleteFromIndex(memoryId);
     } catch (error: unknown) {
-      this.debugRepo?.log('housekeeping_error', 'prune_intent_records', {
+      this.debugRepo?.log('housekeeping_error', errorLabel, {
+        memoryId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return 0;
     }
   }
 
@@ -188,23 +214,81 @@ export class MemoryHousekeepingService {
   }
 
   private archiveStale(scope: MemoryScope): number {
-    const cutoff = Date.now() - this.config.staleThresholdDays * 24 * 60 * 60 * 1000;
     const candidates = this.memoryRepo.search({
       scope,
       activeOnly: true,
       archived: false,
       limit: 500,
     });
+
+    // RC3: Precompute per-grade cutoffs once (not per-memory) to avoid 500× Date.now() calls
+    const nowMs = Date.now();
+    const cutoffs = {
+      primary: nowMs - STALE_THRESHOLD_DAYS_PRIMARY * MS_PER_DAY,
+      derived: nowMs - STALE_THRESHOLD_DAYS_DERIVED * MS_PER_DAY,
+      inferred: nowMs - STALE_THRESHOLD_DAYS_INFERRED * MS_PER_DAY,
+    } as const;
+
     let archived = 0;
 
     for (const memory of candidates) {
       const lastTouchedAt = parseIso(memory.timestamps.lastAccessedAt ?? memory.timestamps.updatedAt);
-      if (lastTouchedAt <= 0 || lastTouchedAt > cutoff || memory.stats.accessCount >= 2) {
+      const cutoff = cutoffs[memory.sourceGrade] ?? cutoffs.primary;
+      // RC3: Use retrievalCount (explicit recalls only) — briefing accesses excluded
+      if (
+        memory.tags.includes('pinned') ||
+        lastTouchedAt <= 0 ||
+        lastTouchedAt > cutoff ||
+        memory.stats.retrievalCount >= ARCHIVE_PROTECTION_MIN_RETRIEVALS
+      ) {
         continue;
       }
 
       this.memoryRepo.update(toArchived(memory, nowIso()));
+      this.deleteFromIndexBestEffort(memory.id, 'archive_stale_semantic_index');
       archived += 1;
+    }
+
+    return archived;
+  }
+
+  /**
+   * RC3: Enforce per-project count limits on summary and project memory types.
+   * Archives oldest excess memories when limits are exceeded.
+   */
+  private enforceKindLimits(scope: MemoryScope): number {
+    const LIMITS: Array<{ type: MemoryType; max: number }> = [
+      { type: 'summary', max: MAX_SUMMARY_PER_PROJECT },
+      { type: 'project', max: MAX_PROJECT_PER_PROJECT },
+    ];
+
+    let archived = 0;
+
+    for (const { type, max } of LIMITS) {
+      // Fetch all of this type to ensure we archive every excess, not just the first 50
+      const candidates = this.memoryRepo.search({
+        scope,
+        types: [type],
+        activeOnly: true,
+        archived: false,
+        limit: KIND_LIMIT_FETCH_MAX,
+      });
+
+      if (candidates.length <= max) {
+        continue;
+      }
+
+      // Sort oldest first (by createdAt ascending) — archive the excess
+      const sorted = [...candidates].sort(
+        (a, b) => parseIso(a.timestamps.createdAt) - parseIso(b.timestamps.createdAt),
+      );
+      const excess = sorted.slice(0, candidates.length - max);
+
+      for (const memory of excess) {
+        this.memoryRepo.update(toArchived(memory, nowIso()));
+        this.deleteFromIndexBestEffort(memory.id, 'kind_limit_semantic_index');
+        archived += 1;
+      }
     }
 
     return archived;

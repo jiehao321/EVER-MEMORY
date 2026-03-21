@@ -27,6 +27,7 @@ export interface HostBinding {
   chatId?: string;
   channel?: string;
   sessionKey?: string;
+  project?: string;
 }
 
 export interface OpenClawLogger {
@@ -128,6 +129,19 @@ function inferChannelFromSessionKey(sessionKey: string | undefined): string | un
   ));
 }
 
+function basename(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.replace(/\\/g, '/').replace(/\/+$/g, '');
+  if (!normalized) {
+    return undefined;
+  }
+  const parts = normalized.split('/');
+  const last = parts[parts.length - 1]?.trim();
+  return last || undefined;
+}
+
 function buildRuntimeConfig(api: { pluginConfig?: UnknownRecord; resolvePath: (input: string) => string }) {
   const config = isRecord(api.pluginConfig) ? { ...api.pluginConfig } : {};
   const defaultPath = getDefaultConfig().databasePath;
@@ -178,6 +192,8 @@ function resolveHostBinding(event: unknown, context: unknown): HostBinding {
     .map((source) => pickFirstString(source, [
       ['chatId'],
       ['chat_id'],
+      ['openChatId'],
+      ['open_chat_id'],
       ['conversationId'],
       ['conversation_id'],
       ['threadId'],
@@ -187,16 +203,26 @@ function resolveHostBinding(event: unknown, context: unknown): HostBinding {
       ['chat', 'id'],
       ['chat', 'chatId'],
       ['chat', 'chat_id'],
+      ['chat', 'openChatId'],
+      ['chat', 'open_chat_id'],
       ['conversation', 'id'],
       ['conversation', 'chatId'],
       ['conversation', 'chat_id'],
+      ['conversation', 'openChatId'],
+      ['conversation', 'open_chat_id'],
       ['message', 'chatId'],
       ['message', 'chat_id'],
+      ['message', 'openChatId'],
+      ['message', 'open_chat_id'],
       ['message', 'conversationId'],
       ['message', 'conversation_id'],
+      ['message', 'chat', 'id'],
+      ['message', 'chat', 'chatId'],
+      ['message', 'chat', 'chat_id'],
+      ['message', 'chat', 'openChatId'],
+      ['message', 'chat', 'open_chat_id'],
     ]))
-    .find((value) => Boolean(value))
-    ?? sessionKey;
+    .find((value) => Boolean(value));
   const channel = (
     sources
       .map((source) => pickFirstString(source, [
@@ -214,11 +240,48 @@ function resolveHostBinding(event: unknown, context: unknown): HostBinding {
       .find((value) => Boolean(value))
     ?? inferChannelFromSessionKey(sessionKey)
   );
+  const project = sources
+    .map((source) => pickFirstString(source, [
+      ['project'],
+      ['projectId'],
+      ['project_id'],
+      ['projectName'],
+      ['project_name'],
+      ['workspace'],
+      ['workspaceId'],
+      ['workspace_id'],
+      ['workspaceName'],
+      ['workspace_name'],
+      ['repo'],
+      ['repoName'],
+      ['repo_name'],
+      ['repository'],
+      ['repository', 'name'],
+      ['repository', 'fullName'],
+      ['meta', 'project'],
+      ['meta', 'projectId'],
+      ['meta', 'projectName'],
+      ['context', 'project'],
+      ['context', 'projectId'],
+      ['context', 'projectName'],
+    ]))
+    .find((value) => Boolean(value))
+    ?? sources
+      .map((source) => pickFirstString(source, [
+        ['cwd'],
+        ['workspacePath'],
+        ['workspace_path'],
+        ['repoPath'],
+        ['repo_path'],
+      ]))
+      .map((value) => basename(value))
+      .find((value) => Boolean(value));
   return {
     userId,
     chatId,
     channel,
     sessionKey,
+    project,
   };
 }
 
@@ -230,7 +293,7 @@ function createScopeState(sessionId: string, binding: HostBinding = {}): Session
     scope: {
       userId: binding.userId,
       chatId,
-      project: PLUGIN_NAME,
+      project: binding.project,
     },
   };
 }
@@ -248,7 +311,7 @@ function mergeScopeState(
     scope: {
       userId: binding.userId ?? current.scope.userId,
       chatId: binding.chatId ?? current.scope.chatId ?? nextSessionKey ?? sessionId,
-      project: current.scope.project ?? PLUGIN_NAME,
+      project: binding.project ?? current.scope.project,
     },
   };
 }
@@ -309,6 +372,6 @@ export function resolveToolScope(
   return {
     userId: toolBinding.userId ?? scopeState?.scope.userId,
     chatId: toolBinding.chatId ?? scopeState?.scope.chatId ?? toolBinding.sessionKey,
-    project: scopeState?.scope.project ?? PLUGIN_NAME,
+    project: toolBinding.project ?? scopeState?.scope.project,
   };
 }

@@ -2,11 +2,12 @@
 
 ## Tools
 
-EverMemory exports 16 tool functions from `src/tools/index.ts`.
+EverMemory exports 19 SDK tool functions from `src/tools/index.ts`.
 
 - TypeScript SDK names use camelCase (e.g. `evermemoryStore`).
 - OpenClaw registered names use snake_case (e.g. `evermemory_store`).
 - `evermemorySmartness` is exported by the SDK but not currently registered in OpenClaw.
+- OpenClaw currently registers 18 tools; the remaining SDK capability is `evermemorySmartness`.
 
 ### evermemoryStore
 OpenClaw: `evermemory_store` (`memory_store`)
@@ -664,6 +665,125 @@ Restore archived memories.
 }
 ```
 
+### evermemoryEdit
+OpenClaw: `evermemory_edit`
+
+Edit, delete, correct, merge, pin, or unpin a memory item.
+
+**Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| memoryId | string | Yes | Target memory ID. |
+| action | `'update' \| 'delete' \| 'correct' \| 'merge' \| 'pin' \| 'unpin'` | Yes | Edit action to perform. |
+| newContent | string | No | New content (for update/correct). |
+| mergeWithId | string | No | ID to merge with (for merge action). |
+| reason | string | No | Reason for the edit. |
+
+**Returns**: `EverMemoryEditToolResult`
+```ts
+{
+  success: boolean;
+  error?: string;
+  previous: { id: string; content: string; type: MemoryType; lifecycle: MemoryLifecycle } | null;
+  current: { id: string; content: string; type: MemoryType; lifecycle: MemoryLifecycle } | null;
+}
+```
+
+**Example**:
+```json
+{
+  "memoryId": "mem_001",
+  "action": "correct",
+  "newContent": "User prefers dark mode in all IDEs",
+  "reason": "Updated preference"
+}
+```
+
+### evermemoryBrowse
+OpenClaw: `evermemory_browse`
+
+Browse and filter memories with sorting and at-risk flagging.
+
+**Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| type | `MemoryType \| 'all'` | No | Filter by type. |
+| lifecycle | `MemoryLifecycle` | No | Filter by lifecycle. |
+| limit | number | No | Maximum items. |
+| sortBy | `'recent' \| 'importance' \| 'accessed' \| 'written'` | No | Sort order. |
+| sinceMinutesAgo | number | No | Only items updated within N minutes. |
+| scope | `MemoryScope` | No | Filter by scope. |
+| source | string | No | Filter by source kind. |
+
+**Returns**: `EverMemoryBrowseToolResult`
+```ts
+{
+  items: Array<{
+    id: string;
+    content: string;
+    type: MemoryType;
+    lifecycle: MemoryLifecycle;
+    confidence: number;
+    lastAccessedAt?: string;
+    ageInDays: number;
+    atRiskOfArchival: boolean;
+  }>;
+  total: number;
+  summary: string;
+}
+```
+
+**Example**:
+```json
+{
+  "type": "preference",
+  "sortBy": "recent",
+  "limit": 10
+}
+```
+
+### evermemoryRelations
+OpenClaw: `evermemory_relations`
+
+Manage memory relations (knowledge graph edges).
+
+**Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| action | `'list' \| 'add' \| 'remove' \| 'graph'` | Yes | Action to perform. |
+| memoryId | string | No | Source memory ID (required for list/add/graph). |
+| targetId | string | No | Target memory ID (required for add). |
+| relationType | `RelationType` | No | Relation type: `causes \| contradicts \| supports \| evolves_from \| supersedes \| depends_on \| related_to` (required for add). |
+| confidence | number | No | Confidence score (0-1). |
+| depth | number | No | Graph traversal depth (for graph action, default 2). |
+| limit | number | No | Max results. |
+| relationId | string | No | Relation ID (for remove action). |
+
+**Returns**: `EverMemoryRelationsToolResult`
+```ts
+{
+  action: RelationsAction;
+  relations?: MemoryRelation[];
+  graph?: GraphNode[];
+  added?: MemoryRelation;
+  removed?: boolean;
+  total: number;
+}
+```
+
+**Example**:
+```json
+{
+  "action": "graph",
+  "memoryId": "mem_001",
+  "depth": 2,
+  "limit": 20
+}
+```
+
 ## OpenClaw Name Mapping
 
 | SDK Name | OpenClaw Name |
@@ -684,3 +804,6 @@ Restore archived memories.
 | evermemoryImport | `evermemory_import`, `memory_import` |
 | evermemoryReview | `evermemory_review` |
 | evermemoryRestore | `evermemory_restore` |
+| evermemoryEdit | `evermemory_edit` |
+| evermemoryBrowse | `evermemory_browse` |
+| evermemoryRelations | `evermemory_relations` |

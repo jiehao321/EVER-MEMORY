@@ -15,9 +15,16 @@ import {
   WRITE_MIN_CONTENT_LENGTH,
 } from '../../tuning.js';
 import { PolicyError } from '../../errors.js';
+import { sanitizeContent } from './sanitize.js';
 
-function normalizeText(text: string): string {
-  return text.trim();
+interface NormalizeResult {
+  readonly text: string;
+  readonly strippedPatterns: string[];
+}
+
+function normalizeText(text: string): NormalizeResult {
+  const result = sanitizeContent(text.trim());
+  return { text: result.cleaned, strippedPatterns: result.strippedPatterns };
 }
 
 function inferType(content: string, fallback?: MemoryType): MemoryType | undefined {
@@ -124,50 +131,64 @@ function resolveScore(
   return value;
 }
 
+function addStrippedPatterns(
+  decision: WriteDecision,
+  strippedPatterns: string[],
+  cleanedContent?: string,
+): WriteDecision {
+  if (strippedPatterns.length === 0 && cleanedContent === undefined) {
+    return decision;
+  }
+  return {
+    ...decision,
+    strippedPatterns: strippedPatterns.length > 0 ? strippedPatterns : undefined,
+    cleanedContent,
+  };
+}
+
 export function evaluateWrite(input: MemoryStoreInput): WriteDecision {
-  const content = normalizeText(input.content);
+  const { text: content, strippedPatterns } = normalizeText(input.content);
 
   if (content.length === 0) {
-    return {
-      accepted: false,
-      reason: 'empty_content',
-    };
+    return addStrippedPatterns({ accepted: false, reason: 'empty_content' }, strippedPatterns, content);
   }
 
   if (content.length > WRITE_MAX_CONTENT_LENGTH) {
-    return {
-      accepted: false,
-      reason: 'content_too_long',
-    };
+    return addStrippedPatterns({ accepted: false, reason: 'content_too_long' }, strippedPatterns, content);
   }
 
   if (content.length < WRITE_MIN_CONTENT_LENGTH || LOW_VALUE_PATTERNS.some((pattern) => pattern.test(content))) {
-    return {
-      accepted: false,
-      reason: 'low_value_chatter',
-    };
+    return addStrippedPatterns({ accepted: false, reason: 'low_value_chatter' }, strippedPatterns, content);
   }
 
   const type = inferType(content, input.type);
   if (!type) {
-    return {
-      accepted: false,
-      reason: 'type_not_determined',
-    };
+    return addStrippedPatterns({ accepted: false, reason: 'type_not_determined' }, strippedPatterns, content);
   }
 
   const lifecycle = inferLifecycle(type, input.lifecycle);
   const confidence = resolveScore(input.confidence, inferConfidence(type), 'confidence', input);
   const importance = resolveScore(input.importance, inferImportance(type), 'importance', input);
   const explicitness = resolveScore(input.explicitness, inferExplicitness(content), 'explicitness', input);
+  // RC1-1D: Cap importance for derived/inferred sources
+  let cappedImportance = importance;
+  if (input.sourceGrade === 'derived') {
+    cappedImportance = Math.min(importance, 0.6);
+  } else if (input.sourceGrade === 'inferred') {
+    cappedImportance = Math.min(importance, 0.4);
+  }
 
-  return {
-    accepted: true,
-    reason: 'accepted_by_deterministic_baseline',
-    type,
-    lifecycle,
-    confidence,
-    importance,
-    explicitness,
-  };
+  return addStrippedPatterns(
+    {
+      accepted: true,
+      reason: 'accepted_by_deterministic_baseline',
+      type,
+      lifecycle,
+      confidence,
+      importance: cappedImportance,
+      explicitness,
+    },
+    strippedPatterns,
+    content,
+  );
 }

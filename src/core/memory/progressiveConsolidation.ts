@@ -1,0 +1,62 @@
+import type { MemoryCompressionService } from './compression.js';
+import type { MemoryRepository } from '../../storage/memoryRepo.js';
+
+const PROGRESSIVE_INTERVAL = 5; // every 5 messages
+const PROGRESSIVE_MIN_MEMORIES = 100; // only when >100 active memories
+
+type CountableMemoryRepository = MemoryRepository & {
+  countActive?: () => number;
+};
+
+export class ProgressiveConsolidationService {
+  private messageCounter: Map<string, number> = new Map();
+
+  constructor(
+    private readonly compressionService: MemoryCompressionService,
+    private readonly memoryRepo: MemoryRepository,
+  ) {}
+
+  /**
+   * Called on each messageReceived. Increments counter.
+   * Returns true if consolidation was triggered.
+   */
+  onMessage(sessionId: string): { triggered: boolean; result?: any } {
+    const count = (this.messageCounter.get(sessionId) ?? 0) + 1;
+    this.messageCounter.set(sessionId, count);
+
+    if (count % PROGRESSIVE_INTERVAL !== 0) {
+      return { triggered: false };
+    }
+
+    // Check if enough active memories to justify consolidation
+    const activeCount = (this.memoryRepo as CountableMemoryRepository).countActive?.() ?? this.estimateActiveCount();
+    if (activeCount < PROGRESSIVE_MIN_MEMORIES) {
+      return { triggered: false };
+    }
+
+    try {
+      const result = this.compressionService.compress({
+        maxClusters: 1, // Light mode - only 1 cluster per run
+        minClusterSize: 3,
+      });
+      return { triggered: true, result };
+    } catch {
+      return { triggered: false };
+    }
+  }
+
+  /** Reset counter for a session (on session end) */
+  resetSession(sessionId: string): void {
+    this.messageCounter.delete(sessionId);
+  }
+
+  private estimateActiveCount(): number {
+    try {
+      const all = this.memoryRepo.search({ activeOnly: true, limit: 1 });
+      // If search returns results, there are at least some memories
+      return all.length > 0 ? PROGRESSIVE_MIN_MEMORIES + 1 : 0;
+    } catch {
+      return 0;
+    }
+  }
+}

@@ -7,18 +7,30 @@ import { SmartnessMetricsService } from './core/analytics/smartnessMetrics.js';
 import { IntentService } from './core/intent/service.js';
 import { MemoryExportService } from './core/io/exportService.js';
 import { MemoryArchiveService } from './core/memory/archive.js';
+import { MemoryCompressionService } from './core/memory/compression.js';
+import { ContradictionMonitor } from './core/memory/contradictionMonitor.js';
 import { MemoryHousekeepingService } from './core/memory/housekeeping.js';
 import { MemoryLifecycleService } from './core/memory/lifecycle.js';
+import { MicroReflectionService } from './core/memory/microReflection.js';
+import { PredictiveContextService } from './core/memory/predictiveContext.js';
+import { ProactiveAlertsService } from './core/memory/proactiveAlerts.js';
+import { ProactiveRecallService } from './core/memory/proactiveRecall.js';
+import { ProgressiveConsolidationService } from './core/memory/progressiveConsolidation.js';
+import { RelationDetectionService } from './core/memory/relationDetection.js';
 import { MemoryService } from './core/memory/service.js';
+import { SelfTuningDecayService } from './core/memory/selfTuningDecay.js';
 import { MemoryTransferService } from './core/memory/transfer.js';
 import { OnboardingService } from './core/profile/onboarding.js';
 import { CrossProjectTransferService } from './core/profile/crossProjectTransfer.js';
+import { DriftDetectionService } from './core/profile/driftDetection.js';
 import { ProfileProjectionService } from './core/profile/projection.js';
 import { ExperienceService } from './core/reflection/experience.js';
 import { ReflectionService } from './core/reflection/service.js';
 import { handleMessageReceived } from './hooks/messageReceived.js';
 import { handleSessionEnd } from './hooks/sessionEnd.js';
 import { handleSessionStart } from './hooks/sessionStart.js';
+import { embeddingManager } from './embedding/manager.js';
+import { AdaptiveWeightsService } from './retrieval/adaptiveWeights.js';
 import { RetrievalService } from './retrieval/service.js';
 import { getInteractionContext, getSessionContext } from './runtime/context.js';
 import { BehaviorRepository } from './storage/behaviorRepo.js';
@@ -30,7 +42,9 @@ import { IntentRepository } from './storage/intentRepo.js';
 import { runMigrations } from './storage/migrations.js';
 import { MemoryRepository } from './storage/memoryRepo.js';
 import { ProfileRepository } from './storage/profileRepo.js';
+import { FeedbackRepository } from './storage/feedbackRepo.js';
 import { ReflectionRepository } from './storage/reflectionRepo.js';
+import { RelationRepository } from './storage/relationRepo.js';
 import { SemanticRepository } from './storage/semanticRepo.js';
 import {
   evermemoryBriefing,
@@ -44,6 +58,7 @@ import {
   evermemoryOnboard,
   evermemoryProfile,
   evermemoryRecall,
+  evermemoryRelations,
   evermemoryRestore,
   evermemoryReflect,
   evermemoryReview,
@@ -94,6 +109,7 @@ import type {
 } from './types.js';
 import type { EverMemoryEditToolInput, EverMemoryEditToolResult } from './tools/edit.js';
 import type { EverMemoryBrowseToolInput, EverMemoryBrowseToolResult } from './tools/browse.js';
+import type { EverMemoryRelationsToolInput, EverMemoryRelationsToolResult } from './tools/relations.js';
 
 export * from './errors.js';
 export * from './core/io/exportService.js';
@@ -118,11 +134,26 @@ export function getDefaultConfig(): EverMemoryConfig {
   return { ...defaultConfig };
 }
 
+function logEmbeddingInitStatus(
+  debugRepo: DebugRepository,
+  payload: Record<string, unknown>,
+): void {
+  try {
+    debugRepo.log('embedding_init_status', undefined, payload);
+  } catch (error) {
+    console.warn('[EverMemory] Failed to log embedding init status.', error);
+  }
+}
+
 export function initializeEverMemory(
   configInput: EverMemoryConfigInput = {},
   options: InitializeEverMemoryOptions = {},
 ) {
   const config = loadConfig(configInput);
+  const provider = (process.env.EVERMEMORY_EMBEDDING_PROVIDER ?? 'local') as
+    | 'local'
+    | 'openai'
+    | 'none';
   const database = openDatabase(config.databasePath);
   runMigrations(database.connection, database.path);
 
@@ -134,7 +165,25 @@ export function initializeEverMemory(
   const reflectionRepo = new ReflectionRepository(database.connection);
   const behaviorRepo = new BehaviorRepository(database.connection);
   const semanticRepo = new SemanticRepository(database.connection);
+  const relationRepo = new RelationRepository(database.connection);
+  const feedbackRepo = new FeedbackRepository(database.connection);
   const profileRepo = new ProfileRepository(database.connection);
+  embeddingManager.configure({
+    provider,
+    onInitProgress: (stage, detail) => {
+      logEmbeddingInitStatus(debugRepo, {
+        provider,
+        stage,
+        detail,
+      });
+    },
+    onDebugEvent: (payload) => {
+      logEmbeddingInitStatus(debugRepo, {
+        provider,
+        ...payload,
+      });
+    },
+  });
 
   const profileService = new ProfileProjectionService(
     memoryRepo,
@@ -144,13 +193,37 @@ export function initializeEverMemory(
   );
   const lifecycleService = new MemoryLifecycleService(memoryRepo, debugRepo);
   const crossProjectTransferService = new CrossProjectTransferService(memoryRepo);
+  const relationDetectionService = new RelationDetectionService(
+    relationRepo,
+    semanticRepo,
+    memoryRepo,
+    debugRepo,
+  );
   const memoryService = new MemoryService(memoryRepo, debugRepo, {
     semanticEnabled: config.semantic.enabled,
     semanticRepo,
     lifecycleService,
     profileProjectionService: profileService,
+    relationDetectionService,
   });
-  const housekeepingService = new MemoryHousekeepingService(memoryRepo, lifecycleService, undefined, debugRepo, database);
+  const microReflectionService = new MicroReflectionService(feedbackRepo);
+  const contradictionMonitor = new ContradictionMonitor(relationRepo, memoryRepo, debugRepo);
+  const proactiveRecallService = new ProactiveRecallService(relationRepo, memoryRepo);
+  const adaptiveWeightsService = new AdaptiveWeightsService(feedbackRepo);
+  const compressionService = new MemoryCompressionService(memoryRepo, relationRepo, debugRepo);
+  const predictiveContextService = new PredictiveContextService(intentRepo, memoryRepo);
+  const proactiveAlertsService = new ProactiveAlertsService(memoryRepo);
+  const selfTuningDecayService = new SelfTuningDecayService(feedbackRepo, debugRepo);
+  const progressiveConsolidationService = new ProgressiveConsolidationService(compressionService, memoryRepo);
+  const driftDetectionService = new DriftDetectionService(debugRepo);
+  const housekeepingService = new MemoryHousekeepingService(
+    memoryRepo,
+    lifecycleService,
+    undefined,
+    debugRepo,
+    database,
+    semanticRepo,
+  );
   const smartnessMetricsService = new SmartnessMetricsService(memoryRepo, debugRepo);
   const onboardingService = new OnboardingService(
     memoryService,
@@ -166,6 +239,7 @@ export function initializeEverMemory(
     maxRecall: config.maxRecall,
     keywordWeights: config.retrieval.keywordWeights,
     hybridWeights: config.retrieval.hybridWeights,
+    relationRepo,
   });
   const briefingService = new BriefingService(
     memoryRepo,
@@ -193,6 +267,24 @@ export function initializeEverMemory(
     profileService,
   });
 
+  // 2A: Embedding warmup on plugin start
+  void (async () => {
+    try {
+      const warmupResult = await embeddingManager.warmup();
+      logEmbeddingInitStatus(debugRepo, {
+        provider: warmupResult.provider,
+        isReady: warmupResult.ready,
+        elapsedMs: warmupResult.elapsedMs,
+      });
+    } catch (error) {
+      logEmbeddingInitStatus(debugRepo, {
+        provider,
+        stage: 'warmup_error',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  })();
+
   return {
     config,
     database,
@@ -204,8 +296,21 @@ export function initializeEverMemory(
     reflectionRepo,
     behaviorRepo,
     semanticRepo,
+    relationRepo,
+    feedbackRepo,
     profileRepo,
     memoryService,
+    relationDetectionService,
+    microReflectionService,
+    contradictionMonitor,
+    proactiveRecallService,
+    adaptiveWeightsService,
+    compressionService,
+    predictiveContextService,
+    proactiveAlertsService,
+    selfTuningDecayService,
+    progressiveConsolidationService,
+    driftDetectionService,
     housekeepingService,
     retrievalService,
     briefingService,
@@ -249,6 +354,8 @@ export function initializeEverMemory(
         debugRepo,
         semanticRepo,
         memoryRepo,
+        proactiveRecallService,
+        contradictionMonitor,
       );
     },
     async sessionEnd(input: SessionEndInput): Promise<SessionEndResult> {
@@ -316,6 +423,9 @@ export function initializeEverMemory(
     },
     evermemoryBrowse(input: EverMemoryBrowseToolInput = {}): EverMemoryBrowseToolResult {
       return evermemoryBrowse(memoryRepo, input);
+    },
+    evermemoryRelations(input: EverMemoryRelationsToolInput): EverMemoryRelationsToolResult {
+      return evermemoryRelations(relationRepo, input, debugRepo);
     },
     evermemoryStatus(input: { userId?: string; sessionId?: string } = {}): EverMemoryStatusToolResult {
       return evermemoryStatus({

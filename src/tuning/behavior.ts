@@ -5,6 +5,9 @@
 /** Days of inactivity before a behavior rule enters "aging" staleness */
 export const BEHAVIOR_AGING_AFTER_DAYS = 14;
 
+/** Maximum lifetime window for an ephemeral behavior rule before session freeze logic should treat it as stale. */
+export const BEHAVIOR_EPHEMERAL_MAX_HOURS = 4;
+
 /** Days of inactivity before a behavior rule enters "stale" staleness */
 export const BEHAVIOR_STALE_AFTER_DAYS = 30;
 
@@ -54,7 +57,7 @@ export const BEHAVIOR_STALE_VALIDATED_THRESHOLD = 4;
 export const PROMOTION_MIN_CONFIDENCE = 0.75;
 
 /** Minimum recurrence count for style-category rules */
-export const PROMOTION_MIN_RECUR_FOR_STYLE = 2;
+export const PROMOTION_MIN_RECUR_FOR_STYLE = 4;
 
 /** Minimum statement length for a behavior rule (characters) */
 export const PROMOTION_MIN_STATEMENT_LENGTH = 10;
@@ -194,3 +197,9 @@ export const BEHAVIOR_PROMOTION_CANDIDATE_LIMIT = 200;
 
 /** Default limit for listRecentRules */
 export const BEHAVIOR_DEFAULT_RECENT_RULES_LIMIT = 20;
+
+/** Minimum recurrence count for non-safety categories before promotion */
+export const PROMOTION_MIN_RECUR_DEFAULT = 2;
+
+/** Days of zero applyCount after which an emerging rule auto-demotes to candidate */
+export const EMERGING_AUTO_DEMOTE_DAYS = 7;

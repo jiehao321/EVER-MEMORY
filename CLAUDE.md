@@ -1,18 +1,18 @@
 # EverMemory Guide (CLAUDE)
 
 ## Project Overview
-- EverMemory: deterministic memory plugin for OpenClaw, current version v1.0.3.
+- EverMemory: deterministic memory plugin for OpenClaw, current version v2.0.0-rc1.
 - Goal: reliable, explainable, rollback-capable workflows for knowledge storage, recall, rule governance, and user profiling.
 - Stack: Node.js 22.x, TypeScript strict ESM, SQLite WAL, better-sqlite3, TypeBox.
 - Principles: determinism first, operator first, progressive hardening.
 
 ## Architecture
-- `src/core/`: memory, behavior, briefing, intent, reflection, profile, analytics, I/O, policy, setup.
+- `src/core/`: memory (+ relation detection, micro-reflection, proactive recall, contradiction monitor, compression, predictive context, drift detection, proactive alerts, self-tuning decay, progressive consolidation), behavior, briefing, intent, reflection, profile, analytics, I/O, policy, setup.
 - `src/retrieval/`: structured, keyword, hybrid, semantic retrieval strategies.
 - `src/embedding/`: none/local/openai provider abstraction with graceful degradation.
-- `src/storage/`: SQLite repositories, idempotent migrations, debug/profile/experience/semantic tables.
+- `src/storage/`: SQLite repositories, idempotent migrations, debug/profile/experience/semantic/relation/feedback tables.
 - `src/hooks/` & `src/openclaw/`: lifecycle hooks and OpenClaw plugin adapter.
-- `src/tools/`: 16 tool implementations (store, recall, rules, briefing, status, import/export, profile, etc.).
+- `src/tools/`: 19 tool implementations (store, recall, edit, browse, relations, rules, briefing, status, import/export, profile, etc.).
 - `test/` + `scripts/`: test suites and CI/operations scripts.
 
 ## Build & Validation
@@ -43,11 +43,13 @@ npm run release:preflight  # Cross-platform install & version consistency check
 - Run `npm run validate` before commits; `teams:release` before publishing.
 
 ## Current Status
-- Version: v1.0.3 (2026-03-16)
-- Tests: 110/110 pass; stability check 全绿（recall accuracy=1.0, unitTestPassRate=1.0）.
+- Version: v2.0.0-rc1 (2026-03-21)
+- Tests: 413/413 pass; stability check 全绿（recall accuracy=1.0, unitTestPassRate=1.0）.
 - KPI: recall accuracy=1.0, unit pass=1.0, continuity=true, autoCaptureAcceptRate=0.75.
-- 18 tools (evermemory_edit + evermemory_browse 已注册), 9 schema migrations, built-in semantic search.
-- Track A/B/C/D 质量冲刺全部完成，B4 autoCapture 维度已补全。
+- 19 tools (16 original + evermemory_edit + evermemory_browse + evermemory_relations), 18 schema migrations, built-in semantic search.
+- Knowledge graph with 7 relation types, proactive recall, contradiction monitoring, adaptive retrieval weights.
+- Memory compression, predictive context, preference drift detection, self-tuning decay.
+- Track A/B/C/D 质量冲刺全部完成，Phase 1-3 进化全部完成。
 
 ## Recent Changes (2026-03-16 Quality Sprint)
 
@@ -104,6 +106,35 @@ node --test 'dist-test/test/**/*.test.js' 'dist-test/test/*.test.js'
 - **SEC-2**: `pruneOldDebugEvents` / `pruneOldIntentRecords` errors now logged via `debugRepo` (kind: `housekeeping_error`) instead of silently swallowed.
 - **SEC-3**: `promoteFromReflection` captures a single `batchTimestamp = nowIso()` before the transaction; all frozen/promoted rule timestamps are consistent within a batch.
 - **PKG**: `package.json` `test:unit` updated from `find` to glob pattern — no longer depends on RTK not being present.
+
+## Evolution Sprint (2026-03-21 Phase 1-3)
+
+### Phase 1 — Knowledge Graph Infrastructure
+- **Schema v14**: `memory_relations` table (7 relation types) + `graph_stats` cache table
+- **Schema v15**: `retrieval_feedback` table for used/ignored/unknown signals
+- `RelationRepository` with recursive CTE traversal (BFS, causal chain, shortest path, contradiction cluster, evolution timeline)
+- `RelationDetectionService` — auto-detect relations on store with 2s timeout
+- `MicroReflectionService` — in-session tracking of recalled memory usage
+- `FeedbackRepository` — retrieval signal persistence and strategy aggregation
+- Graph tuning constants in `src/tuning/graph.ts`
+
+### Phase 2 — Proactive Intelligence
+- `ProactiveRecallService` — graph expansion + expiring commitments + profile matching → top 3 proactive items
+- `ContradictionMonitor` — real-time contradiction detection on store → alert queue → drain on messageReceived
+- `AdaptiveWeightsService` — 30-day feedback aggregation adjusts hybrid retrieval weights
+- Graph-enhanced hybrid retrieval — boost graph-connected items from top-5 results
+- `evermemory_relations` tool — list, add, remove, graph actions
+
+### Phase 3 — Continuous Evolution
+- **Schema v16**: compression columns on `memory_items`
+- **Schema v17**: `preference_drift_log` table
+- **Schema v18**: `tuning_overrides` table
+- `MemoryCompressionService` — greedy clustering → summary memory + archive originals + transfer relations
+- `PredictiveContextService` — intent pattern analysis → memory type prediction → session cache
+- `DriftDetectionService` — profile preference change/reversal detection
+- `ProactiveAlertsService` — decay warnings + commitment reminders
+- `SelfTuningDecayService` — per-(type, sourceGrade) decay multiplier adjustment every 10 sessions
+- `ProgressiveConsolidationService` — every 5 messages triggers light compression if >100 active memories
 
 ## Stability Verification
 ```bash

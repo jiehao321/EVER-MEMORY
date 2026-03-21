@@ -1,5 +1,7 @@
 import type { MemoryLifecycle, MemoryType, RetrievalMode } from './primitives.js';
 
+export type SourceGrade = 'primary' | 'derived' | 'inferred';
+
 export interface MemoryScope {
   userId?: string;
   chatId?: string;
@@ -8,6 +10,8 @@ export interface MemoryScope {
 }
 
 export interface MemorySource {
+  // Source kind records the ingestion channel only.
+  // Generation mechanisms such as auto-capture are represented by tags, not source.kind values.
   kind:
     | 'message'
     | 'tool'
@@ -69,6 +73,7 @@ export interface MemoryItem {
   tags: string[];
   relatedEntities: string[];
   stats: MemoryStats;
+  sourceGrade: SourceGrade;
   metadata?: {
     source?: string;
     semanticScore?: number;
@@ -83,6 +88,8 @@ export interface WriteDecision {
   confidence?: number;
   importance?: number;
   explicitness?: number;
+  strippedPatterns?: string[];
+  cleanedContent?: string;
 }
 
 export interface RecallRequest {
@@ -92,6 +99,14 @@ export interface RecallRequest {
   lifecycles?: MemoryLifecycle[];
   mode?: RetrievalMode;
   limit?: number;
+  createdAfter?: string;
+  createdBefore?: string;
+}
+
+export interface RecallResultMeta {
+  durationMs?: number;
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 export interface RecallResult {
@@ -100,7 +115,10 @@ export interface RecallResult {
   limit: number;
   strategyUsed?: RetrievalMode;
   semanticFallback?: boolean;
+  degraded?: boolean;
+  degradedReason?: string;
   nudge?: string;
+  meta?: RecallResultMeta;
 }
 
 export interface MemoryStoreInput {
@@ -116,6 +134,7 @@ export interface MemoryStoreInput {
   evidence?: MemoryEvidence;
   tags?: string[];
   relatedEntities?: string[];
+  sourceGrade?: SourceGrade;
   active?: boolean;
   archived?: boolean;
   supersededBy?: string;
@@ -131,6 +150,8 @@ export interface MemorySearchFilters {
   activeOnly?: boolean;
   archived?: boolean;
   limit?: number;
+  createdAfter?: string;
+  createdBefore?: string;
 }
 
 export interface MemoryStoreResult {

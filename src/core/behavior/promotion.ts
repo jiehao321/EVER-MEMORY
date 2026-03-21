@@ -11,10 +11,13 @@ import {
   LEVEL_CRITICAL_PRIORITY_THRESHOLD,
   PROMOTION_MAX_STATEMENT_LENGTH,
   PROMOTION_MIN_CONFIDENCE,
+  PROMOTION_MIN_RECUR_DEFAULT,
   PROMOTION_MIN_RECUR_FOR_STYLE,
   PROMOTION_MIN_STATEMENT_LENGTH,
   PROMOTION_VALIDATED_RECURRENCE_THRESHOLD,
 } from '../../tuning.js';
+import { EPHEMERAL_RULE_PATTERNS } from '../../patterns.js';
+import type { BehaviorRuleDuration } from '../../types.js';
 
 const SAFETY_KEYWORDS = ['高风险', '风险', '危险', '安全', 'risk', 'safe', 'danger'];
 const CONFIRM_KEYWORDS = ['确认', '复述', '先问', 'confirm', 'confirmation'];
@@ -99,6 +102,12 @@ function inferMaturity(recurrenceCount: number): NonNullable<BehaviorRulePromoti
     return 'validated';
   }
   return 'emerging';
+}
+
+export function inferRuleDuration(statement: string): BehaviorRuleDuration {
+  return EPHEMERAL_RULE_PATTERNS.some((pattern) => pattern.test(statement))
+    ? 'ephemeral'
+    : 'long_term';
 }
 
 function detectDirectConflict(statement: string, existingRules: BehaviorRule[]): BehaviorRule | null {
@@ -204,6 +213,14 @@ export function evaluatePromotionCandidate(input: {
     return {
       accepted: false,
       reason: 'insufficient_recurrence_for_style',
+      statement,
+    };
+  }
+
+  if (category !== 'safety' && input.reflection.evidence.recurrenceCount < PROMOTION_MIN_RECUR_DEFAULT) {
+    return {
+      accepted: false,
+      reason: 'insufficient_recurrence',
       statement,
     };
   }

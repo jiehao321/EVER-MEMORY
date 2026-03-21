@@ -2,7 +2,7 @@
 
 EverMemory is a deterministic memory plugin for [OpenClaw](https://github.com/openclaw). It provides structured knowledge storage, recall, rule governance, and user profiling as reliable, explainable, and rollback-safe workflows.
 
-- **Version**: 1.0.4
+- **Version**: 2.0.0-rc1
 - **Runtime**: Node.js 22+
 - **Language**: TypeScript (strict ESM)
 - **Storage**: SQLite with WAL mode (via better-sqlite3)
@@ -29,7 +29,7 @@ When `semantic.enabled` is `true`, the built-in embedding provider (`@xenova/tra
 ### OpenClaw Plugin
 
 ```bash
-openclaw plugins install evermemory@1.0.4
+openclaw plugins install evermemory@2.0.0-rc1
 openclaw plugins enable evermemory
 openclaw config set plugins.slots.memory evermemory
 openclaw gateway restart

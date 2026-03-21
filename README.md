@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/evermemory.svg)](https://www.npmjs.com/package/evermemory)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
-[![tests](https://img.shields.io/badge/tests-370%20passing-brightgreen.svg)](#testing)
+[![tests](https://img.shields.io/badge/tests-413%20passing-brightgreen.svg)](#testing)
 
 **Deterministic memory plugin for OpenClaw.**
 
@@ -35,6 +35,15 @@ AI assistants forget everything between sessions. Context evaporates, decisions 
 - **Reflection engine** consolidates and refines stored knowledge over time
 - **Experience evolution** promotes repeated patterns into durable, high-confidence entries
 - **Observable lifecycle** with debug tracing, status introspection, and full audit trail
+
+### Knowledge Graph
+
+- **Automatic relation detection** identifies causes, contradictions, evolution, and support between memories
+- **Graph-enhanced retrieval** boosts recall results using relationship connections
+- **Proactive recall** surfaces relevant memories you didn't ask for -- expiring commitments, related context
+- **Contradiction monitoring** alerts when new memories conflict with existing knowledge
+- **Memory compression** clusters similar memories into summaries, preserving relationships
+- **Self-tuning decay** adapts memory retention based on actual usage patterns
 
 ## Quick Start
 
@@ -97,6 +106,7 @@ const briefing = em.evermemoryBriefing({ tokenTarget: 900 });
 │  │  │  memory · rules · profile   │  │  │
 │  │  │  briefing · reflection      │  │  │
 │  │  │  retrieval · embedding      │  │  │
+│  │  │  relations · graph          │  │  │
 │  │  └────────────┬────────────────┘  │  │
 │  │               │                   │  │
 │  │  ┌────────────▼────────────────┐  │  │
@@ -109,7 +119,7 @@ const briefing = em.evermemoryBriefing({ tokenTarget: 900 });
 
 ## Tool Reference
 
-EverMemory exposes 18 capabilities through the OpenClaw tool interface:
+EverMemory exposes 18 tools through the OpenClaw tool interface, plus 1 SDK-only capability:
 
 | Capability | OpenClaw Name | Notes |
 |---|---|---|
@@ -130,6 +140,7 @@ EverMemory exposes 18 capabilities through the OpenClaw tool interface:
 | Import | `evermemory_import` | Alias: `memory_import` |
 | Review archive | `evermemory_review` | Inspect archived items |
 | Restore archive | `evermemory_restore` | Two-phase review/apply restore |
+| **Relations** | `evermemory_relations` | list, add, remove, graph — manage knowledge graph edges |
 | Smartness | SDK-only | Intelligence score dashboard with `advice` per dimension |
 
 ## Configuration
@@ -148,6 +159,7 @@ EverMemory exposes 18 capabilities through the OpenClaw tool interface:
 | Field | Default | Description |
 |---|---|---|
 | `databasePath` | auto-resolved | SQLite database location |
+| `scope.project` | host-derived when available | Project/workspace identifier from the host runtime; omitted when unavailable |
 | `bootTokenBudget` | `1200` | Startup briefing token budget |
 | `maxRecall` | `8` | Max recall items per query |
 | `debugEnabled` | `true` | Enable debug event logging |
@@ -173,7 +185,7 @@ All hook latencies fall well within OpenClaw's budget, ensuring EverMemory adds 
 
 ## Testing
 
-EverMemory ships with 370 tests covering unit, integration, and end-to-end scenarios:
+EverMemory ships with 413 tests covering unit, integration, and end-to-end scenarios:
 
 ```bash
 npm test

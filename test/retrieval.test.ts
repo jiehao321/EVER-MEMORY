@@ -45,6 +45,7 @@ function createMemory(input: {
     },
     tags: input.tags ?? [],
     relatedEntities: [],
+    sourceGrade: 'primary',
     stats: {
       accessCount: 0,
       retrievalCount: 0,
@@ -497,6 +498,38 @@ test('hybrid mode uses semantic sidecar hits when enabled', async () => {
   assert.equal(event?.payload.semanticEnabled, true);
   assert.ok(typeof event?.payload.semanticHits === 'number');
   assert.ok((event?.payload.semanticHits as number) >= 1);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('recall wrapper attaches timing meta and degradation details on hybrid fallback', async () => {
+  const databasePath = createTempDbPath('retrieval-wrapper-meta');
+  const app = initializeEverMemory({
+    databasePath,
+    semantic: {
+      enabled: false,
+    },
+  });
+
+  app.evermemoryStore({
+    content: '部署前先确认回滚方案。',
+    scope: { userId: 'u-wrapper-meta', project: 'evermemory' },
+    type: 'constraint',
+  });
+
+  const result = await app.evermemoryRecall({
+    query: '部署 回滚',
+    scope: { userId: 'u-wrapper-meta', project: 'evermemory' },
+    mode: 'hybrid',
+    limit: 5,
+  });
+
+  assert.ok(result.total >= 1);
+  assert.equal(result.meta?.degraded, true);
+  assert.equal(result.meta?.degradedReason, 'semantic_disabled');
+  assert.equal(typeof result.meta?.durationMs, 'number');
+  assert.ok((result.meta?.durationMs ?? -1) >= 0);
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

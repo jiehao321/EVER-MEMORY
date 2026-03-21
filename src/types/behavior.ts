@@ -3,6 +3,7 @@ import type { BehaviorRuleCategory, IntentType } from './primitives.js';
 
 export type BehaviorRuleLevel = 'candidate' | 'baseline' | 'critical';
 export type BehaviorRuleMaturity = 'emerging' | 'validated' | 'institutionalized' | 'frozen';
+export type BehaviorRuleDuration = 'ephemeral' | 'session' | 'project' | 'long_term' | 'global';
 export type BehaviorRuleFreezeReason =
   | 'manual'
   | 'correction'
@@ -10,7 +11,8 @@ export type BehaviorRuleFreezeReason =
   | 'contradiction_threshold'
   | 'expired'
   | 'deprecated'
-  | 'rollback';
+  | 'rollback'
+  | 'session_expired';
 export type BehaviorRuleStaleness = 'fresh' | 'aging' | 'stale' | 'expired';
 
 export interface BehaviorRuleAppliesTo {
@@ -23,6 +25,7 @@ export interface BehaviorRuleAppliesTo {
 export interface BehaviorRuleLifecycle {
   level: BehaviorRuleLevel;
   maturity: BehaviorRuleMaturity;
+  duration?: BehaviorRuleDuration;
   applyCount: number;
   contradictionCount: number;
   lastAppliedAt?: string;

@@ -4,10 +4,10 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
 
-const VERSION = '1.0.4';
+const VERSION = '2.0.0-rc1';
 const DEFAULT_DATABASE_PATH = join('.openclaw', 'memory', 'evermemory', 'store', 'evermemory.db');
 const MEMORY_TYPES = ['identity', 'fact', 'preference', 'decision', 'commitment', 'relationship', 'task', 'project', 'style', 'summary', 'constraint'];
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 18;
 const require = createRequire(import.meta.url);
 
 function fail(message) {

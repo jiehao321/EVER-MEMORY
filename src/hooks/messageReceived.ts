@@ -1,5 +1,7 @@
 import type { IntentService } from '../core/intent/service.js';
 import type { BehaviorService } from '../core/behavior/service.js';
+import type { ContradictionMonitor } from '../core/memory/contradictionMonitor.js';
+import type { ProactiveRecallService } from '../core/memory/proactiveRecall.js';
 import type { RetrievalService } from '../retrieval/service.js';
 import { getSessionContext } from '../runtime/context.js';
 import { setInteractionContext } from '../runtime/context.js';
@@ -12,6 +14,7 @@ import type {
   MemoryItem,
   MessageReceivedInput,
   MessageReceivedResult,
+  RuntimeUserProfile,
 } from '../types.js';
 import { semanticPreload, type SemanticPreloadResult } from './beforeAgentStart.js';
 
@@ -51,6 +54,7 @@ function toWarningItem(content: string, sessionId: string, index: number, messag
     },
     tags: ['warning'],
     relatedEntities: [],
+    sourceGrade: 'inferred',
     stats: {
       accessCount: 0,
       retrievalCount: 0,
@@ -87,6 +91,9 @@ export async function handleMessageReceived(
   debugRepo?: DebugRepository,
   semanticRepo?: SemanticRepository,
   memoryRepo?: MemoryRepository,
+  proactiveRecallService?: ProactiveRecallService,
+  contradictionMonitor?: ContradictionMonitor,
+  userProfile?: RuntimeUserProfile,
 ): Promise<MessageReceivedResult> {
   const intent = intentService.analyze({
     text: input.text,
@@ -101,11 +108,14 @@ export async function handleMessageReceived(
     query: input.text,
     limit: input.recallLimit,
   });
+  const note = recall.degraded
+    ? 'Semantic search was unavailable for this recall; results may be incomplete.'
+    : undefined;
   const recallLimit = recall.limit;
   const sessionContext = getSessionContext(input.sessionId);
   const contextRules = sessionContext?.activeBehaviorRules ?? [];
   let semanticHits: SemanticPreloadResult = { ids: [], hits: [], warnings: [], relevantRules: [] };
-  if (semanticRepo && memoryRepo && recallLimit > 0) {
+  if (semanticRepo && memoryRepo && recallLimit > 0 && !recall.degraded) {
     try {
       semanticHits = await semanticPreload(
         input.text,
@@ -115,6 +125,7 @@ export async function handleMessageReceived(
         recallLimit,
         undefined,
         contextRules,
+        debugRepo,
       );
     } catch (error) {
       semanticHits = { ids: [], hits: [], warnings: [], relevantRules: [] };
@@ -193,11 +204,32 @@ export async function handleMessageReceived(
     rules: appliedBehaviorRules.length,
   });
 
+  let proactiveItems: MessageReceivedResult['proactiveItems'];
+  if (proactiveRecallService && mergedRecall.items.length > 0) {
+    try {
+      const proactive = proactiveRecallService.findProactiveItems(
+        mergedRecall.items,
+        userProfile,
+        input.scope ? { userId: input.scope.userId, project: input.scope.project } : undefined,
+      );
+      if (proactive.items.length > 0) {
+        proactiveItems = proactive.items;
+      }
+    } catch {
+      // Proactive recall errors must not affect regular flow
+    }
+  }
+
+  const alerts = contradictionMonitor?.drainAlerts(input.sessionId);
+
   return {
     sessionId: input.sessionId,
     messageId: input.messageId,
     intent,
     recall: mergedRecall,
+    note,
     behaviorRules: appliedBehaviorRules,
+    proactiveItems,
+    alerts: alerts && alerts.length > 0 ? alerts : undefined,
   };
 }

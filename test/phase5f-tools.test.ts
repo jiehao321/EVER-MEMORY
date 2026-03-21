@@ -41,6 +41,7 @@ function createMemory(input: {
     },
     tags: [],
     relatedEntities: [],
+    sourceGrade: 'primary',
     stats: {
       accessCount: 0,
       retrievalCount: 0,

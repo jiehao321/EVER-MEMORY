@@ -28,14 +28,38 @@ test('sessionEnd writes experience and can trigger lightweight reflection', asyn
   assert.equal(result.sessionId, 'session-end-1');
   assert.ok(result.experience.id.length > 0);
   assert.ok(result.reflection);
-  assert.ok((result.promotedRules?.length ?? 0) >= 1);
-  assert.equal(result.reflection?.state.promoted, true);
   assert.ok(result.learningInsights >= 1);
   assert.equal(result.autoPromotedRules >= 0, true);
   assert.ok((result.autoMemory?.generated ?? 0) >= 1);
   assert.ok((result.autoMemory?.accepted ?? 0) >= 1);
   assert.ok((result.autoMemory?.generatedByKind?.project_summary ?? 0) >= 1);
   assert.ok((result.autoMemory?.acceptedByKind?.project_summary ?? 0) >= 1);
+
+  await app.messageReceived({
+    sessionId: 'session-end-1b',
+    messageId: 'session-end-msg-2a',
+    text: '再次确认，高风险动作要先确认再执行。',
+    scope: { userId: 'u-session-end-1', project: 'evermemory' },
+  });
+
+  await app.sessionEnd({
+    sessionId: 'session-end-1b',
+    messageId: 'session-end-msg-2',
+    scope: { userId: 'u-session-end-1', project: 'evermemory' },
+    inputText: '再次更正，高风险动作必须先确认再执行。',
+    actionSummary: '仍然试图直接执行高风险动作',
+    outcomeSummary: '用户再次要求先确认',
+    evidenceRefs: ['session-end-msg-2'],
+  });
+
+  const aggregatedReflection = app.evermemoryReflect({ mode: 'light' });
+  assert.ok(aggregatedReflection.reflections.length >= 1);
+
+  const promotion = app.behaviorService.promoteFromReflection({
+    reflectionId: aggregatedReflection.reflections[0]!.id,
+    appliesTo: { userId: 'u-session-end-1' },
+  });
+  assert.ok(promotion.promotedRules.length >= 1);
 
   const autoMemories = app.memoryRepo.search({
     scope: { userId: 'u-session-end-1', project: 'evermemory' },
@@ -112,6 +136,56 @@ test('sessionEnd auto memory extraction prefers intent raw text and skips operat
   assert.ok(autoMemories.some((item) => item.content.includes('CLEANMEM-1')));
   assert.ok(autoMemories.every((item) => !item.content.includes('Skills store policy')));
   assert.ok(autoMemories.some((item) => item.type === 'summary' && item.tags.includes('active_project_summary')));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('sessionEnd auto capture strips injected evermemory context from project memories', async () => {
+  const databasePath = createTempDbPath('session-end-sanitize-context');
+  const app = initializeEverMemory({ databasePath });
+
+  await app.messageReceived({
+    sessionId: 'session-end-sanitize-1',
+    messageId: 'session-end-sanitize-msg-0',
+    text: '项目 Orbit 当前阶段是回归验证。',
+    scope: { userId: 'u-session-end-sanitize', chatId: 'chat-sanitize-1', project: 'orbit' },
+    channel: 'feishu',
+  });
+
+  const result = await app.sessionEnd({
+    sessionId: 'session-end-sanitize-1',
+    messageId: 'session-end-sanitize-msg-1',
+    scope: { userId: 'u-session-end-sanitize', chatId: 'chat-sanitize-1', project: 'orbit' },
+    channel: 'feishu',
+    inputText: [
+      '<evermemory-context>',
+      'Relevant memory:',
+      '- 1. [summary/semantic] Earlier summary should not be persisted.',
+      'Applicable behavior rules:',
+      '- 1. Confirm before destructive actions.',
+      '</evermemory-context>',
+      '',
+      '项目 Orbit 当前阶段是回归验证，下一步是跑飞书真机回归。',
+    ].join('\n'),
+    actionSummary: '已记录当前阶段并准备执行真实飞书回归。',
+    outcomeSummary: '结果：run_success',
+    evidenceRefs: ['session-end-sanitize-msg-1'],
+  });
+
+  assert.ok((result.autoMemory?.accepted ?? 0) >= 1);
+
+  const autoMemories = app.memoryRepo.search({
+    scope: { userId: 'u-session-end-sanitize', chatId: 'chat-sanitize-1', project: 'orbit' },
+    archived: false,
+    activeOnly: true,
+    limit: 20,
+  });
+
+  assert.ok(autoMemories.length >= 1);
+  assert.ok(autoMemories.every((item) => !item.content.includes('<evermemory-context>')));
+  assert.ok(autoMemories.every((item) => !item.content.includes('Applicable behavior rules:')));
+  assert.ok(autoMemories.some((item) => item.content.includes('项目 Orbit 当前阶段是回归验证')));
 
   app.database.connection.close();
   rmSync(databasePath, { force: true });

@@ -1,4 +1,5 @@
 import type { SemanticRepository } from '../../storage/semanticRepo.js';
+import type { RelationRepository } from '../../storage/relationRepo.js';
 import type { RecallRequest, RetrievalHybridWeights, RetrievalKeywordWeights } from '../../types.js';
 import { embeddingManager } from '../../embedding/manager.js';
 import { rankKeywordRecall } from './keyword.js';
@@ -14,6 +15,7 @@ export class HybridRetrievalStrategy {
     private readonly semanticMinScore: number,
     private readonly keywordWeights: RetrievalKeywordWeights,
     private readonly hybridWeights: RetrievalHybridWeights,
+    private readonly relationRepo?: RelationRepository,
   ) {}
 
   async rank(
@@ -21,25 +23,33 @@ export class HybridRetrievalStrategy {
     limit: number,
     meta: RecallExecutionMeta,
   ): Promise<RankedStrategyResult> {
-    if (!this.canUseEmbedding(request)) {
-      return this.rankLexical(request, limit, meta);
+    const embeddingCheck = this.canUseEmbedding(request);
+    if (!embeddingCheck.canUse) {
+      const result = this.rankLexical(request, limit, meta);
+      return { ...result, degradationReason: embeddingCheck.reason };
     }
 
     try {
       return await this.rankWithEmbeddings(request, limit, meta);
     } catch (error) {
-      return this.rankLexical(request, limit, meta);
+      return {
+        ...this.rankLexical(request, limit, meta),
+        degradationReason: getDegradationReason(error),
+      };
     }
   }
 
-  private canUseEmbedding(request: RecallRequest): boolean {
+  private canUseEmbedding(request: RecallRequest): { canUse: boolean; reason?: string } {
     if (!this.semanticEnabled || !this.semanticRepo) {
-      return false;
+      return { canUse: false, reason: 'semantic_disabled' };
     }
     if (!embeddingManager.isReady()) {
-      return false;
+      return { canUse: false, reason: 'embedding_not_ready' };
     }
-    return request.query.trim().length > 0;
+    if (request.query.trim().length === 0) {
+      return { canUse: false, reason: 'empty_query' };
+    }
+    return { canUse: true };
   }
 
   private prepareRankingContext(
@@ -212,11 +222,67 @@ export class HybridRetrievalStrategy {
       return right.memory.timestamps.updatedAt.localeCompare(left.memory.timestamps.updatedAt);
     });
 
+    const enhanced = this.enhanceWithGraph(ranked);
+
     return {
-      ranked,
+      ranked: enhanced,
       candidates: context.candidates,
       semanticHitCount: semanticScoreById.size,
       candidatePolicy: context.candidateResult.stats,
     };
   }
+
+  private enhanceWithGraph(ranked: ScoredRecallItem[]): ScoredRecallItem[] {
+    if (!this.relationRepo || ranked.length === 0) {
+      return ranked;
+    }
+
+    const existingIds = new Set(ranked.map((item) => item.memory.id));
+    const boostMap = new Map<string, number>();
+
+    for (const item of ranked.slice(0, 5)) {
+      const connected = this.relationRepo.findConnected(item.memory.id, {
+        maxDepth: 2,
+        types: ['supports', 'causes', 'depends_on'],
+        limit: 10,
+        minWeight: 0.3,
+      });
+
+      for (const node of connected) {
+        if (!existingIds.has(node.memoryId)) {
+          continue;
+        }
+
+        const currentBoost = boostMap.get(node.memoryId) ?? 0;
+        boostMap.set(node.memoryId, currentBoost + 0.05 * (node.weight ?? 1));
+      }
+    }
+
+    if (boostMap.size === 0) {
+      return ranked;
+    }
+
+    return ranked
+      .map((item) => {
+        const boost = boostMap.get(item.memory.id);
+        if (!boost) {
+          return item;
+        }
+
+        return {
+          ...item,
+          score: item.score + boost,
+        };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return right.memory.timestamps.updatedAt.localeCompare(left.memory.timestamps.updatedAt);
+      });
+  }
+}
+
+function getDegradationReason(_error: unknown): string {
+  return 'semantic_search_failed';
 }

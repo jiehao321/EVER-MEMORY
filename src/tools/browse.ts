@@ -5,8 +5,10 @@ export interface EverMemoryBrowseToolInput {
   type?: MemoryType | 'all';
   lifecycle?: MemoryLifecycle;
   limit?: number;
-  sortBy?: 'recent' | 'importance' | 'accessed';
+  sortBy?: 'recent' | 'importance' | 'accessed' | 'written';
+  sinceMinutesAgo?: number;
   scope?: MemoryScope;
+  source?: string;
 }
 
 export interface EverMemoryBrowseItem {
@@ -63,26 +65,42 @@ export function evermemoryBrowse(
     limit: 500, // fetch more for sorting
   });
 
+  const sinceMinutesAgo = input.sinceMinutesAgo;
+  const cutoffTime = sinceMinutesAgo !== undefined
+    ? Date.now() - sinceMinutesAgo * 60_000
+    : undefined;
+  const filtered = memories.filter((memory) => {
+    if (cutoffTime !== undefined && Date.parse(memory.timestamps.createdAt) < cutoffTime) {
+      return false;
+    }
+    if (input.source && !memory.tags.includes(input.source)) {
+      return false;
+    }
+    return true;
+  });
+
   let sorted: MemoryItem[];
   if (input.sortBy === 'importance') {
-    sorted = [...memories].sort((a, b) => b.scores.importance - a.scores.importance);
+    sorted = [...filtered].sort((a, b) => b.scores.importance - a.scores.importance);
   } else if (input.sortBy === 'accessed') {
-    sorted = [...memories].sort((a, b) => {
+    sorted = [...filtered].sort((a, b) => {
       const aTime = a.timestamps.lastAccessedAt ? Date.parse(a.timestamps.lastAccessedAt) : 0;
       const bTime = b.timestamps.lastAccessedAt ? Date.parse(b.timestamps.lastAccessedAt) : 0;
       return bTime - aTime;
     });
+  } else if (input.sortBy === 'written') {
+    sorted = [...filtered].sort((a, b) => b.timestamps.createdAt.localeCompare(a.timestamps.createdAt));
   } else {
     // default: recent (by updatedAt)
-    sorted = [...memories].sort((a, b) => b.timestamps.updatedAt.localeCompare(a.timestamps.updatedAt));
+    sorted = [...filtered].sort((a, b) => b.timestamps.updatedAt.localeCompare(a.timestamps.updatedAt));
   }
 
   const items = sorted.slice(0, limit).map(toBrowseItem);
   const atRiskCount = items.filter((item) => item.atRiskOfArchival).length;
 
   const summary = atRiskCount > 0
-    ? `${items.length} of ${memories.length} active memories. ${atRiskCount} at risk of archival.`
-    : `${items.length} of ${memories.length} active memories.`;
+    ? `${items.length} of ${filtered.length} active memories. ${atRiskCount} at risk of archival.`
+    : `${items.length} of ${filtered.length} active memories.`;
 
-  return { items, total: memories.length, summary };
+  return { items, total: filtered.length, summary };
 }

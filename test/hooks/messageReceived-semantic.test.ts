@@ -31,6 +31,7 @@ function createMemory(id: string, content: string): MemoryItem {
     },
     tags: [],
     relatedEntities: [],
+    sourceGrade: 'primary',
     stats: {
       accessCount: 0,
       retrievalCount: 0,
@@ -156,4 +157,52 @@ test('handleMessageReceived skips semantic enrichment when preload throws', asyn
 
   assert.deepEqual(result.recall.items.map((item) => item.id), ['m-1']);
   assert.equal(result.recall.total, 1);
+});
+
+test('handleMessageReceived adds a degraded note and skips semantic preload when recall is degraded', async () => {
+  const recalled = createMemory('m-1', 'phase plan');
+
+  const result = await handleMessageReceived(
+    {
+      sessionId: 's-1',
+      messageId: 'msg-3',
+      text: '继续推进发布',
+      scope: { userId: 'u-1', project: 'evermemory' },
+      recallLimit: 3,
+    },
+    {
+      analyze: () => ({
+        id: 'intent-1',
+        intent: { type: 'planning', confidence: 0.9 },
+        signals: { memoryNeed: 'deep' },
+        query: '继续推进发布',
+      }),
+    } as never,
+    {
+      getActiveRules: () => [],
+    } as never,
+    {
+      recallForIntent: async () => ({
+        items: [recalled],
+        total: 1,
+        limit: 3,
+        degraded: true,
+      }),
+    } as never,
+    undefined,
+    {
+      searchByCosine: async () => {
+        throw new Error('semantic preload should be skipped when recall is degraded');
+      },
+    } as never,
+    {
+      findById: () => {
+        throw new Error('findById should not be called when recall is degraded');
+      },
+    } as never,
+  );
+
+  assert.equal(result.note, 'Semantic search was unavailable for this recall; results may be incomplete.');
+  assert.equal(result.recall.degraded, true);
+  assert.deepEqual(result.recall.items.map((item) => item.id), ['m-1']);
 });

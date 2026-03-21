@@ -6,7 +6,7 @@ import { registerIOTools } from './tools/io.js';
 import { registerMemoryTools } from './tools/memory.js';
 import { registerProfileTools } from './tools/profile.js';
 import { embeddingManager, type EmbeddingConfig } from '../embedding/manager.js';
-import { runAutoSetup } from '../core/setup/autoSetup.js';
+import { isFirstRun, runAutoSetup, writeWelcomeMemory } from '../core/setup/autoSetup.js';
 
 const memoryPlugin = {
   id: PLUGIN_NAME,
@@ -16,6 +16,25 @@ const memoryPlugin = {
   kind: 'memory' as const,
   register(api: OpenClawApi) {
     const context = createRegistrationContext(api);
+    const originalSessionStart = context.evermemory.sessionStart.bind(context.evermemory);
+
+    context.evermemory.sessionStart = (input) => {
+      const result = originalSessionStart(input);
+      if (!isFirstRun(context.evermemory.memoryRepo)) {
+        return result;
+      }
+
+      const welcomeResult = writeWelcomeMemory(context.evermemory.memoryService, result.scope);
+      if (!welcomeResult.accepted) {
+        api.logger.warn(`[EverMemory] Failed to write welcome memory: ${welcomeResult.reason}`);
+      }
+
+      result.briefing.sections.identity = [
+        ...result.briefing.sections.identity,
+        'Welcome to EverMemory. I saved a starter memory and you can begin with evermemory_store, evermemory_recall, evermemory_rules, or profile_onboard. / 欢迎使用 EverMemory。系统已写入欢迎记忆，你可以从 evermemory_store、evermemory_recall、evermemory_rules 或 profile_onboard 开始。',
+      ];
+      return result;
+    };
 
     registerHooks(context);
     registerMemoryTools(context);
@@ -27,7 +46,6 @@ const memoryPlugin = {
       id: PLUGIN_NAME,
       start: async () => {
         const provider = (process.env.EVERMEMORY_EMBEDDING_PROVIDER ?? 'local') as EmbeddingConfig['provider'];
-        embeddingManager.configure({ provider });
         if (process.env.EVERMEMORY_EMBEDDING_PROVIDER === undefined) {
           api.logger.info('[EverMemory] Using local embedding provider (default)');
         } else {

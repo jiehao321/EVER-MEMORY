@@ -205,3 +205,33 @@ export const NORMALIZE_DEFAULT_CONFIDENCE = 0.8;
 
 /** Default importance for normalizeMemory fallback */
 export const NORMALIZE_DEFAULT_IMPORTANCE = 0.5;
+
+// RC3: Per-sourceGrade archival thresholds
+/** Days after which primary-grade memories are considered stale */
+export const STALE_THRESHOLD_DAYS_PRIMARY = 30;
+
+/** Days after which derived-grade memories are considered stale */
+export const STALE_THRESHOLD_DAYS_DERIVED = 14;
+
+/** Days after which inferred-grade memories are considered stale */
+export const STALE_THRESHOLD_DAYS_INFERRED = 21;
+
+/** Minimum explicit retrieval count to protect a memory from archival (briefing accesses excluded) */
+export const ARCHIVE_PROTECTION_MIN_RETRIEVALS = 1;
+
+/** Max 'summary' type memories retained per project before oldest are archived */
+export const MAX_SUMMARY_PER_PROJECT = 3;
+
+/** Max 'project' type memories retained per project before oldest are archived */
+export const MAX_PROJECT_PER_PROJECT = 5;
+
+// RC5: Profile source filtering constants
+
+/** Weight cap for inferred-grade memories when contributing to profile */
+export const PROFILE_INFERRED_WEIGHT_CAP = 0.3;
+
+/** Weight cap for derived-grade memories when contributing to profile */
+export const PROFILE_DERIVED_WEIGHT_CAP = 0.7;
+
+/** Source kinds excluded from profile computation entirely */
+export const PROFILE_EXCLUDED_SOURCE_KINDS = ['test'] as const;

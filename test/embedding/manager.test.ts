@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { EmbeddingManager } from '../../src/embedding/manager.js';
+import { EMBEDDING_QUEUE_LIMIT, EmbeddingManager } from '../../src/embedding/manager.js';
 import type {
   EmbeddingProvider,
   EmbeddingProviderKind,
@@ -179,6 +179,48 @@ test('EmbeddingManager batches concurrent embed calls into one provider request'
   assert.deepEqual(provider.embedCalls[0], ['alpha', 'beta']);
   assert.deepEqual(Array.from(first?.values ?? []), [5, 1]);
   assert.deepEqual(Array.from(second?.values ?? []), [4, 2]);
+
+  await manager.dispose();
+});
+
+test('EmbeddingManager applies backpressure, drops oldest queued items, and reports queue depth', async () => {
+  const manager = new EmbeddingManager();
+  const provider = new FakeProvider('openai', 2, async (texts) =>
+    texts.map((text, index) => ({
+      values: new Float32Array([text.length, index + 1]),
+      dimensions: 2,
+    }))
+  );
+  const debugEvents: Record<string, unknown>[] = [];
+
+  setCreateProvider(manager, () => provider);
+  setBatchDelay(manager, 1);
+  manager.configure({
+    provider: 'openai',
+    openaiApiKey: 'test-key',
+    onDebugEvent: (payload) => {
+      debugEvents.push(payload);
+    },
+  });
+
+  const pending = Array.from({ length: EMBEDDING_QUEUE_LIMIT + 3 }, (_, index) =>
+    manager.embed(`item-${index}`)
+  );
+
+  assert.equal(manager.getQueueDepth(), EMBEDDING_QUEUE_LIMIT);
+
+  const results = await Promise.all(pending);
+
+  assert.equal(results[0], null);
+  assert.equal(results[1], null);
+  assert.equal(results[2], null);
+  assert.ok(results[3]);
+  assert.equal(provider.embedCalls.length, 1);
+  assert.equal(
+    debugEvents.reduce((sum, event) => sum + Number(event.dropped ?? 0), 0),
+    3,
+  );
+  assert.ok(debugEvents.every((event) => event.stage === 'queue_backpressure'));
 
   await manager.dispose();
 });

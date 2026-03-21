@@ -30,6 +30,9 @@ test('migrations are idempotent and preserve schema version', () => {
   const projectedProfileTableRow = db.connection.prepare(`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projected_profiles'
   `).get() as { name: string } | undefined;
+  const retrievalFeedbackTableRow = db.connection.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'retrieval_feedback'
+  `).get() as { name: string } | undefined;
 
   assert.equal(first, CURRENT_SCHEMA_VERSION);
   assert.equal(second, CURRENT_SCHEMA_VERSION);
@@ -40,6 +43,7 @@ test('migrations are idempotent and preserve schema version', () => {
   assert.equal(behaviorTableRow?.name, 'behavior_rules');
   assert.equal(semanticIndexTableRow?.name, 'semantic_index');
   assert.equal(projectedProfileTableRow?.name, 'projected_profiles');
+  assert.equal(retrievalFeedbackTableRow?.name, 'retrieval_feedback');
 
   closeDatabase(db);
   rmSync(databasePath, { force: true });

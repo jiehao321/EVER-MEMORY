@@ -62,7 +62,14 @@ export interface MessageReceivedResult {
   messageId?: string;
   intent: IntentRecord;
   recall: RecallResult;
+  note?: string;
   behaviorRules?: BehaviorRule[];
+  proactiveItems?: Array<{
+    memory: import('./memory.js').MemoryItem;
+    proactiveScore: number;
+    reason: string;
+  }>;
+  alerts?: import('../types/alert.js').MemoryAlert[];
 }
 
 export interface SessionEndInput {
@@ -84,6 +91,7 @@ export interface SessionEndResult {
   promotedRules?: BehaviorRule[];
   learningInsights: number;
   autoPromotedRules: number;
+  staleDemotedRules?: number;
   profileUpdated: boolean;
   autoMemory?: {
     generated: number;

@@ -17,7 +17,7 @@ import type {
   BehaviorRuleMutationAction,
   BehaviorRuleReviewRecord,
 } from './behavior.js';
-import type { MemoryItem, MemoryScope, MemorySource, MemoryStoreResult } from './memory.js';
+import type { MemoryItem, MemoryScope, MemorySource, MemoryStoreResult, SourceGrade } from './memory.js';
 import type { ProjectedProfile } from './profile.js';
 import type { ReflectionRecord } from './reflection.js';
 import type { RuntimeSessionContext } from './runtime.js';
@@ -30,6 +30,8 @@ export interface EverMemoryStoreToolInput {
   source?: MemorySource;
   tags?: string[];
   relatedEntities?: string[];
+  sourceGrade?: SourceGrade;
+  importance?: number;
 }
 
 export interface EverMemoryRecallToolInput {
@@ -39,6 +41,8 @@ export interface EverMemoryRecallToolInput {
   lifecycles?: MemoryLifecycle[];
   mode?: RetrievalMode;
   limit?: number;
+  createdAfter?: string;
+  createdBefore?: string;
 }
 
 export interface EverMemoryBriefingToolInput {
@@ -105,6 +109,8 @@ export interface EverMemoryOnboardingToolResult {
 export interface EverMemoryConsolidateToolInput {
   mode?: ConsolidationMode;
   scope?: MemoryScope;
+  dryRun?: boolean;
+  autoResolveConflicts?: boolean;
 }
 
 export interface EverMemoryConsolidateToolResult {
@@ -112,6 +118,8 @@ export interface EverMemoryConsolidateToolResult {
   processed: number;
   merged: number;
   archivedStale: number;
+  dryRun?: boolean;
+  resolvedCount?: number;
   detectedConflicts?: {
     count: number;
     samples: Array<{ memoryA: string; memoryB: string; reason: string }>;
@@ -311,9 +319,22 @@ export interface EverMemoryRulesToolResult {
   };
 }
 
+export interface EverMemoryStatusSummary {
+  health: 'healthy' | 'warning' | 'critical';
+  memoryCount: number;
+  semanticStatus: 'ready' | 'degraded' | 'disabled';
+  atRiskCount: number;
+  alerts: Array<{
+    level: 'warning' | 'critical';
+    code: 'memory_empty' | 'semantic_disabled' | 'semantic_degraded' | 'at_risk_memories';
+    message: string;
+  }>;
+}
+
 export interface EverMemoryStatusToolResult {
   schemaVersion: number;
   databasePath: string;
+  scopeResolvedFrom?: 'user' | 'runtime_session' | 'global';
   memoryCount: number;
   activeMemoryCount?: number;
   archivedMemoryCount?: number;
@@ -418,6 +439,7 @@ export interface EverMemoryStatusToolResult {
   runtimeSession?: RuntimeSessionContext;
   recentDebugEvents: number;
   semanticStatus?: 'ready' | 'degraded' | 'disabled';
+  summary?: EverMemoryStatusSummary;
   atRiskMemories?: {
     count: number;
     items: Array<{
@@ -434,6 +456,22 @@ export interface EverMemoryStatusToolResult {
     capturedCount: number;
     rejectedCount: number;
     topKinds: string[];
+    recentItems?: Array<{ id: string; content: string; kind: string; createdAt: string }>;
+  };
+  healthMetrics?: {
+    summaryToFactRatio: number;
+    systemArtifactProportion: number;
+    avgContentLength: number;
+    avgConfidence: number;
+    pinnedCount: number;
+  };
+  semanticHealth?: {
+    embeddingProvider: string;
+    embeddingReady: boolean;
+    indexedCount: number;
+    embeddingCount: number;
+    recentRetrievalModes: string[];
+    recentSemanticHits: number[];
   };
 }
 

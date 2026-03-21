@@ -247,6 +247,8 @@ export function registerProfileTools({ api, evermemory, sessionScopes }: OpenCla
         {
           mode: consolidationModeSchema,
           scope: scopeSchema,
+          dryRun: Type.Optional(Type.Boolean()),
+          autoResolveConflicts: Type.Optional(Type.Boolean()),
         },
         { additionalProperties: false },
       ),
@@ -255,6 +257,8 @@ export function registerProfileTools({ api, evermemory, sessionScopes }: OpenCla
         const result = await evermemory.evermemoryConsolidate({
           mode: asOptionalEnum(params.mode, CONSOLIDATION_MODES),
           scope: mergeScope(baseScope, parseScope(params.scope)),
+          dryRun: asOptionalBoolean(params.dryRun),
+          autoResolveConflicts: asOptionalBoolean(params.autoResolveConflicts),
         });
         return {
           content: [{

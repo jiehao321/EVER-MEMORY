@@ -129,6 +129,7 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
     sessionKey: 'chat-openclaw-1',
     requesterSenderId: 'user-openclaw-1',
     messageChannel: 'test',
+    repoName: 'workspace-alpha',
   };
 
   const tools = resolveTools(toolRegistrations, runtimeContext);
@@ -174,6 +175,7 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
     tags: ['plan', 'quality'],
   });
   assert.equal(storeResult.details.accepted, true);
+  assert.equal(storeResult.details.memory.scope.project, 'workspace-alpha');
 
   const recallResult = await recallTool.execute('tc-2', {
     query: '项目计划',
@@ -473,6 +475,118 @@ test('OpenClaw adapter rebinds host user/chat/channel scope for main-session per
     'session_end',
     { sessionId: 'session-feishu-main-1' },
     { sessionId: 'session-feishu-main-1' },
+  );
+
+  await services[0].stop?.();
+  rmSync(databasePath, { force: true });
+});
+
+test('OpenClaw adapter binds Feishu open_chat_id and preserves tool channel metadata', async () => {
+  const databasePath = createTempDbPath('openclaw-plugin-feishu-open-chat');
+  const { api, hooks, services, toolRegistrations } = createMockApi(databasePath);
+
+  await memoryPlugin.register(api);
+  assert.equal(services.length, 1);
+  await services[0].start();
+
+  await runHook(
+    hooks,
+    'session_start',
+    { sessionId: 'session-feishu-open-chat-1', sessionKey: 'agent:main:main' },
+    { sessionId: 'session-feishu-open-chat-1', sessionKey: 'agent:main:main' },
+  );
+
+  await runHook(
+    hooks,
+    'before_agent_start',
+    {
+      prompt: '请记住我正在做飞书真机回归。',
+      message: {
+        open_chat_id: 'oc_feishu_open_chat_1',
+        sender: { id: 'ou_feishu_user_1' },
+      },
+    },
+    {
+      sessionId: 'session-feishu-open-chat-1',
+      runId: 'run-feishu-open-chat-1',
+      requesterSenderId: 'ou_feishu_user_1',
+      messageChannel: 'feishu',
+      message: {
+        open_chat_id: 'oc_feishu_open_chat_1',
+      },
+    },
+  );
+
+  const tools = resolveTools(toolRegistrations, {
+    sessionId: 'session-feishu-open-chat-1',
+    requesterSenderId: 'ou_feishu_user_1',
+    messageChannel: 'feishu',
+    sessionKey: 'agent:main:main',
+  });
+  const storeTool = tools.get('memory_store');
+  assert.ok(storeTool);
+
+  const storeResult = await storeTool.execute('tc-feishu-open-chat-1', {
+    content: 'User is running Feishu real-device regression testing today.',
+    type: 'context',
+    lifecycle: 'active',
+  });
+  assert.equal(storeResult.details.accepted, true);
+
+  await runHook(
+    hooks,
+    'agent_end',
+    {
+      success: true,
+      messages: [
+        { role: 'user', content: '我在做什么测试？' },
+        { role: 'assistant', content: '你在做飞书真机回归测试。' },
+      ],
+    },
+    {
+      sessionId: 'session-feishu-open-chat-1',
+      runId: 'run-feishu-open-chat-2',
+      requesterSenderId: 'ou_feishu_user_1',
+      channel: 'feishu',
+      message: {
+        open_chat_id: 'oc_feishu_open_chat_1',
+      },
+    },
+  );
+
+  const db = new Database(databasePath, { readonly: true });
+  try {
+    const toolMemory = db.prepare(`
+      SELECT scope_user_id, scope_chat_id, channel, source_kind, type, lifecycle
+      FROM memory_items
+      WHERE content = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get('User is running Feishu real-device regression testing today.') as {
+      scope_user_id: string | null;
+      scope_chat_id: string | null;
+      channel: string | null;
+      source_kind: string;
+      type: string;
+      lifecycle: string;
+    } | undefined;
+
+    assert.ok(toolMemory);
+    assert.equal(toolMemory?.scope_user_id, 'ou_feishu_user_1');
+    assert.equal(toolMemory?.scope_chat_id, 'oc_feishu_open_chat_1');
+    assert.equal(toolMemory?.channel, 'feishu');
+    assert.equal(toolMemory?.source_kind, 'tool');
+    assert.equal(toolMemory?.type, 'fact');
+    assert.equal(toolMemory?.lifecycle, 'episodic');
+  } finally {
+    db.close();
+  }
+
+  await runHook(
+    hooks,
+    'session_end',
+    { sessionId: 'session-feishu-open-chat-1' },
+    { sessionId: 'session-feishu-open-chat-1' },
   );
 
   await services[0].stop?.();

@@ -11,7 +11,16 @@ export const PHASE5_PROFILE_SCHEMA_VERSION = 6;
 export const PHASE6_BEHAVIOR_LIFECYCLE_SCHEMA_VERSION = 7;
 export const PHASE6_SEMANTIC_VECTOR_SCHEMA_VERSION = 8;
 export const PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION = 9;
-export const CURRENT_SCHEMA_VERSION = PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION;
+export const PHASE8_COMPOSITE_INDEXES_SCHEMA_VERSION = 10;
+export const PHASE9_BEHAVIOR_DURATION_SCHEMA_VERSION = 11;
+export const PHASE10_SOURCE_GRADE_SCHEMA_VERSION = 12;
+export const PHASE11_SAFE_SYSTEM_CLEANUP_SCHEMA_VERSION = 13;
+export const PHASE12_KNOWLEDGE_GRAPH_SCHEMA_VERSION = 14;
+export const PHASE13_RETRIEVAL_FEEDBACK_SCHEMA_VERSION = 15;
+export const PHASE14_MEMORY_COMPRESSION_SCHEMA_VERSION = 16;
+export const PHASE15_PREFERENCE_DRIFT_SCHEMA_VERSION = 17;
+export const PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION = 18;
+export const CURRENT_SCHEMA_VERSION = PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION;
 
 const CREATE_PHASE1_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS schema_version (\n    version INTEGER NOT NULL\n  )`,
@@ -110,6 +119,110 @@ const CREATE_PHASE6_SEMANTIC_VECTOR_SQL = [
 
 const CREATE_PHASE7_BEHAVIOR_TAGS_SQL = [
   "ALTER TABLE behavior_rules ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'",
+] as const;
+
+const CREATE_PHASE8_COMPOSITE_INDEXES_SQL = [
+  'CREATE INDEX IF NOT EXISTS idx_memory_items_scope_active ON memory_items(scope_user_id, active, archived, updated_at)',
+  'CREATE INDEX IF NOT EXISTS idx_behavior_rules_active_priority ON behavior_rules(active, deprecated, priority DESC)',
+  'CREATE INDEX IF NOT EXISTS idx_debug_events_created_at ON debug_events(created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_boot_briefings_user_generated ON boot_briefings(user_id, generated_at DESC)',
+] as const;
+
+const CREATE_PHASE9_BEHAVIOR_DURATION_SQL = [
+  'ALTER TABLE behavior_rules ADD COLUMN duration TEXT',
+] as const;
+
+const CREATE_PHASE10_SOURCE_GRADE_SQL = [
+  "ALTER TABLE memory_items ADD COLUMN source_grade TEXT NOT NULL DEFAULT 'primary'",
+  // Backfill derived sources
+  "UPDATE memory_items SET source_grade = 'derived' WHERE source_kind IN ('runtime_project', 'runtime_user', 'reflection_derived')",
+  // Backfill inferred sources
+  "UPDATE memory_items SET source_grade = 'inferred' WHERE source_kind IN ('summary', 'inference')",
+  // Clean recursive pollution — scoped to auto-generated sources only to avoid deleting legitimate user content
+  "DELETE FROM memory_items WHERE content LIKE '%Relevant memor%' AND content LIKE '%memory%' AND source_kind IN ('runtime_project', 'runtime_user', 'reflection_derived', 'summary', 'inference')",
+] as const;
+
+const CREATE_PHASE11_SAFE_SYSTEM_CLEANUP_SQL = [
+  // Clean generic outcome-only content, but only for system-derived rows.
+  "DELETE FROM memory_items WHERE content IN ('run_success', 'run_failed', 'success', 'failed', 'done', 'completed', '成功', '失败', '完成') AND source_kind IN ('runtime_project', 'runtime_user', 'reflection_derived', 'summary', 'inference') AND COALESCE(source_actor, 'system') = 'system'",
+  // Clean orphaned semantic_index entries
+  "DELETE FROM semantic_index WHERE memory_id NOT IN (SELECT id FROM memory_items)",
+  // Clean orphaned embedding_meta entries
+  "DELETE FROM embedding_meta WHERE memory_id NOT IN (SELECT id FROM memory_items)",
+] as const;
+
+const CREATE_PHASE12_KNOWLEDGE_GRAPH_SQL = [
+  `CREATE TABLE IF NOT EXISTS memory_relations (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    weight REAL NOT NULL DEFAULT 1.0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    metadata_json TEXT,
+    active INTEGER NOT NULL DEFAULT 1
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_rel_source ON memory_relations(source_id, active)',
+  'CREATE INDEX IF NOT EXISTS idx_rel_target ON memory_relations(target_id, active)',
+  'CREATE INDEX IF NOT EXISTS idx_rel_type ON memory_relations(relation_type, active)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_rel_pair ON memory_relations(source_id, target_id, relation_type)',
+  `CREATE TABLE IF NOT EXISTS graph_stats (
+    memory_id TEXT PRIMARY KEY,
+    in_degree INTEGER NOT NULL DEFAULT 0,
+    out_degree INTEGER NOT NULL DEFAULT 0,
+    strongest_relation_type TEXT,
+    strongest_relation_id TEXT,
+    cluster_id TEXT,
+    updated_at TEXT NOT NULL
+  )`,
+] as const;
+
+const CREATE_PHASE13_RETRIEVAL_FEEDBACK_SQL = [
+  `CREATE TABLE IF NOT EXISTS retrieval_feedback (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    memory_id TEXT NOT NULL,
+    query TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    recall_rank INTEGER NOT NULL,
+    score REAL NOT NULL,
+    signal TEXT NOT NULL,
+    signal_source TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_feedback_session ON retrieval_feedback(session_id)',
+  'CREATE INDEX IF NOT EXISTS idx_feedback_memory ON retrieval_feedback(memory_id)',
+  'CREATE INDEX IF NOT EXISTS idx_feedback_signal ON retrieval_feedback(signal, created_at)',
+] as const;
+
+const CREATE_PHASE14_MEMORY_COMPRESSION_SQL = [
+  'ALTER TABLE memory_items ADD COLUMN compressed_from_json TEXT',
+  'ALTER TABLE memory_items ADD COLUMN compression_level INTEGER DEFAULT 0',
+] as const;
+
+const CREATE_PHASE15_PREFERENCE_DRIFT_SQL = [
+  `CREATE TABLE IF NOT EXISTS preference_drift_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    preference_key TEXT NOT NULL,
+    old_value TEXT NOT NULL,
+    new_value TEXT NOT NULL,
+    drift_type TEXT NOT NULL,
+    detected_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_drift_user ON preference_drift_log(user_id, detected_at)',
+] as const;
+
+const CREATE_PHASE16_TUNING_OVERRIDES_SQL = [
+  `CREATE TABLE IF NOT EXISTS tuning_overrides (
+    type_grade_key TEXT PRIMARY KEY,
+    decay_multiplier REAL NOT NULL DEFAULT 1.0,
+    sample_count INTEGER NOT NULL DEFAULT 0,
+    last_updated TEXT NOT NULL
+  )`,
 ] as const;
 
 function ensureSchemaVersionTable(db: Database.Database): void {
@@ -235,6 +348,55 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
       runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE7_BEHAVIOR_TAGS_SQL);
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION);
     });
+    const phase8CompositeIndexesTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE8_COMPOSITE_INDEXES_SQL) {
+        db.prepare(sql).run();
+      }
+
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE8_COMPOSITE_INDEXES_SCHEMA_VERSION);
+    });
+    const phase9BehaviorDurationTx = db.transaction(() => {
+      runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE9_BEHAVIOR_DURATION_SQL);
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE9_BEHAVIOR_DURATION_SCHEMA_VERSION);
+    });
+    const phase10SourceGradeTx = db.transaction(() => {
+      runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE10_SOURCE_GRADE_SQL);
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE10_SOURCE_GRADE_SCHEMA_VERSION);
+    });
+    const phase11SafeSystemCleanupTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE11_SAFE_SYSTEM_CLEANUP_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE11_SAFE_SYSTEM_CLEANUP_SCHEMA_VERSION);
+    });
+    const phase12KnowledgeGraphTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE12_KNOWLEDGE_GRAPH_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE12_KNOWLEDGE_GRAPH_SCHEMA_VERSION);
+    });
+    const phase13RetrievalFeedbackTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE13_RETRIEVAL_FEEDBACK_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE13_RETRIEVAL_FEEDBACK_SCHEMA_VERSION);
+    });
+    const phase14MemoryCompressionTx = db.transaction(() => {
+      runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE14_MEMORY_COMPRESSION_SQL);
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE14_MEMORY_COMPRESSION_SCHEMA_VERSION);
+    });
+    const phase15PreferenceDriftTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE15_PREFERENCE_DRIFT_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE15_PREFERENCE_DRIFT_SCHEMA_VERSION);
+    });
+    const phase16TuningOverridesTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE16_TUNING_OVERRIDES_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -277,6 +439,43 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
     if (currentVersion < PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION) {
       phase7BehaviorTagsTx();
       currentVersion = PHASE7_BEHAVIOR_TAGS_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE8_COMPOSITE_INDEXES_SCHEMA_VERSION) {
+      phase8CompositeIndexesTx();
+      currentVersion = PHASE8_COMPOSITE_INDEXES_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE9_BEHAVIOR_DURATION_SCHEMA_VERSION) {
+      phase9BehaviorDurationTx();
+      currentVersion = PHASE9_BEHAVIOR_DURATION_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE10_SOURCE_GRADE_SCHEMA_VERSION) {
+      phase10SourceGradeTx();
+      currentVersion = PHASE10_SOURCE_GRADE_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE11_SAFE_SYSTEM_CLEANUP_SCHEMA_VERSION) {
+      phase11SafeSystemCleanupTx();
+      currentVersion = PHASE11_SAFE_SYSTEM_CLEANUP_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE12_KNOWLEDGE_GRAPH_SCHEMA_VERSION) {
+      phase12KnowledgeGraphTx();
+      currentVersion = PHASE12_KNOWLEDGE_GRAPH_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE13_RETRIEVAL_FEEDBACK_SCHEMA_VERSION) {
+      phase13RetrievalFeedbackTx();
+      currentVersion = PHASE13_RETRIEVAL_FEEDBACK_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE14_MEMORY_COMPRESSION_SCHEMA_VERSION) {
+      phase14MemoryCompressionTx();
+      currentVersion = PHASE14_MEMORY_COMPRESSION_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE15_PREFERENCE_DRIFT_SCHEMA_VERSION) {
+      phase15PreferenceDriftTx();
+      currentVersion = PHASE15_PREFERENCE_DRIFT_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION) {
+      phase16TuningOverridesTx();
+      currentVersion = PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION;
     }
 
     return currentVersion;

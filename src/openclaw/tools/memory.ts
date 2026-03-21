@@ -24,20 +24,59 @@ import {
   truncate,
 } from '../shared.js';
 
-const EDIT_ACTIONS = ['update', 'delete', 'correct'] as const;
-const BROWSE_SORT_BY = ['recent', 'importance', 'accessed'] as const;
+const EDIT_ACTIONS = ['update', 'delete', 'correct', 'merge', 'pin', 'unpin'] as const;
+const BROWSE_SORT_BY = ['recent', 'importance', 'accessed', 'written'] as const;
+const EDIT_ACTION_LABELS: Record<(typeof EDIT_ACTIONS)[number], string> = {
+  update: 'updated',
+  delete: 'deleted',
+  correct: 'corrected',
+  merge: 'merged',
+  pin: 'pinned',
+  unpin: 'unpinned',
+};
+
+function normalizeToolMemoryType(value: unknown) {
+  const normalized = asOptionalEnum(value, MEMORY_TYPES);
+  return normalized;
+}
+
+function normalizeToolMemoryLifecycle(value: unknown) {
+  const normalized = asOptionalEnum(value, MEMORY_LIFECYCLES);
+  return normalized;
+}
+
+function buildToolMemorySource(params: UnknownRecord, toolContext: UnknownRecord) {
+  const source = parseMemorySource(params.source) ?? {
+    kind: 'tool' as const,
+    actor: 'system' as const,
+  };
+
+  return {
+    ...source,
+    sessionId: source.sessionId ?? asOptionalString(toolContext.sessionId),
+    messageId: source.messageId ?? asOptionalString(toolContext.runId),
+    channel: source.channel
+      ?? asOptionalString(toolContext.messageChannel)
+      ?? asOptionalString(toolContext.channelId)
+      ?? asOptionalString(toolContext.channel),
+  };
+}
 
 export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClawRegistrationContext): void {
   api.registerTool(
     (toolContext: UnknownRecord) => ({
       name: 'evermemory_store',
       label: 'EverMemory Store',
-      description: 'Store durable memory content in EverMemory.',
+      description: 'Store durable memory content in EverMemory. If unsure about type or lifecycle, omit them and let EverMemory infer safe defaults.',
       parameters: Type.Object(
         {
           content: Type.String({ description: 'Text to store as memory.' }),
-          type: memoryTypeSchema,
-          lifecycle: memoryLifecycleSchema,
+          type: Type.Optional(Type.String({
+            description: `Optional memory type. Use one of: ${MEMORY_TYPES.join(', ')}. If unsure, omit this field.`,
+          })),
+          lifecycle: Type.Optional(Type.String({
+            description: `Optional lifecycle. Use one of: ${MEMORY_LIFECYCLES.join(', ')}. If unsure, omit this field.`,
+          })),
           scope: scopeSchema,
           source: sourceSchema,
           tags: Type.Optional(Type.Array(Type.String())),
@@ -57,10 +96,10 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
         const baseScope = resolveToolScope(sessionScopes, toolContext);
         const result = evermemory.evermemoryStore({
           content,
-          type: asOptionalEnum(params.type, MEMORY_TYPES),
-          lifecycle: asOptionalEnum(params.lifecycle, MEMORY_LIFECYCLES),
+          type: normalizeToolMemoryType(params.type),
+          lifecycle: normalizeToolMemoryLifecycle(params.lifecycle),
           scope: mergeScope(baseScope, parseScope(params.scope)),
-          source: parseMemorySource(params.source),
+          source: buildToolMemorySource(params, toolContext),
           tags: asOptionalStringArray(params.tags),
           relatedEntities: asOptionalStringArray(params.relatedEntities),
         });
@@ -69,7 +108,7 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           content: [{
             type: 'text',
             text: result.accepted
-              ? `Stored memory: ${truncate(result.memory?.content ?? content, 100)}`
+              ? `Stored [${result.inferredType ?? 'fact'}/${result.inferredLifecycle ?? 'episodic'}]: ${truncate(result.memory?.content ?? content, 80)}`
               : `Memory rejected: ${result.reason}`,
           }],
           details: result,
@@ -90,6 +129,8 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           limit: Type.Optional(Type.Number({ minimum: 1, maximum: toolLimits.recall })),
           mode: retrievalModeSchema,
           scope: scopeSchema,
+          createdAfter: Type.Optional(Type.String()),
+          createdBefore: Type.Optional(Type.String()),
         },
         { additionalProperties: false },
       ),
@@ -108,6 +149,8 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           limit: asOptionalInteger(params.limit),
           mode: asOptionalEnum(params.mode, RETRIEVAL_MODES),
           scope: mergeScope(baseScope, parseScope(params.scope)),
+          createdAfter: asOptionalString(params.createdAfter),
+          createdBefore: asOptionalString(params.createdBefore),
         });
 
         if (recall.total === 0) {
@@ -119,7 +162,7 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
 
         const lines = recall.items
           .slice(0, 6)
-          .map((item, index) => `${index + 1}. [${item.type}/${item.lifecycle}] ${truncate(item.content, 140)}`);
+          .map((item, index) => `${index + 1}. #${item.id.slice(0, 8)} [${item.type}/${item.lifecycle}] ${truncate(item.content, 120)}`);
 
         return {
           content: [{
@@ -215,12 +258,13 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
     (toolContext: UnknownRecord) => ({
       name: 'evermemory_edit',
       label: 'EverMemory Edit',
-      description: 'Edit, correct, or delete a stored memory by ID. Use evermemory_browse or evermemory_recall to find memory IDs.',
+      description: 'Edit, correct, merge, pin, unpin, or delete a stored memory by ID. Use evermemory_browse or evermemory_recall to find memory IDs.',
       parameters: Type.Object(
         {
           memoryId: Type.String({ description: 'ID of the memory to edit (from browse/recall results).' }),
-          action: Type.Union(EDIT_ACTIONS.map((a) => Type.Literal(a)), { description: 'update: modify content, delete: soft-delete, correct: create new version superseding old.' }),
-          newContent: Type.Optional(Type.String({ description: 'New content for update/correct actions.' })),
+          action: Type.Union(EDIT_ACTIONS.map((a) => Type.Literal(a)), { description: 'update: modify content, delete: soft-delete, correct: create new version superseding old, merge: combine with another memory, pin/unpin: adjust retention priority.' }),
+          newContent: Type.Optional(Type.String({ description: 'New content for update/correct actions, or merged content for merge.' })),
+          mergeWithId: Type.Optional(Type.String({ description: 'ID of the second memory to merge with when action=merge.' })),
           reason: Type.Optional(Type.String({ description: 'Reason for the edit (for audit trail).' })),
         },
         { additionalProperties: false },
@@ -239,13 +283,14 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           memoryId,
           action,
           newContent: asOptionalString(params.newContent),
+          mergeWithId: asOptionalString(params.mergeWithId),
           reason: asOptionalString(params.reason),
         }, callerScope);
         return {
           content: [{
             type: 'text',
             text: result.success
-              ? `Memory ${action}d successfully. Previous: "${truncate(result.previous?.content ?? '', 80)}"`
+              ? `Memory ${EDIT_ACTION_LABELS[action]} successfully. Previous: "${truncate(result.previous?.content ?? '', 80)}"`
               : `Edit failed: ${result.error}`,
           }],
           details: result,
@@ -266,6 +311,8 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           lifecycle: memoryLifecycleSchema,
           limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
           sortBy: Type.Optional(Type.Union(BROWSE_SORT_BY.map((s) => Type.Literal(s)))),
+          sinceMinutesAgo: Type.Optional(Type.Number({ minimum: 1, maximum: 10080 })),
+          source: Type.Optional(Type.String({ description: 'Filter by source tag (e.g., "auto_capture")' })),
           scope: scopeSchema,
         },
         { additionalProperties: false },
@@ -277,6 +324,8 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           lifecycle: asOptionalEnum(params.lifecycle, MEMORY_LIFECYCLES),
           limit: asOptionalInteger(params.limit),
           sortBy: asOptionalEnum(params.sortBy, BROWSE_SORT_BY),
+          sinceMinutesAgo: asOptionalInteger(params.sinceMinutesAgo),
+          source: asOptionalString(params.source),
           scope: mergeScope(baseScope, parseScope(params.scope)),
         });
         return {

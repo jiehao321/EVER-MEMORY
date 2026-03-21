@@ -38,6 +38,7 @@ function createMemory(
     },
     tags: overrides.tags ?? [],
     relatedEntities: overrides.relatedEntities ?? [],
+    sourceGrade: overrides.sourceGrade ?? 'primary',
     stats: overrides.stats ?? {
       accessCount: 0,
       retrievalCount: 0,

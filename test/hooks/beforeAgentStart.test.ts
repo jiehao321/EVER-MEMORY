@@ -31,6 +31,7 @@ function createMemory(id: string, scope: MemoryScope): MemoryItem {
     },
     tags: [],
     relatedEntities: [],
+    sourceGrade: 'primary',
     stats: {
       accessCount: 0,
       retrievalCount: 0,

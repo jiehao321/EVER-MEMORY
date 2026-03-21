@@ -203,18 +203,66 @@ export function evaluateCandidateQuality(candidate: AutoMemoryCandidate): number
   if (content.length < AUTO_CAPTURE_MIN_CONTENT_LENGTH) {
     return 0;
   }
-  if (candidate.kind === 'project_summary') {
-    if (content.includes('待补充') && content.includes('待确认')) {
+
+  switch (candidate.kind) {
+    case 'project_summary': {
+      if (content.includes('待补充') && content.includes('待确认')) {
+        return 0;
+      }
+      const summaryFields = ['状态：', '关键约束：', '最近决策：', '下一步：'];
+      const filled = summaryFields.filter((field) => {
+        const value = extractSummaryField(content, field);
+        return value && !isPlaceholderFieldValue(value);
+      });
+      return filled.length >= 3 ? 1 : 0;
+    }
+
+    case 'decision': {
+      if (containsAny(content, DECISION_PATTERNS)) {
+        return 1.0;
+      }
+      if (containsAny(content, GENERIC_OUTCOME_PATTERNS)) {
+        return 0.3;
+      }
+      return 0.6;
+    }
+
+    case 'explicit_constraint': {
+      if (containsAny(content, CONSTRAINT_PATTERNS)) {
+        return 1.0;
+      }
+      return 0.4;
+    }
+
+    case 'user_preference': {
+      if (containsAny(content, PREFERENCE_PATTERNS)) {
+        return 1.0;
+      }
+      return 0.3;
+    }
+
+    case 'next_step': {
+      if (containsAny(content, NEXT_STEP_PATTERNS)) {
+        return 1.0;
+      }
+      return 0.3;
+    }
+
+    case 'project_state': {
+      const parts = ['输入:', '执行:', '结果:'];
+      const filledCount = parts.filter((part) => content.includes(part)).length;
+      if (filledCount >= 2) {
+        return 1.0;
+      }
+      if (filledCount === 1) {
+        return 0.4;
+      }
       return 0;
     }
-    const summaryFields = ['状态：', '关键约束：', '最近决策：', '下一步：'];
-    const filled = summaryFields.filter((field) => {
-      const value = extractSummaryField(content, field);
-      return value && !isPlaceholderFieldValue(value);
-    });
-    return filled.length >= 3 ? 1 : 0;
+
+    default:
+      return 1;
   }
-  return 1;
 }
 
 export function buildAutoMemoryCandidates(

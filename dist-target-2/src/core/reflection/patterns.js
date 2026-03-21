@@ -1,0 +1,10 @@
+export const CORRECTION_CUE_ZH_REGEX = /更正|不是|改成|纠正/;
+export const CORRECTION_CUE_EN_REGEX = /\b(correction|not that)\b/i;
+export const APPROVAL_CUE_ZH_REGEX = /谢谢|很好|可以|赞同/;
+export const APPROVAL_CUE_EN_REGEX = /\b(thanks|great|good|works)\b/i;
+export const HESITATION_CUE_ZH_REGEX = /不确定|也许|可能|先看看/;
+export const HESITATION_CUE_EN_REGEX = /\b(maybe|not sure|unsure|perhaps)\b/i;
+export const EXTERNAL_RISK_CUE_ZH_REGEX = /删除|转账|支付|部署|生产|发布/;
+export const EXTERNAL_RISK_CUE_EN_REGEX = /\b(delete|payment|deploy|production|release)\b/i;
+export const REPEAT_CUE_ZH_REGEX = /又|再次|还是|仍然|重复|一再/;
+export const REPEAT_CUE_EN_REGEX = /\b(again|still|repeated|repeat|same issue)\b/i;

@@ -2,7 +2,7 @@
 
 EverMemory is a deterministic memory plugin for OpenClaw. It provides knowledge storage, recall, behavior rule governance, and user profile projection through reliable, explainable, and rollback-safe workflows.
 
-**Version:** 1.0.4
+**Version:** 2.0.0-rc1
 **Runtime:** Node.js 22.x, TypeScript strict ESM
 **Storage:** SQLite WAL via better-sqlite3
 **Validation:** TypeBox schemas
@@ -19,7 +19,8 @@ EverMemory is a deterministic memory plugin for OpenClaw. It provides knowledge 
 6. [Embedding System](#6-embedding-system)
 7. [Behavior Rule Lifecycle](#7-behavior-rule-lifecycle)
 8. [Profile Projection](#8-profile-projection)
-9. [Schema Versions](#9-schema-versions)
+9. [Knowledge Graph](#9-knowledge-graph)
+10. [Schema Versions](#10-schema-versions)
 
 ---
 
@@ -36,7 +37,7 @@ EverMemory follows a layered architecture. Each layer depends only on the layer 
         v                    v                    v
 +---------------+  +------------------+  +------------------+
 |   Lifecycle   |  |   Tool Surface   |  |  Plugin Adapter  |
-|    Hooks      |  |  (16 commands)   |  | (src/openclaw/)  |
+|    Hooks      |  | (19 SDK / 18 OC) |  | (src/openclaw/)  |
 | (src/hooks/)  |  |  (src/tools/)    |  |                  |
 +---------------+  +------------------+  +------------------+
         |                    |                    |
@@ -79,7 +80,7 @@ EverMemory follows a layered architecture. Each layer depends only on the layer 
 | `src/storage/` | SQLite database access, idempotent migrations, and typed repository classes |
 | `src/hooks/` | OpenClaw lifecycle hook handlers (sessionStart, messageReceived, sessionEnd, beforeAgentStart) |
 | `src/openclaw/` | Plugin adapter binding EverMemory to the OpenClaw plugin interface |
-| `src/tools/` | 16 tool implementations exposed to the agent (store, recall, rules, briefing, status, import/export, profile, etc.) |
+| `src/tools/` | 19 SDK tool implementations; 18 are currently registered through OpenClaw |
 | `src/types/` | TypeScript type definitions and TypeBox schemas |
 | `src/runtime/` | Runtime context management |
 | `src/util/` | Shared utility functions |
@@ -89,10 +90,11 @@ EverMemory follows a layered architecture. Each layer depends only on the layer 
 The entry point `src/index.ts` exports `initializeEverMemory()`, which performs the following sequence:
 
 1. Opens the SQLite database with WAL mode enabled.
-2. Runs idempotent migrations (schema versions 1 through 9).
-3. Instantiates all repository classes against the database handle.
-4. Creates core service instances, wiring repositories and configuration.
-5. Returns a unified API object exposing all tool methods and lifecycle hooks.
+2. Configures the embedding provider for both SDK and OpenClaw entry paths.
+3. Runs idempotent migrations (schema versions 1 through 18).
+4. Instantiates all repository classes against the database handle.
+5. Creates core service instances, wiring repositories and configuration.
+6. Returns a unified API object exposing all tool methods and lifecycle hooks.
 
 ---
 
@@ -109,7 +111,7 @@ The fundamental unit of stored knowledge.
 | `type` | enum | One of 11 types classifying the memory (fact, preference, experience, observation, instruction, context, relationship, skill, goal, constraint, meta) |
 | `lifecycle` | enum | Storage tier: `working`, `episodic`, `semantic`, `archive` |
 | `scope` | string | Visibility scope (session, project, global) |
-| `source` | string | Origin of the memory (user, agent, system) |
+| `source` | string | Ingestion channel metadata (`message`, `tool`, `runtime_project`, etc.); auto-capture remains a tag, not a `source.kind` |
 | `tags` | string[] | Categorical labels for filtering |
 | `confidence` | number | Confidence score (0.0 - 1.0) |
 | `importance` | number | Importance weight (0.0 - 1.0) |
@@ -202,6 +204,11 @@ EverMemory uses SQLite in Write-Ahead Logging (WAL) mode via the `better-sqlite3
 | `behavior_rules` | BehaviorRule | Schema v7 |
 | `semantic_vectors` | Embedding vectors for semantic search | Schema v8 |
 | `projected_profiles` | ProjectedProfile | Schema v9 |
+| `memory_relations` | Knowledge graph edges (7 relation types) | Schema v14 |
+| `graph_stats` | Graph statistics cache (degree, cluster) | Schema v14 |
+| `retrieval_feedback` | Retrieval signal tracking (used/ignored) | Schema v15 |
+| `preference_drift_log` | Profile preference change history | Schema v17 |
+| `tuning_overrides` | Self-tuning decay multipliers | Schema v18 |
 
 ### Idempotent Migrations
 
@@ -213,6 +220,12 @@ Migrations are defined in `src/storage/migrations.ts` and executed during initia
 
 This design ensures that EverMemory can be upgraded in place without data loss and that any migration can safely be re-run.
 
+Current schema head is v18. Recent versions add knowledge graph storage, retrieval feedback tracking, compression metadata, preference drift logging, and self-tuning overrides.
+
+### Scope Semantics
+
+`MemoryScope.project` is the host project or workspace identifier when the OpenClaw host provides one. EverMemory no longer substitutes the plugin name as a fake project scope. If the host cannot resolve a project, the system falls back to user/chat scoping without inventing a project bucket.
+
 ### Repository Classes
 
 Each table is accessed through a dedicated typed repository:
@@ -223,7 +236,9 @@ Each table is accessed through a dedicated typed repository:
 - `debugRepo.ts` — Debug event logging and retrieval.
 - `experienceRepo.ts` — Experience capture records.
 - `intentRepo.ts` — Intent analysis records.
+- `feedbackRepo.ts` — Retrieval feedback signal persistence and strategy-level aggregation.
 - `profileRepo.ts` — Profile projection storage and retrieval.
+- `relationRepo.ts` — Knowledge graph CRUD, recursive CTE traversal (BFS, causal chain, shortest path), weight decay.
 - `reflectionRepo.ts` — Reflection records.
 - `semanticRepo.ts` — Embedding vector storage and nearest-neighbor queries.
 
@@ -463,9 +478,51 @@ Profile recomputation occurs during the `sessionEnd` hook:
 
 ---
 
-## 9. Schema Versions
+## 9. Knowledge Graph
 
-EverMemory's database schema has evolved through 9 versions, each corresponding to a development phase.
+EverMemory maintains a lightweight knowledge graph that captures relationships between memories using an adjacency table model in SQLite.
+
+### Relation Types
+
+| Type | Description |
+|------|-------------|
+| `causes` | Memory A is a cause or reason for memory B |
+| `contradicts` | Memory A conflicts with memory B |
+| `supports` | Memory A provides evidence for memory B |
+| `evolves_from` | Memory A is an updated version of memory B |
+| `supersedes` | Memory A replaces memory B |
+| `depends_on` | Memory A requires memory B |
+| `related_to` | General topical association |
+
+### Graph Traversal
+
+The `RelationRepository` provides recursive CTE-based traversal:
+
+- **BFS traversal** — `findConnected()` discovers related memories within configurable depth, filtering by relation type and minimum weight.
+- **Causal chains** — `findCausalChain()` traces forward or backward cause-effect paths.
+- **Contradiction clusters** — `findContradictionCluster()` identifies groups of mutually contradicting memories.
+- **Evolution timelines** — `findEvolutionTimeline()` traces how a memory has changed over time.
+- **Shortest path** — `findShortestPath()` finds the shortest connection between two memories.
+
+### Automatic Detection
+
+When a new memory is stored, the `RelationDetectionService` automatically:
+1. Retrieves the top 10 semantically similar candidates.
+2. Classifies relations using deterministic rules (antonyms -> contradicts, high similarity + same type -> evolves_from, keyword overlap -> supports).
+3. Runs transitive inference (e.g., A causes B + B causes C -> A causes C with decayed confidence).
+4. Updates `graph_stats` cache (in/out degree, strongest relation).
+
+All detection runs within a 2-second timeout; embedding unavailability is silently skipped.
+
+### Weight Decay
+
+Relation weights decay over time (0.5% per day) and are reinforced when traversed. Relations below the prune threshold (0.15) are deactivated during housekeeping.
+
+---
+
+## 10. Schema Versions
+
+EverMemory's database schema has evolved through 18 versions, each corresponding to a development phase.
 
 | Version | Phase | Changes |
 |---------|-------|---------|
@@ -478,5 +535,11 @@ EverMemory's database schema has evolved through 9 versions, each corresponding 
 | 7 | Phase 7 | Added `behavior_rules` table with full lifecycle governance (candidate, active, frozen, deprecated), evidence tracking, and decay scoring. |
 | 8 | Phase 7+ | Added `semantic_vectors` table for embedding storage, enabling semantic retrieval as an optional sidecar. |
 | 9 | Phase 7+ | Added `projected_profiles` table for two-tier user profile projection (stable fields and derived hints). |
+| 10-13 | Quality Sprint | Added `source_grade` column, semantic metadata, experience/reflection indexes, system cleanup improvements. |
+| 14 | Knowledge Graph | Added `memory_relations` and `graph_stats` tables for knowledge graph with recursive CTE traversal support. |
+| 15 | Retrieval Feedback | Added `retrieval_feedback` table for tracking used/ignored/unknown signals per recalled memory. |
+| 16 | Compression | Added `compressed_from_json` and `compression_level` columns to `memory_items` for memory compression tracking. |
+| 17 | Preference Drift | Added `preference_drift_log` table for tracking preference changes and reversals over time. |
+| 18 | Self-Tuning | Added `tuning_overrides` table for per-type decay multiplier adjustments based on feedback effectiveness. |
 
-All migrations are forward-only and idempotent. The current schema version is **9**.
+All migrations are forward-only and idempotent. The current schema version is **18**.

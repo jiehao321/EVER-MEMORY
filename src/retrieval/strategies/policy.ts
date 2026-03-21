@@ -1,8 +1,10 @@
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { MemoryDataClass, MemoryItem, RecallRequest } from '../../types.js';
 import {
+  DATA_QUALITY_INFERENCE,
   DATA_QUALITY_RUNTIME,
   DATA_QUALITY_RUNTIME_LOW_VALUE,
+  DATA_QUALITY_SUMMARY,
   DATA_QUALITY_TEST,
   DATA_QUALITY_UNKNOWN,
   DATA_QUALITY_UNKNOWN_LOW_VALUE,
@@ -160,6 +162,8 @@ export class RetrievalStrategySupport {
       scope: request.scope,
       types: request.types,
       lifecycles: request.lifecycles,
+      createdAfter: request.createdAfter,
+      createdBefore: request.createdBefore,
       activeOnly: true,
       archived: false,
       limit: candidateLimit,
@@ -174,6 +178,8 @@ export class RetrievalStrategySupport {
       scope: request.scope,
       types: request.types,
       lifecycles: request.lifecycles,
+      createdAfter: request.createdAfter,
+      createdBefore: request.createdBefore,
       activeOnly: true,
       archived: false,
       limit: Math.max(limit * 8, this.semanticCandidateLimit),
@@ -232,14 +238,20 @@ export class RetrievalStrategySupport {
 
   private dataQuality(memory: MemoryItem): { dataClass: MemoryDataClass; quality: number } {
     const dataClass = this.classifyMemoryData(memory);
-    if (dataClass === 'runtime') {
-      return {
-        dataClass,
-        quality: this.isLowValueNoise(memory) ? DATA_QUALITY_RUNTIME_LOW_VALUE : DATA_QUALITY_RUNTIME,
-      };
-    }
     if (dataClass === 'test') {
       return { dataClass, quality: DATA_QUALITY_TEST };
+    }
+    if (dataClass === 'runtime') {
+      if (this.isLowValueNoise(memory)) {
+        return { dataClass, quality: DATA_QUALITY_RUNTIME_LOW_VALUE };
+      }
+      if (memory.type === 'summary' || memory.source.kind === 'summary') {
+        return { dataClass, quality: DATA_QUALITY_SUMMARY };
+      }
+      if (memory.source.kind === 'inference') {
+        return { dataClass, quality: DATA_QUALITY_INFERENCE };
+      }
+      return { dataClass, quality: DATA_QUALITY_RUNTIME };
     }
     return {
       dataClass,

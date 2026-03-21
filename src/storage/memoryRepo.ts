@@ -36,6 +36,7 @@ interface MemoryItemRow {
   related_entities_json: string;
   access_count: number;
   retrieval_count: number;
+  source_grade: string;
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -100,6 +101,7 @@ function toMemoryItem(row: MemoryItemRow): MemoryItem {
     },
     tags: parseStringArray(row.tags_json),
     relatedEntities: parseStringArray(row.related_entities_json),
+    sourceGrade: (row.source_grade as 'primary' | 'derived' | 'inferred') ?? 'primary',
     stats: {
       accessCount: row.access_count,
       retrievalCount: row.retrieval_count,
@@ -155,6 +157,16 @@ function buildWhereClause(filters: MemorySearchFilters): { sql: string; params: 
     params.push(filters.archived ? 1 : 0);
   }
 
+  if (filters.createdAfter) {
+    clauses.push('created_at >= ?');
+    params.push(filters.createdAfter);
+  }
+
+  if (filters.createdBefore) {
+    clauses.push('created_at <= ?');
+    params.push(filters.createdBefore);
+  }
+
   const sql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   return { sql, params };
 }
@@ -175,6 +187,11 @@ function resolveSearchLimit(limit: number | undefined): number {
 export class MemoryRepository {
   constructor(private readonly db: Database.Database) {}
 
+  /** Run a block of operations inside a single SQLite transaction */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
+
   insert(memory: MemoryItem): void {
     try {
       this.db.prepare(`
@@ -187,8 +204,8 @@ export class MemoryRepository {
           active, archived, superseded_by,
           evidence_excerpt, evidence_references_json,
           tags_json, related_entities_json,
-          access_count, retrieval_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          access_count, retrieval_count, source_grade
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         memory.id,
         memory.content,
@@ -218,6 +235,7 @@ export class MemoryRepository {
         JSON.stringify(memory.relatedEntities),
         memory.stats.accessCount,
         memory.stats.retrievalCount,
+        memory.sourceGrade ?? 'primary',
       );
     } catch (error) {
       if (error instanceof StorageError) {
@@ -265,7 +283,8 @@ export class MemoryRepository {
           tags_json = ?,
           related_entities_json = ?,
           access_count = ?,
-          retrieval_count = ?
+          retrieval_count = ?,
+          source_grade = ?
         WHERE id = ?
       `).run(
         memory.content,
@@ -295,6 +314,7 @@ export class MemoryRepository {
         JSON.stringify(memory.relatedEntities),
         memory.stats.accessCount,
         memory.stats.retrievalCount,
+        memory.sourceGrade ?? 'primary',
         memory.id,
       );
     } catch (error) {

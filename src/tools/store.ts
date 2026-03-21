@@ -32,6 +32,8 @@ export function evermemoryStore(
       source: input.source ?? DEFAULT_SOURCE,
       tags: input.tags ?? [],
       relatedEntities: input.relatedEntities ?? [],
+      sourceGrade: input.sourceGrade,
+      importance: input.importance,
     },
   );
 }

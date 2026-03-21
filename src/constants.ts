@@ -1,5 +1,5 @@
 export const PLUGIN_NAME = 'evermemory';
-export const PLUGIN_VERSION = '1.0.4';
+export const PLUGIN_VERSION = '2.0.0-rc1';
 
 export const DEFAULT_BOOT_TOKEN_BUDGET = 1200;
 export const DEFAULT_MAX_RECALL = 8;
@@ -47,6 +47,7 @@ export const MEMORY_LIFECYCLES = [
 ] as const;
 
 export const DEBUG_EVENT_KINDS = [
+  'content_sanitized',
   'memory_write_decision',
   'memory_write_rejected',
   'memory_merged',
@@ -78,6 +79,13 @@ export const DEBUG_EVENT_KINDS = [
   'memory_restore_reviewed',
   'memory_restore_applied',
   'housekeeping_error',
+  'embedding_init_status',
+  'empty_query_diagnostic',
+  'rule_stale_demoted',
+  'relation_detected',
+  'relation_detection_error',
+  'relation_inference_triggered',
+  'retrieval_feedback_recorded',
 ] as const;
 
 export const INTENT_TYPES = [
@@ -155,4 +163,12 @@ export const BEHAVIOR_RULE_CATEGORIES = [
   'confirmation',
   'memory',
   'planning',
+] as const;
+
+export const BEHAVIOR_RULE_DURATIONS = [
+  'ephemeral',
+  'session',
+  'project',
+  'long_term',
+  'global',
 ] as const;

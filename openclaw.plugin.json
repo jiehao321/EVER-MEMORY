@@ -2,7 +2,7 @@
   "id": "evermemory",
   "name": "EverMemory",
   "description": "Deterministic memory plugin for OpenClaw with governed write/recall behavior.",
-  "version": "1.0.4",
+  "version": "2.0.0-rc1",
   "kind": "memory",
   "configSchema": {
     "type": "object",

@@ -37,6 +37,7 @@ function createTestMemory(overrides: Partial<MemoryItem> = {}): MemoryItem {
     },
     tags: [],
     relatedEntities: [],
+    sourceGrade: 'primary',
     stats: {
       accessCount: 0,
       retrievalCount: 0,

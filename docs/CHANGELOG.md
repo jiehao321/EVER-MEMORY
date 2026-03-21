@@ -3,6 +3,56 @@
 All notable changes to EverMemory are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.0-rc1] - 2026-03-21
+
+### Added — Phase 1: Knowledge Graph
+- **Knowledge Graph** — `memory_relations` table with 7 relation types (causes, contradicts, supports, evolves_from, supersedes, depends_on, related_to)
+- **Recursive CTE graph traversal** — BFS, causal chain, shortest path, contradiction cluster, evolution timeline queries
+- **Graph statistics cache** — `graph_stats` table with in/out degree, cluster ID, strongest relation tracking
+- **Automatic relation detection** — deterministic classification on store (antonym→contradicts, high similarity→evolves_from, keyword overlap→supports)
+- **Transitive inference engine** — hardcoded rules (A causes B + B causes C → A causes C) with confidence decay, no LLM dependency
+- **Relation weight decay** — relations decay over time, reinforced on traversal hit, pruned below threshold
+- **Retrieval feedback tracking** — `retrieval_feedback` table records used/ignored/unknown signals per recalled memory
+- **Micro-reflection service** — in-session tracking of recalled memory usage via store_reference, edit_reference, session_end_implicit signals
+- **`evermemory_relations` tool** — list, add, remove, graph actions for manual relation management
+
+### Added — Phase 2: Proactive Intelligence
+- **Proactive recall engine** — graph expansion (depth 2) + expiring commitments + profile interest matching → top 3 unsolicited items
+- **Contradiction monitor** — real-time detection of `contradicts` relations on store → queues alerts → drains on messageReceived
+- **Adaptive retrieval weights** — 30-day feedback aggregation adjusts hybrid keyword/semantic weights per user (min 20 samples)
+- **Graph-enhanced retrieval** — after hybrid ranking, boost graph-connected items from top-5 results
+- **Contradiction alerts** — `ContradictionAlert` type with conflict score and resolution suggestion (keep_newer, keep_both, ask_user)
+- **Proactive items in messageReceived** — `proactiveItems` and `alerts` fields in `MessageReceivedResult`
+
+### Added — Phase 3: Continuous Evolution
+- **Memory compression** — greedy keyword-overlap clustering → summary memory (lifecycle: semantic, sourceGrade: derived) + archive originals + transfer relations
+- **Predictive context engine** — analyzes recent intent patterns → predicts needed memory types → caches at session start
+- **Preference drift detection** — compares old/new profile preferences, detects additions/changes/removals/reversals with antonym pairs
+- **Proactive alerts service** — decay warnings (important memories not accessed 14+ days) and commitment reminders (>7 days old)
+- **Self-tuning decay** — adjusts decay multipliers per (type, sourceGrade) based on retrieval feedback effectiveness, recomputes every 10 sessions
+- **Progressive consolidation** — every 5 messages triggers light compression (1 cluster) if >100 active memories
+
+### Changed
+- Schema upgraded from v13 to v18 (v14: knowledge graph, v15: retrieval feedback, v16: compression columns, v17: drift log, v18: tuning overrides)
+- `messageReceived` hook now runs proactive recall and drains contradiction alerts after regular recall
+- `store` operation triggers fire-and-forget relation detection with 2s timeout
+- Hybrid retrieval strategy accepts optional `relationRepo` for graph-enhanced ranking
+- `RetrievalService` passes `relationRepo` through to hybrid strategy
+- 4 new debug event kinds: `relation_detected`, `relation_detection_error`, `relation_inference_triggered`, `retrieval_feedback_recorded`
+
+## [1.0.4] - 2026-03-18
+
+### Fixed
+- Cross-platform OpenClaw installation issues and version consistency
+- Windows path handling in plugin registration scripts
+- Version number synchronization across all 8 reference locations
+
+## [1.0.3] - 2026-03-16
+
+### Fixed
+- Full cross-platform compatibility — Windows + macOS + Linux
+- `.claude/codex-collab` session files added to `.gitignore`
+
 ## [1.0.2] - 2026-03-16
 
 ### Added

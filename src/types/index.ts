@@ -12,3 +12,4 @@ export * from './semantic.js';
 export * from './runtime.js';
 export * from './tools.js';
 export * from './plugin.js';
+export * from './feedback.js';
