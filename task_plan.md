@@ -6,10 +6,10 @@ Perform a deep code review of the EverMemory project, identify real defects, reg
 ## Phases
 | Phase | Status | Notes |
 |---|---|---|
-| Reset review context and map project structure | in_progress | Replaced stale planning context, confirmed this is a Node 22 + TypeScript project with core runtime, storage, retrieval, OpenClaw integration, and many test/script entry points. |
-| Inspect core runtime, storage, and retrieval paths | pending | Focus on correctness, data integrity, error handling, and boundary behavior. |
-| Inspect plugin/tooling/script surfaces and tests | pending | Focus on host integration, dangerous defaults, release/test drift, and maintainability gaps. |
-| Validate findings and prepare review report | pending | Each finding needs file/line evidence and an impact statement. |
+| Reset review context and map project structure | completed | Replaced stale planning context, confirmed this is a Node 22 + TypeScript project with core runtime, storage, retrieval, OpenClaw integration, and many test/script entry points. |
+| Inspect core runtime, storage, and retrieval paths | completed | Reviewed initialization, briefing, retrieval, export/import, storage, embeddings, and relation handling. |
+| Inspect plugin/tooling/script surfaces and tests | completed | Reviewed OpenClaw tools, plugin lifecycle, package/test scripts, and stability-check logic. |
+| Validate findings and prepare review report | completed | Verified findings with source traces plus `npm run check` and direct test execution evidence. |
 
 ## Review Criteria
 - Prefer real bugs and behavioral risks over style comments.
