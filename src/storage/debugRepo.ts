@@ -27,7 +27,10 @@ export class DebugRepository {
   private readonly stmtListRecentAll: Database.Statement;
   private readonly stmtListRecentByKind: Database.Statement;
 
-  constructor(private readonly db: Database.Database) {
+  constructor(
+    private readonly db: Database.Database,
+    private readonly enabled = true,
+  ) {
     this.stmtInsert = db.prepare(`
       INSERT INTO debug_events (id, created_at, kind, entity_id, payload_json)
       VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)
@@ -46,6 +49,9 @@ export class DebugRepository {
   }
 
   log(kind: DebugEventKind, entityId: string | undefined, payload: Record<string, unknown>): void {
+    if (!this.enabled) {
+      return;
+    }
     this.stmtInsert.run(randomUUID(), kind, entityId ?? null, JSON.stringify(payload));
   }
 

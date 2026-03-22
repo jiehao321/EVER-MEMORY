@@ -59,3 +59,39 @@ test('initializeEverMemory configures embedding manager using env default', asyn
     }
   }
 });
+
+test('initializeEverMemory dispose waits for warmup before closing the database', async () => {
+  const originalWarmup = embeddingManager.warmup.bind(embeddingManager);
+  let releaseWarmup: (() => void) | undefined;
+  let warmupStarted = false;
+  embeddingManager.warmup = (async () => {
+    warmupStarted = true;
+    await new Promise<void>((resolve) => {
+      releaseWarmup = resolve;
+    });
+    return {
+      ready: false,
+      provider: 'none',
+      elapsedMs: 0,
+    };
+  }) as typeof embeddingManager.warmup;
+
+  const app = initializeEverMemory({ databasePath: createTempDbPath('init-embedding-dispose') });
+  const disposePromise = app.dispose();
+  let settled = false;
+  void disposePromise.then(() => {
+    settled = true;
+  });
+  await Promise.resolve();
+
+  try {
+    assert.equal(warmupStarted, true);
+    assert.equal(settled, false);
+    releaseWarmup?.();
+    await disposePromise;
+    assert.equal(app.database.connection.open, false);
+  } finally {
+    embeddingManager.warmup = originalWarmup;
+    await embeddingManager.dispose();
+  }
+});

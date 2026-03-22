@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { PLUGIN_NAME, PLUGIN_VERSION } from './constants.js';
 import { getDefaultConfig as loadDefaultConfig, loadConfig } from './config.js';
 import type { EverMemoryConfigInput } from './config.js';
@@ -163,21 +164,95 @@ function logEmbeddingInitStatus(
   }
 }
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function createDisabledBriefing(input: SessionStartInput, tokenTarget: number) {
+  return {
+    id: randomUUID(),
+    sessionId: input.sessionId,
+    userId: input.userId,
+    generatedAt: nowIso(),
+    sections: { identity: [], constraints: [], recentContinuity: [], activeProjects: [] },
+    tokenTarget,
+    actualApproxTokens: 0,
+    optimization: { duplicateBlocksRemoved: 0, tokenPrunedBlocks: 0, highValueBlocksKept: 0 },
+  };
+}
+
+function createDisabledIntent(input: MessageReceivedInput): IntentRecord {
+  return {
+    id: randomUUID(),
+    sessionId: input.sessionId,
+    messageId: input.messageId,
+    createdAt: nowIso(),
+    rawText: input.text,
+    intent: { type: 'other', confidence: 1 },
+    signals: {
+      urgency: 'low',
+      emotionalTone: 'neutral',
+      actionNeed: 'none',
+      memoryNeed: 'none',
+      preferenceRelevance: 0,
+      correctionSignal: 0,
+    },
+    entities: [],
+    retrievalHints: {
+      preferredTypes: [],
+      preferredScopes: [],
+      preferredTimeBias: 'balanced',
+    },
+  };
+}
+
+function createDisabledExperience(input: SessionEndInput) {
+  return {
+    id: randomUUID(),
+    sessionId: input.sessionId,
+    messageId: input.messageId,
+    createdAt: nowIso(),
+    inputSummary: input.inputText ?? '',
+    actionSummary: input.actionSummary ?? '',
+    outcomeSummary: input.outcomeSummary,
+    indicators: {
+      userCorrection: false,
+      userApproval: false,
+      hesitation: false,
+      externalActionRisk: false,
+      repeatMistakeSignal: false,
+    },
+    evidenceRefs: input.evidenceRefs ?? [],
+  };
+}
+
 export function initializeEverMemory(
   configInput: EverMemoryConfigInput = {},
   options: InitializeEverMemoryOptions = {},
 ) {
   const config = loadConfig(configInput);
+  let disposed = false;
   const provider = (process.env.EVERMEMORY_EMBEDDING_PROVIDER ?? 'local') as
     | 'local'
     | 'openai'
     | 'none';
   const database = openDatabase(config.databasePath);
+  const originalClose = database.connection.close.bind(database.connection);
+  (database.connection as typeof database.connection & { close: typeof originalClose }).close = (() => {
+    disposed = true;
+    return originalClose();
+  }) as typeof originalClose;
   runMigrations(database.connection, database.path);
 
   const memoryRepo = new MemoryRepository(database.connection);
   const briefingRepo = new BriefingRepository(database.connection);
-  const debugRepo = new DebugRepository(database.connection);
+  const debugRepo = new DebugRepository(database.connection, config.debugEnabled);
+  const logWarmupStatus = (payload: Record<string, unknown>) => {
+    if (disposed) {
+      return;
+    }
+    logEmbeddingInitStatus(debugRepo, payload);
+  };
   const intentRepo = new IntentRepository(database.connection);
   const experienceRepo = new ExperienceRepository(database.connection);
   const reflectionRepo = new ReflectionRepository(database.connection);
@@ -189,14 +264,14 @@ export function initializeEverMemory(
   embeddingManager.configure({
     provider,
     onInitProgress: (stage, detail) => {
-      logEmbeddingInitStatus(debugRepo, {
+      logWarmupStatus({
         provider,
         stage,
         detail,
       });
     },
     onDebugEvent: (payload) => {
-      logEmbeddingInitStatus(debugRepo, {
+      logWarmupStatus({
         provider,
         ...payload,
       });
@@ -286,16 +361,16 @@ export function initializeEverMemory(
   });
 
   // 2A: Embedding warmup on plugin start
-  void (async () => {
+  const warmupPromise = (async () => {
     try {
       const warmupResult = await embeddingManager.warmup();
-      logEmbeddingInitStatus(debugRepo, {
+      logWarmupStatus({
         provider: warmupResult.provider,
         isReady: warmupResult.ready,
         elapsedMs: warmupResult.elapsedMs,
       });
     } catch (error) {
-      logEmbeddingInitStatus(debugRepo, {
+      logWarmupStatus({
         provider,
         stage: 'warmup_error',
         error: error instanceof Error ? error.message : String(error),
@@ -343,6 +418,18 @@ export function initializeEverMemory(
     archiveService,
     smartnessMetricsService,
     sessionStart(input: SessionStartInput): SessionStartResult {
+      if (!config.enabled) {
+        return {
+          sessionId: input.sessionId,
+          scope: {
+            userId: input.userId,
+            chatId: input.chatId,
+            project: input.project,
+          },
+          briefing: createDisabledBriefing(input, config.bootTokenBudget),
+          behaviorRules: [],
+        };
+      }
       return handleSessionStart(
         input,
         briefingService,
@@ -350,6 +437,7 @@ export function initializeEverMemory(
         debugRepo,
         profileRepo,
         predictiveContextService,
+        config.bootTokenBudget,
       );
     },
     getRuntimeSessionContext(sessionId: string) {
@@ -371,6 +459,19 @@ export function initializeEverMemory(
       return intentService.analyze(input);
     },
     async messageReceived(input: MessageReceivedInput): Promise<MessageReceivedResult> {
+      if (!config.enabled) {
+        return {
+          sessionId: input.sessionId,
+          messageId: input.messageId,
+          intent: createDisabledIntent(input),
+          recall: {
+            items: [],
+            total: 0,
+            limit: input.recallLimit ?? config.maxRecall,
+          },
+          behaviorRules: [],
+        };
+      }
       const userProfile = input.scope?.userId
         ? toRuntimeUserProfile(profileService.getByUserId(input.scope.userId))
         : undefined;
@@ -389,6 +490,24 @@ export function initializeEverMemory(
       );
     },
     async sessionEnd(input: SessionEndInput): Promise<SessionEndResult> {
+      if (!config.enabled) {
+        return {
+          sessionId: input.sessionId,
+          experience: createDisabledExperience(input),
+          promotedRules: [],
+          learningInsights: 0,
+          autoPromotedRules: 0,
+          staleDemotedRules: 0,
+          profileUpdated: false,
+          autoMemory: {
+            generated: 0,
+            accepted: 0,
+            rejected: 0,
+            storedIds: [],
+            rejectedReasons: [],
+          },
+        };
+      }
       return handleSessionEnd(
         input,
         experienceService,
@@ -484,6 +603,13 @@ export function initializeEverMemory(
         smartnessMetricsService,
         userId: input.userId,
       });
+    },
+    async dispose(): Promise<void> {
+      disposed = true;
+      await warmupPromise.catch(() => undefined);
+      if (database.connection.open) {
+        database.connection.close();
+      }
     },
   };
 }

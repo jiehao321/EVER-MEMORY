@@ -171,3 +171,32 @@ test('sessionStart composes merged project summary from stored summary plus fres
   app.database.connection.close();
   rmSync(databasePath, { force: true });
 });
+
+test('initializeEverMemory forwards bootTokenBudget and honors disabled mode for sessionStart', () => {
+  const databasePath = createTempDbPath('session-start-config-flags');
+  const app = initializeEverMemory({
+    databasePath,
+    bootTokenBudget: 321,
+    enabled: false,
+  });
+
+  const result = app.sessionStart({
+    sessionId: 'session-disabled-1',
+    userId: 'user-disabled-1',
+    chatId: 'chat-disabled-1',
+  });
+
+  assert.equal(result.briefing.tokenTarget, 321);
+  assert.deepEqual(result.briefing.sections, {
+    identity: [],
+    constraints: [],
+    recentContinuity: [],
+    activeProjects: [],
+  });
+  assert.deepEqual(result.behaviorRules, []);
+  assert.equal(app.getRuntimeSessionContext('session-disabled-1'), undefined);
+  assert.deepEqual(app.debugRepo.listRecent(), []);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});

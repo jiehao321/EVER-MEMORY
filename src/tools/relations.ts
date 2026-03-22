@@ -80,8 +80,8 @@ export function evermemoryRelations(
       if (!input.relationId) {
         return { action: 'remove', removed: false, total: 0 };
       }
-      relationRepo.deactivate(input.relationId);
-      return { action: 'remove', removed: true, total: 1 };
+      const changes = relationRepo.deactivate(input.relationId);
+      return { action: 'remove', removed: changes > 0, total: changes };
     }
 
     case 'graph': {

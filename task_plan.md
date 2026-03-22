@@ -1,27 +1,58 @@
-# Task Plan
+# Task Plan: Fix Four EverMemory Bugs
 
 ## Goal
-Perform a deep code review of the EverMemory project, identify real defects, regression risks, and high-value optimization opportunities, and report them with concrete code evidence.
+Apply minimal, targeted fixes for four reported bugs in EverMemory and verify the changed behavior with focused tests/checks.
+
+## Current Phase
+Phase 5
 
 ## Phases
-| Phase | Status | Notes |
-|---|---|---|
-| Reset review context and map project structure | completed | Replaced stale planning context, confirmed this is a Node 22 + TypeScript project with core runtime, storage, retrieval, OpenClaw integration, and many test/script entry points. |
-| Inspect core runtime, storage, and retrieval paths | completed | Reviewed initialization, briefing, retrieval, export/import, storage, embeddings, and relation handling. |
-| Inspect plugin/tooling/script surfaces and tests | completed | Reviewed OpenClaw tools, plugin lifecycle, package/test scripts, and stability-check logic. |
-| Validate findings and prepare review report | completed | Verified findings with source traces plus `npm run check` and direct test execution evidence. |
+### Phase 1: Requirements & Discovery
+- [x] Understand user intent
+- [x] Identify constraints and requirements
+- [x] Document findings in findings.md
+- **Status:** complete
 
-## Review Criteria
-- Prefer real bugs and behavioral risks over style comments.
-- Prioritize issues that can cause incorrect data, crashes, silent corruption, broken packaging, or misleading operator behavior.
-- Note optimization opportunities only when they have clear operational value.
+### Phase 2: Planning & Structure
+- [x] Confirm root cause in current implementation
+- [x] Define minimal fix shape for each issue
+- [x] Document decisions with rationale
+- **Status:** complete
 
-## Decisions
-- Ignore generated `dist-target-*` outputs unless they reveal source/release drift.
-- Review source-first (`src/`, `scripts/`, `test/`), then use tests/config to validate whether risks are covered.
-- Use lightweight verification commands before deciding whether a suspected issue is real.
+### Phase 3: Implementation
+- [x] Add or update focused tests for the reported bugs
+- [x] Apply minimal production changes
+- [x] Keep changes scoped to requested files unless evidence requires otherwise
+- **Status:** complete
+
+### Phase 4: Testing & Verification
+- [x] Run targeted tests/checks for touched behavior
+- [x] Document results in progress.md
+- [x] Fix any issues found
+- **Status:** complete
+
+### Phase 5: Delivery
+- [x] Review diff for minimality
+- [ ] Summarize modified behavior and verification
+- [ ] Deliver to user
+- **Status:** in_progress
+
+## Key Questions
+1. What existing tests cover hook/config/debug/relation/stability-check behavior, and where are the gaps?
+2. Can each requested fix be implemented without broad API churn beyond the touched call sites?
+
+## Decisions Made
+| Decision | Rationale |
+|----------|-----------|
+| Use planning files for this task | The request spans 6 source files plus verification and exceeds simple single-file scope |
+| Prefer minimal API extensions over architectural reshaping | User explicitly asked for targeted fixes only |
+| Implement the `enabled` kill switch in `initializeEverMemory()` entry methods | This keeps the dormant behavior local to runtime hooks and avoids deeper service churn |
+| Add runtime `dispose()` and route OpenClaw stop through it | This gives a single path to await warmup before DB shutdown |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
-|---|---|---|
-| Existing planning files described a previous bugfix task | 1 | Replaced the planning files so this review has clean project-specific context. |
+|-------|---------|------------|
+
+## Notes
+- Re-read plan before major edits.
+- Keep the warmup lifecycle fix minimal and local to initialization/shutdown logic.

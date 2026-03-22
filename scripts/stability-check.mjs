@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 import { recordEvidence, resolveEvidenceDir } from './report-evidence.mjs';
 
 function fail(message) {
@@ -167,7 +168,9 @@ function parseUnitTestSummary(output) {
     }
   }
   if (typeof summary.tests === 'number' && typeof summary.pass === 'number') {
-    summary.passRate = summary.tests > 0 ? Number((summary.pass / summary.tests).toFixed(4)) : 0;
+    // Exclude skipped/cancelled from denominator — they are not failures
+    const effective = summary.tests - (summary.skipped ?? 0) - (summary.cancelled ?? 0);
+    summary.passRate = effective > 0 ? Number((summary.pass / effective).toFixed(4)) : 0;
   } else {
     summary.passRate = undefined;
   }
@@ -193,48 +196,24 @@ function formatNumber(value) {
   return trimmed.endsWith('.') ? `${trimmed}0` : trimmed;
 }
 
-function resolveUnitTestFiles() {
+export function resolveUnitTestFiles() {
   const dirPath = resolve(process.cwd(), 'dist-test/test');
   let entries;
   try {
-    entries = readdirSync(dirPath, { withFileTypes: true });
+    entries = readdirSync(dirPath, { withFileTypes: true, recursive: true });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     fail(`failed to read compiled tests from ${dirPath} (${detail})`);
   }
   const files = entries
     .filter((entry) => entry.isFile() && entry.name.endsWith('.test.js'))
-    .map((entry) => resolve(dirPath, entry.name))
+    .map((entry) => resolve(entry.parentPath ?? dirPath, entry.name))
     .sort();
   if (files.length === 0) {
     fail(`no compiled test files found under ${dirPath}`);
   }
   return files;
 }
-
-const parsed = parseArgs(process.argv.slice(2));
-const stamp = new Date().toISOString().replaceAll(':', '-');
-const reportPath = resolve(parsed.reportPath ?? defaultReportPath(stamp));
-const recallReportPath = join(tmpdir(), `evermemory-stability-recall-${stamp}.json`);
-const kpiReportPath = join(tmpdir(), `evermemory-stability-kpi-${stamp}.json`);
-const soakReportPath = parsed.withSoak ? join(tmpdir(), `evermemory-stability-soak-${stamp}.json`) : undefined;
-const totalSteps = 4 + (parsed.withSoak ? 1 : 0);
-
-const metrics = {
-  unitTestPassRate: undefined,
-  recallBenchmarkAccuracy: undefined,
-  crossSessionContinuityPass: parsed.crossSessionPass ?? resolveCrossSessionPass(),
-  autoCaptureAcceptRate: parsed.autoCaptureRate ?? resolveAutoCaptureRate(),
-};
-
-const artifacts = {
-  recallReportPath,
-  kpiReportPath,
-  soakReportPath,
-};
-
-const steps = [];
-const runStartedAt = new Date().toISOString();
 
 function resolveCrossSessionPass() {
   const fromEnv = process.env.EVERMEMORY_CROSS_SESSION_PASS;
@@ -252,7 +231,32 @@ function resolveAutoCaptureRate() {
   return 0.75;
 }
 
-function finalize(ok, failureReason) {
+function runStabilityCheck(argv = process.argv.slice(2)) {
+  const parsed = parseArgs(argv);
+  const stamp = new Date().toISOString().replaceAll(':', '-');
+  const reportPath = resolve(parsed.reportPath ?? defaultReportPath(stamp));
+  const recallReportPath = join(tmpdir(), `evermemory-stability-recall-${stamp}.json`);
+  const kpiReportPath = join(tmpdir(), `evermemory-stability-kpi-${stamp}.json`);
+  const soakReportPath = parsed.withSoak ? join(tmpdir(), `evermemory-stability-soak-${stamp}.json`) : undefined;
+  const totalSteps = 4 + (parsed.withSoak ? 1 : 0);
+
+  const metrics = {
+    unitTestPassRate: undefined,
+    recallBenchmarkAccuracy: undefined,
+    crossSessionContinuityPass: parsed.crossSessionPass ?? resolveCrossSessionPass(),
+    autoCaptureAcceptRate: parsed.autoCaptureRate ?? resolveAutoCaptureRate(),
+  };
+
+  const artifacts = {
+    recallReportPath,
+    kpiReportPath,
+    soakReportPath,
+  };
+
+  const steps = [];
+  const runStartedAt = new Date().toISOString();
+
+  function finalize(ok, failureReason) {
   const report = {
     generatedAt: runStartedAt,
     completedAt: new Date().toISOString(),
@@ -420,4 +424,11 @@ if (parsed.withSoak) {
   recordStep('soak', 'soak', aggregate(soakCommands, null, null));
 }
 
-finalize(true);
+  finalize(true);
+}
+
+export { runStabilityCheck as main };
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runStabilityCheck();
+}

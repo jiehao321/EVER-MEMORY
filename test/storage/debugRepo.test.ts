@@ -33,4 +33,15 @@ describe('DebugRepository', () => {
     const row = db.prepare('SELECT COUNT(*) AS count FROM debug_events').get() as { count: number };
     assert.equal(row.count, 500);
   });
+
+  it('does not write debug events when disabled', () => {
+    db = createInMemoryDb();
+    const repo = new DebugRepository(db, false);
+
+    repo.log('memory_archived', 'mem-1', { detail: 'ignored' });
+
+    const row = db.prepare('SELECT COUNT(*) AS count FROM debug_events').get() as { count: number };
+    assert.equal(row.count, 0);
+    assert.deepEqual(repo.listRecent(), []);
+  });
 });

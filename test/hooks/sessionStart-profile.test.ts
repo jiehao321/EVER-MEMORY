@@ -140,8 +140,8 @@ test('sessionStart leaves userProfile undefined when profileRepo returns null', 
   clearSessionContext('session-start-profile-3');
 });
 
-test('sessionStart forwards normalized communicationStyle to briefing build options', () => {
-  let receivedOptions: { sessionId?: string; communicationStyle?: string } | undefined;
+test('sessionStart forwards normalized communicationStyle and bootTokenBudget to briefing build options', () => {
+  let receivedOptions: { sessionId?: string; communicationStyle?: string; tokenTarget?: number } | undefined;
 
   handleSessionStart(
     {
@@ -157,11 +157,14 @@ test('sessionStart forwards normalized communicationStyle to briefing build opti
     { getActiveRules: () => [] } as never,
     undefined,
     { getByUserId: () => createProfile() } as never,
+    undefined,
+    640,
   );
 
   assert.deepEqual(receivedOptions, {
     sessionId: 'session-start-profile-4',
     communicationStyle: 'concise',
+    tokenTarget: 640,
   });
 
   clearSessionContext('session-start-profile-4');

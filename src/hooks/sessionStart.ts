@@ -35,6 +35,7 @@ export function handleSessionStart(
   debugRepo?: DebugRepository,
   profileRepo?: ProfileRepository,
   predictiveContextService?: PredictiveContextService,
+  bootTokenBudget?: number,
 ): SessionStartResult {
   const scope = buildScope(input);
   const userProfile = profileRepo && input.userId
@@ -50,6 +51,7 @@ export function handleSessionStart(
     briefing = briefingService.build(scope, {
       sessionId: input.sessionId,
       communicationStyle: style,
+      tokenTarget: bootTokenBudget,
     });
   } catch (error) {
     debugRepo?.log('boot_generated', input.sessionId ?? 'unknown', {

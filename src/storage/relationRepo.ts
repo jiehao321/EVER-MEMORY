@@ -488,8 +488,9 @@ export class RelationRepository {
   }
 
   /** Deactivate a relation */
-  deactivate(id: string): void {
-    this.stmtDeactivate.run(new Date().toISOString(), id);
+  deactivate(id: string): number {
+    const result = this.stmtDeactivate.run(new Date().toISOString(), id);
+    return result.changes;
   }
 
   /** Get relation by ID */

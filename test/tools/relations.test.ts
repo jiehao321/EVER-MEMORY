@@ -77,6 +77,14 @@ describe('evermemoryRelations tool', () => {
     assert.equal(relationRepo.findById('r1')?.active, false);
   });
 
+  it('should report remove failure when relation does not exist', () => {
+    const result = evermemoryRelations(relationRepo, { action: 'remove', relationId: 'missing' });
+
+    assert.equal(result.action, 'remove');
+    assert.equal(result.removed, false);
+    assert.equal(result.total, 0);
+  });
+
   it('should return graph for a memory', () => {
     const now = new Date().toISOString();
     relationRepo.upsert({

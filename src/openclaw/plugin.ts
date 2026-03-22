@@ -78,7 +78,7 @@ const memoryPlugin = {
           api.logger.warn(`${PLUGIN_NAME}: failed to dispose embedding manager: ${toErrorMessage(error)}`);
         });
         try {
-          context.evermemory.database.connection.close();
+          await context.evermemory.dispose();
           api.logger.info(`${PLUGIN_NAME}: stopped`);
         } catch (error) {
           api.logger.warn(`${PLUGIN_NAME}: failed to close database on stop: ${toErrorMessage(error)}`);
