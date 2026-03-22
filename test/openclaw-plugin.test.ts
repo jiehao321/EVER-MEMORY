@@ -150,6 +150,7 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   const memoryImportTool = tools.get('memory_import');
   const reviewTool = tools.get('evermemory_review');
   const restoreTool = tools.get('evermemory_restore');
+  const relationsTool = tools.get('evermemory_relations');
 
   assert.ok(storeTool);
   assert.ok(recallTool);
@@ -168,6 +169,7 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   assert.ok(memoryImportTool);
   assert.ok(reviewTool);
   assert.ok(restoreTool);
+  assert.ok(relationsTool);
 
   const storeResult = await storeTool.execute('tc-1', {
     content: '项目计划：先做质量审查，再推进开发实现。',

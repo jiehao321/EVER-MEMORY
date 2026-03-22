@@ -25,6 +25,8 @@ import {
 } from '../shared.js';
 
 const EDIT_ACTIONS = ['update', 'delete', 'correct', 'merge', 'pin', 'unpin'] as const;
+const RELATION_TYPES = ['causes', 'contradicts', 'supports', 'evolves_from', 'supersedes', 'depends_on', 'related_to'] as const;
+const RELATION_ACTIONS = ['list', 'add', 'remove', 'graph'] as const;
 const BROWSE_SORT_BY = ['recent', 'importance', 'accessed', 'written'] as const;
 const EDIT_ACTION_LABELS: Record<(typeof EDIT_ACTIONS)[number], string> = {
   update: 'updated',
@@ -335,5 +337,56 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
       },
     }),
     { name: 'evermemory_browse' },
+  );
+
+  api.registerTool(
+    (toolContext: UnknownRecord) => ({
+      name: 'evermemory_relations',
+      label: 'EverMemory Relations',
+      description: 'Manage knowledge graph relations between memories. List, add, remove edges, or explore the graph around a memory.',
+      parameters: Type.Object(
+        {
+          action: Type.Union(RELATION_ACTIONS.map((a) => Type.Literal(a)), {
+            description: 'Action to perform: list, add, remove, or graph.',
+          }),
+          memoryId: Type.Optional(Type.String({ description: 'Source memory ID (required for list/add/graph).' })),
+          targetId: Type.Optional(Type.String({ description: 'Target memory ID (required for add).' })),
+          relationType: Type.Optional(
+            Type.Union(RELATION_TYPES.map((t) => Type.Literal(t)), {
+              description: 'Relation type (required for add).',
+            }),
+          ),
+          confidence: Type.Optional(Type.Number({ description: 'Confidence score 0-1 (default 0.8).', minimum: 0, maximum: 1 })),
+          depth: Type.Optional(Type.Integer({ description: 'Graph traversal depth (default 2).', minimum: 1, maximum: 5 })),
+          limit: Type.Optional(Type.Integer({ description: 'Max results.', minimum: 1 })),
+          relationId: Type.Optional(Type.String({ description: 'Relation ID (for remove action).' })),
+        },
+        { additionalProperties: false },
+      ),
+      async execute(_toolCallId: string, params: UnknownRecord) {
+        const result = evermemory.evermemoryRelations({
+          action: asOptionalEnum(params.action, RELATION_ACTIONS) ?? 'list',
+          memoryId: asOptionalString(params.memoryId),
+          targetId: asOptionalString(params.targetId),
+          relationType: asOptionalEnum(params.relationType, RELATION_TYPES),
+          confidence: typeof params.confidence === 'number' ? params.confidence : undefined,
+          depth: asOptionalInteger(params.depth),
+          limit: asOptionalInteger(params.limit),
+          relationId: asOptionalString(params.relationId),
+        });
+        const summary = result.action === 'graph'
+          ? `Graph: ${result.total} node(s) found.`
+          : result.action === 'list'
+            ? `Found ${result.total} relation(s).`
+            : result.action === 'add'
+              ? result.added ? `Added ${result.added.relationType} relation.` : 'Failed to add relation (missing params).'
+              : result.removed ? 'Relation removed.' : 'Relation not found.';
+        return {
+          content: [{ type: 'text', text: summary }],
+          details: result,
+        };
+      },
+    }),
+    { name: 'evermemory_relations' },
   );
 }

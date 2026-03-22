@@ -1,36 +1,15 @@
-# Findings & Decisions
+# Findings
 
-## Requirements
-- Update `docs/API.md` counts from `21 SDK tool functions` to `19 SDK tool functions`.
-- Update `docs/API.md` counts from `20 tools` to `18 tools`.
-- Update `docs/API.md` text `OpenClaw currently registers 20 tools` to `OpenClaw currently registers 18 tools`.
-- Update `README.md` text `20 tools through the OpenClaw tool interface, plus 1 SDK-only` to `18 tools through the OpenClaw tool interface, plus 1 SDK-only`.
-- Update `docs/ARCHITECTURE.md` text `(21 SDK / 20 OC)` to `(19 SDK / 18 OC)`.
-- Update `docs/ARCHITECTURE.md` text `21 SDK tool implementations; 20 are currently registered` to `19 SDK tool implementations; 18 are currently registered`.
-- Update `CLAUDE.md` text `21 tool implementations` to `19 tool implementations`.
-- Update `CLAUDE.md` text `21 tools (18 original` to `19 tools (16 original`.
+## OpenClaw Memory Adapter
+- `src/openclaw/tools/memory.ts` already imports `asOptionalEnum` and `asOptionalInteger` from `../shared.js`; no new shared import is needed.
+- Existing tool constants live near the top of the file as `const ... as const`, so `RELATION_TYPES` and `RELATION_ACTIONS` fit the current style.
+- `registerMemoryTools(...)` currently ends after the `evermemory_browse` registration; the new relation tool belongs immediately before the function closing brace.
 
-## Research Findings
-- `src/tools/index.ts` currently contains 19 named exports.
-- The user states 18 of those are registered in OpenClaw, with `evermemorySmartness` being SDK-only.
-- `rg` confirmed one matching stale string in each of the four requested docs files.
+## Existing Relation Support
+- Runtime support already exists at `src/index.ts` via `evermemory.evermemoryRelations(...)`.
+- Tool logic exists in `src/tools/relations.ts`.
+- Unit coverage for relation behavior already exists in `test/tools/relations.test.ts`; the missing piece is OpenClaw adapter registration.
 
-## Technical Decisions
-| Decision | Rationale |
-|----------|-----------|
-| Verify stale strings with `rg` before editing | Prevents missing a requested replacement |
-| Verify `src/tools/index.ts` export count before editing docs | Confirms the requested corrected totals |
-
-## Issues Encountered
-| Issue | Resolution |
-|-------|------------|
-
-## Resources
-- `/root/evermemory/src/tools/index.ts`
-- `/root/evermemory/docs/API.md`
-- `/root/evermemory/README.md`
-- `/root/evermemory/docs/ARCHITECTURE.md`
-- `/root/evermemory/CLAUDE.md`
-
-## Visual/Browser Findings
-- None.
+## Best Test Target
+- `test/openclaw-plugin.test.ts` already exercises tool registration through `resolveTools(...)` and asserts the presence/execution of other registered tools.
+- Adding a single assertion for `tools.get('evermemory_relations')` is the minimal test-first proof for this change.

@@ -1,55 +1,22 @@
-# Task Plan: Correct documented tool counts
+# Task Plan
 
 ## Goal
-Update the documented SDK and OpenClaw tool counts in the requested markdown files so they match `src/tools/index.ts` and the user's specified totals.
-
-## Current Phase
-Phase 5
+Register the `evermemory_relations` OpenClaw tool in `src/openclaw/tools/memory.ts`, keep adapter tests aligned, and verify compilation with `npm run build`.
 
 ## Phases
-### Phase 1: Requirements & Discovery
-- [x] Understand user intent
-- [x] Identify constraints and requirements
-- [x] Document findings in findings.md
-- **Status:** complete
+| Phase | Status | Notes |
+|---|---|---|
+| Context review | complete | Reviewed `src/openclaw/tools/memory.ts`, existing relation support, and OpenClaw plugin registration tests. |
+| Test-first change | complete | Added an assertion in `test/openclaw-plugin.test.ts`, rebuilt tests, and confirmed the test failed because `evermemory_relations` was not registered. |
+| Adapter implementation | complete | Added `RELATION_TYPES`, `RELATION_ACTIONS`, and the `evermemory_relations` registration to `registerMemoryTools`. |
+| Verification | complete | Rebuilt test output, reran `dist-test/test/openclaw-plugin.test.js` successfully, and ran `npm run build` successfully. |
 
-### Phase 2: Planning & Structure
-- [x] Define technical approach
-- [x] Identify target files and strings
-- [x] Document decisions with rationale
-- **Status:** complete
-
-### Phase 3: Implementation
-- [x] Patch the requested markdown files
-- [x] Keep planning files updated
-- [x] Avoid unrelated edits
-- **Status:** complete
-
-### Phase 4: Testing & Verification
-- [x] Verify all requested replacements are present
-- [x] Confirm no stale count strings remain in target files
-- [x] Document results in progress.md
-- **Status:** complete
-
-### Phase 5: Delivery
-- [x] Review changed files
-- [x] Summarize outcome to user
-- [x] Note verification status
-- **Status:** complete
-
-## Key Questions
-1. Which exact strings need replacement in each target file?
-2. Does `src/tools/index.ts` support the requested corrected counts?
-
-## Decisions Made
-| Decision | Rationale |
-|----------|-----------|
-| Use direct targeted text replacements only | User requested specific documentation count corrections without behavior changes |
-| Treat `src/tools/index.ts` as the source of truth for SDK export count | The user explicitly cited it and requested counts based on it |
+## Decisions
+- Keep the change local to the OpenClaw adapter and its registration test; relation business logic already exists elsewhere in the repo.
+- Reuse the existing plugin integration test instead of introducing a new test file, since the behavior under change is tool registration.
+- Preserve the requested tool schema and summary strings exactly unless the compiler requires a narrow compatibility tweak.
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
-|-------|---------|------------|
-
-## Notes
-- Keep edits limited to `docs/API.md`, `README.md`, `docs/ARCHITECTURE.md`, and `CLAUDE.md`.
+|---|---|---|
+| None | 1 | Focused test and production build both passed after the adapter patch. |

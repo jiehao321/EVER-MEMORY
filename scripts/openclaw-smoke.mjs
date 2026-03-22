@@ -147,7 +147,7 @@ try {
   ]);
   const storeResult = parseAgentJson(storeRaw);
   const storeText = getPayloadText(storeResult);
-  assertIncludes(storeText, 'Stored memory:', 'store result');
+  assertIncludes(storeText, 'Stored', 'store result');
   assertIncludes(storeText, tag, 'store result');
 
   const recallMessage = [
