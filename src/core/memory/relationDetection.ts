@@ -268,7 +268,6 @@ const STOPWORDS = new Set([
 ]);
 
 const ANTONYM_PAIRS: readonly [string, string][] = [
-  ['不要', '要'],
   ['禁止', '允许'],
   ['总是', '从不'],
   ['必须', '无需'],

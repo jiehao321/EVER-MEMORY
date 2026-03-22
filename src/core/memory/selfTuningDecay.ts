@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { FeedbackRepository } from '../../storage/feedbackRepo.js';
 
@@ -21,12 +22,19 @@ const RECOMPUTE_SESSION_INTERVAL = 10;
 
 export class SelfTuningDecayService {
   private readonly overrides = new Map<string, TuningOverride>();
-  private sessionsSinceLastCompute = 0;
+  // Bias toward recomputing on the first session after a restart rather than
+  // waiting for a full new interval with an in-memory counter reset.
+  private sessionsSinceLastCompute = RECOMPUTE_SESSION_INTERVAL - 1;
 
   constructor(
     private readonly feedbackRepo: FeedbackRepository,
+    private readonly db: Database.Database,
     private readonly debugRepo?: DebugRepository,
-  ) {}
+  ) {
+    for (const override of this.loadPersistedOverrides()) {
+      this.overrides.set(override.typeGradeKey, override);
+    }
+  }
 
   /**
    * Check if recomputation is needed (every N sessions).
@@ -72,12 +80,14 @@ export class SelfTuningDecayService {
       }
 
       const key = aggregation.strategy;
-      this.overrides.set(key, {
+      const override = {
         typeGradeKey: key,
         decayMultiplier: Number(multiplier.toFixed(3)),
         lastUpdated: now,
         sampleCount: total,
-      });
+      };
+      this.overrides.set(key, override);
+      this.persistOverride(key, override);
       adjustmentsApplied++;
     }
 
@@ -108,5 +118,38 @@ export class SelfTuningDecayService {
    */
   getOverrides(): TuningOverride[] {
     return Array.from(this.overrides.values());
+  }
+
+  private loadPersistedOverrides(): TuningOverride[] {
+    const rows = this.db.prepare(`
+      SELECT type_grade_key, decay_multiplier, sample_count, last_updated
+      FROM tuning_overrides
+      ORDER BY type_grade_key ASC
+    `).all() as Array<{
+      type_grade_key: string;
+      decay_multiplier: number;
+      sample_count: number;
+      last_updated: string;
+    }>;
+
+    return rows.map((row) => ({
+      typeGradeKey: row.type_grade_key,
+      decayMultiplier: row.decay_multiplier,
+      sampleCount: row.sample_count,
+      lastUpdated: row.last_updated,
+    }));
+  }
+
+  private persistOverride(key: string, override: TuningOverride): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO tuning_overrides (
+        type_grade_key, decay_multiplier, sample_count, last_updated
+      ) VALUES (?, ?, ?, ?)
+    `).run(
+      key,
+      override.decayMultiplier,
+      override.sampleCount,
+      override.lastUpdated,
+    );
   }
 }

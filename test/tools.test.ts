@@ -143,3 +143,43 @@ test('status layering returns summary, detail, and debug variants', () => {
   app.database.connection.close();
   rmSync(databasePath, { force: true });
 });
+
+test('browse includes archived memories only when includeArchived is true', () => {
+  const databasePath = createTempDbPath('tools-browse-archived');
+  const app = initializeEverMemory({ databasePath, semantic: { enabled: false } });
+
+  const stored = app.evermemoryStore({
+    content: 'Archive me after review.',
+    scope: { userId: 'user-browse-1' },
+    type: 'fact',
+  });
+  assert.equal(stored.accepted, true);
+
+  const memoryId = stored.memory?.id ?? '';
+  assert.ok(memoryId);
+  const archivedMemory = app.memoryRepo.findById(memoryId);
+  assert.ok(archivedMemory);
+  app.memoryRepo.update({
+    ...archivedMemory!,
+    state: {
+      ...archivedMemory!.state,
+      active: false,
+      archived: true,
+    },
+  });
+
+  const defaultBrowse = app.evermemoryBrowse({
+    scope: { userId: 'user-browse-1' },
+  });
+  assert.equal(defaultBrowse.total, 0);
+
+  const archivedBrowse = app.evermemoryBrowse({
+    scope: { userId: 'user-browse-1' },
+    includeArchived: true,
+  });
+  assert.equal(archivedBrowse.total, 1);
+  assert.equal(archivedBrowse.items[0]?.id, memoryId);
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});

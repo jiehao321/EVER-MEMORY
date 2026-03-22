@@ -108,4 +108,32 @@ describe('ContradictionMonitor', () => {
     assert.equal(drained.length, 1);
     assert.equal(monitor.hasPendingAlerts('s1'), false);
   });
+
+  it('should clear pending alerts for a session without draining them', () => {
+    const m1 = makeMemory('m1', 'test');
+    const m2 = makeMemory('m2', 'test2');
+    memoryRepo.insert(m1);
+    memoryRepo.insert(m2);
+
+    const now = new Date().toISOString();
+    relationRepo.upsert({
+      id: 'r1',
+      sourceId: 'm1',
+      targetId: 'm2',
+      relationType: 'contradicts',
+      confidence: 0.85,
+      weight: 1.0,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'auto_detection',
+    });
+
+    monitor.checkForContradictions('s1', m1);
+    assert.equal(monitor.hasPendingAlerts('s1'), true);
+
+    monitor.clearSession('s1');
+
+    assert.equal(monitor.hasPendingAlerts('s1'), false);
+    assert.deepEqual(monitor.drainAlerts('s1'), []);
+  });
 });

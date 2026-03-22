@@ -115,4 +115,35 @@ describe('RelationDetectionService', () => {
     assert.equal(relationRepo.getGraphStats('m1')?.inDegree, 0);
     assert.equal(relationRepo.getGraphStats('m1')?.outDegree, 0);
   });
+
+  it('does not treat single-character Chinese antonyms as substring matches', async () => {
+    (embeddingManager.isReady as typeof embeddingManager.isReady) = () => true;
+    (embeddingManager.embed as typeof embeddingManager.embed) = async () => ({
+      values: new Float32Array([0.25, 0.75]),
+      dimensions: 2,
+    });
+    semanticRepo.searchByCosine = (async () => [
+      { memoryId: 'm2', score: 0.9 },
+    ]) as typeof semanticRepo.searchByCosine;
+
+    const candidate = makeMemory({
+      id: 'm2',
+      content: '这个设置很重要，需要谨慎处理',
+      type: 'fact',
+    });
+    const memory = makeMemory({
+      id: 'm1',
+      content: '这个设置不要删除，请谨慎处理',
+      type: 'constraint',
+    });
+    memoryRepo.insert(candidate);
+    memoryRepo.insert(memory);
+
+    const result = await service.detectRelations(memory);
+    const relations = relationRepo.findByMemory('m1');
+
+    assert.equal(result.detected, 1);
+    assert.equal(relations.length, 1);
+    assert.equal(relations[0]?.relationType, 'supports');
+  });
 });

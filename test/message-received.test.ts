@@ -61,3 +61,44 @@ test('messageReceived performs intent-guided recall and updates interaction runt
   app.database.connection.close();
   rmSync(databasePath, { force: true });
 });
+
+test('messageReceived loads the stored user profile for proactive profile matches', async () => {
+  const databasePath = createTempDbPath('message-received-profile');
+  const app = initializeEverMemory({ databasePath });
+  const userId = 'u-message-profile';
+
+  app.evermemoryStore({
+    content: '我长期使用 TypeScript 开发工具。',
+    scope: { userId },
+    type: 'preference',
+    tags: ['typescript'],
+  });
+
+  app.evermemoryStore({
+    content: '项目计划：先完成接口设计，再推进集成测试。',
+    scope: { userId, project: 'evermemory' },
+    type: 'project',
+  });
+  app.evermemoryStore({
+    content: 'TypeScript 构建脚本需要升级到新的配置。',
+    scope: { userId, project: 'evermemory' },
+    type: 'fact',
+    tags: ['typescript'],
+  });
+  app.profileService.recomputeForUser(userId);
+
+  const result = await app.messageReceived({
+    sessionId: 'session-message-profile',
+    messageId: 'msg-profile-1',
+    text: '结合之前的项目计划，继续推进下一步。',
+    scope: { userId, project: 'evermemory' },
+  });
+
+  assert.ok(result.recall.total >= 1);
+  assert.ok(result.proactiveItems?.some(
+    (item) => item.reason === 'profile_match' && item.memory.content.includes('TypeScript'),
+  ));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});

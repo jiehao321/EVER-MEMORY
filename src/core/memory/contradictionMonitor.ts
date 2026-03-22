@@ -87,6 +87,10 @@ export class ContradictionMonitor {
     return (this.pendingAlerts.get(sessionId)?.length ?? 0) > 0;
   }
 
+  clearSession(sessionId: string): void {
+    this.pendingAlerts.delete(sessionId);
+  }
+
   private suggestResolution(
     newer: MemoryItem,
     older: MemoryItem,

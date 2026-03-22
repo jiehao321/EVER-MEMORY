@@ -151,6 +151,7 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   const reviewTool = tools.get('evermemory_review');
   const restoreTool = tools.get('evermemory_restore');
   const relationsTool = tools.get('evermemory_relations');
+  const browseTool = tools.get('evermemory_browse');
 
   assert.ok(storeTool);
   assert.ok(recallTool);
@@ -170,6 +171,11 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   assert.ok(reviewTool);
   assert.ok(restoreTool);
   assert.ok(relationsTool);
+  assert.ok(browseTool);
+  assert.equal(
+    typeof (browseTool as { parameters?: { properties?: Record<string, unknown> } }).parameters?.properties?.includeArchived,
+    'object',
+  );
 
   const storeResult = await storeTool.execute('tc-1', {
     content: '项目计划：先做质量审查，再推进开发实现。',
@@ -276,6 +282,28 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
     limit: 5,
   });
   assert.equal(typeof reviewResult.details.total, 'number');
+
+  const storeArchivedResult = await storeTool.execute('tc-archived', {
+    content: '已经归档的事项。',
+    type: 'fact',
+  });
+  const archivedId = String(storeArchivedResult.details.memory?.id ?? '');
+  assert.ok(archivedId);
+  const archivedDb = new Database(databasePath);
+  try {
+    archivedDb.prepare('UPDATE memory_items SET active = 0, archived = 1 WHERE id = ?').run(archivedId);
+  } finally {
+    archivedDb.close();
+  }
+
+  const defaultBrowseResult = await browseTool.execute('tc-browse-default', {});
+  assert.ok(defaultBrowseResult.details.items.every((item: { id: string }) => item.id !== archivedId));
+
+  const includeArchivedBrowseResult = await browseTool.execute('tc-browse-archived', {
+    includeArchived: true,
+  });
+  assert.ok(includeArchivedBrowseResult.details.total >= defaultBrowseResult.details.total);
+  assert.ok(includeArchivedBrowseResult.details.items.some((item: { id: string }) => item.id === archivedId));
 
   const restoreResult = await restoreTool.execute('tc-restore', {
     ids: ['missing-memory-id'],

@@ -166,3 +166,60 @@ test('sessionStart forwards normalized communicationStyle to briefing build opti
 
   clearSessionContext('session-start-profile-4');
 });
+
+test('sessionStart builds predictive cache after briefing generation', () => {
+  const calls: Array<{ sessionId: string; scope: { userId?: string; chatId?: string; project?: string } | undefined }> = [];
+
+  const result = handleSessionStart(
+    {
+      sessionId: 'session-start-profile-5',
+      userId: 'u-session-start-profile',
+      chatId: 'chat-1',
+      project: 'evermemory',
+    },
+    { build: () => createBriefing() } as never,
+    { getActiveRules: () => [] } as never,
+    undefined,
+    { getByUserId: () => createProfile() } as never,
+    {
+      buildPredictiveCache: (sessionId: string, scope?: { userId?: string; chatId?: string; project?: string }) => {
+        calls.push({ sessionId, scope });
+        return { predictions: [], total: 0, patternsAnalyzed: 0 };
+      },
+    } as never,
+  );
+
+  assert.equal(result.sessionId, 'session-start-profile-5');
+  assert.deepEqual(calls, [{
+    sessionId: 'session-start-profile-5',
+    scope: {
+      userId: 'u-session-start-profile',
+      chatId: 'chat-1',
+      project: 'evermemory',
+    },
+  }]);
+
+  clearSessionContext('session-start-profile-5');
+});
+
+test('sessionStart swallows predictive cache build failures', () => {
+  const result = handleSessionStart(
+    {
+      sessionId: 'session-start-profile-6',
+      userId: 'u-session-start-profile',
+    },
+    { build: () => createBriefing() } as never,
+    { getActiveRules: () => [] } as never,
+    undefined,
+    { getByUserId: () => createProfile() } as never,
+    {
+      buildPredictiveCache: () => {
+        throw new Error('predictive cache failed');
+      },
+    } as never,
+  );
+
+  assert.equal(result.sessionId, 'session-start-profile-6');
+
+  clearSessionContext('session-start-profile-6');
+});

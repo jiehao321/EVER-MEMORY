@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleSessionEnd } from '../../src/hooks/sessionEnd.js';
+import type { ProjectedProfile } from '../../src/types.js';
 
 function createExperience() {
   return {
@@ -11,6 +12,29 @@ function createExperience() {
       repeatMistakeSignal: false,
     },
     createdAt: '2026-03-15T00:00:00.000Z',
+  };
+}
+
+function createProjectedProfile(value: string): ProjectedProfile {
+  return {
+    userId: 'u-session-end-profile',
+    updatedAt: '2026-03-15T00:00:00.000Z',
+    stable: {
+      explicitPreferences: {
+        tone: {
+          value,
+          source: 'stable_explicit',
+          canonical: true,
+          evidenceRefs: ['m-1'],
+        },
+      },
+      explicitConstraints: [],
+    },
+    derived: {
+      likelyInterests: [],
+      workPatterns: [],
+    },
+    behaviorHints: [],
   };
 }
 
@@ -153,4 +177,157 @@ test('sessionEnd logs housekeeping timeout as debug telemetry and keeps teardown
   } finally {
     global.setTimeout = originalSetTimeout;
   }
+});
+
+test('sessionEnd runs drift detection after a successful profile recompute', async () => {
+  const driftCalls: Array<{ previous: ProjectedProfile | null; next: ProjectedProfile; userId: string }> = [];
+  const previousProfile = createProjectedProfile('concise');
+  const nextProfile = createProjectedProfile('verbose');
+
+  const result = await handleSessionEnd(
+    {
+      sessionId: 'session-end-profile-5',
+      scope: { userId: 'u-session-end-profile' },
+    },
+    { log: () => createExperience() } as never,
+    {} as never,
+    {
+      promoteFromReflection: () => undefined,
+      freezeRulesByDuration: () => [],
+      demoteStaleEmergingRules: () => 0,
+    } as never,
+    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+    undefined,
+    undefined,
+    undefined,
+    { recomputeForUser: () => nextProfile } as never,
+    undefined,
+    { getByUserId: () => previousProfile } as never,
+    undefined,
+    {
+      detectDrift: (previous: ProjectedProfile | null, next: ProjectedProfile, userId: string) => {
+        driftCalls.push({ previous, next, userId });
+        return { drifts: [], totalChanges: 0, reversals: 0 };
+      },
+    } as never,
+  );
+
+  assert.equal(result.profileUpdated, true);
+  assert.deepEqual(driftCalls, [{
+    previous: previousProfile,
+    next: nextProfile,
+    userId: 'u-session-end-profile',
+  }]);
+});
+
+test('sessionEnd performs end-of-session maintenance hooks as best effort', async () => {
+  const calls: string[] = [];
+
+  const result = await handleSessionEnd(
+    {
+      sessionId: 'session-end-profile-6',
+      scope: { userId: 'u-session-end-profile', project: 'evermemory' },
+    },
+    { log: () => createExperience() } as never,
+    {} as never,
+    {
+      promoteFromReflection: () => undefined,
+      freezeRulesByDuration: () => [],
+      demoteStaleEmergingRules: () => 0,
+    } as never,
+    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+    undefined,
+    undefined,
+    {
+      count: () => 0,
+    } as never,
+    undefined,
+    undefined,
+    undefined,
+    {
+      shouldRecompute: () => true,
+      recompute: () => {
+        calls.push('recompute');
+        return { overrides: [], totalSamples: 0, adjustmentsApplied: 0 };
+      },
+    } as never,
+    undefined,
+    {
+      resetSession: (sessionId: string) => {
+        calls.push(`reset:${sessionId}`);
+      },
+    } as never,
+    {
+      clearCache: (sessionId: string) => {
+        calls.push(`clear:${sessionId}`);
+      },
+    } as never,
+    {
+      clearSession: (sessionId: string) => {
+        calls.push(`contradictions:${sessionId}`);
+      },
+    } as never,
+  );
+
+  assert.equal(result.sessionId, 'session-end-profile-6');
+  assert.deepEqual(calls, [
+    'recompute',
+    'reset:session-end-profile-6',
+    'clear:session-end-profile-6',
+    'contradictions:session-end-profile-6',
+  ]);
+});
+
+test('sessionEnd swallows maintenance hook failures', async () => {
+  const result = await handleSessionEnd(
+    {
+      sessionId: 'session-end-profile-7',
+      scope: { userId: 'u-session-end-profile' },
+    },
+    { log: () => createExperience() } as never,
+    {} as never,
+    {
+      promoteFromReflection: () => undefined,
+      freezeRulesByDuration: () => [],
+      demoteStaleEmergingRules: () => 0,
+    } as never,
+    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+    undefined,
+    undefined,
+    {
+      count: () => 0,
+    } as never,
+    { recomputeForUser: () => createProjectedProfile('verbose') } as never,
+    undefined,
+    { getByUserId: () => createProjectedProfile('concise') } as never,
+    {
+      shouldRecompute: () => true,
+      recompute: () => {
+        throw new Error('recompute failed');
+      },
+    } as never,
+    {
+      detectDrift: () => {
+        throw new Error('drift failed');
+      },
+    } as never,
+    {
+      resetSession: () => {
+        throw new Error('reset failed');
+      },
+    } as never,
+    {
+      clearCache: () => {
+        throw new Error('clear cache failed');
+      },
+    } as never,
+    {
+      clearSession: () => {
+        throw new Error('clear contradictions failed');
+      },
+    } as never,
+  );
+
+  assert.equal(result.sessionId, 'session-end-profile-7');
+  assert.equal(result.profileUpdated, true);
 });

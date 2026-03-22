@@ -51,12 +51,6 @@ export class ProgressiveConsolidationService {
   }
 
   private estimateActiveCount(): number {
-    try {
-      const all = this.memoryRepo.search({ activeOnly: true, limit: 1 });
-      // If search returns results, there are at least some memories
-      return all.length > 0 ? PROGRESSIVE_MIN_MEMORIES + 1 : 0;
-    } catch {
-      return 0;
-    }
+    return 0;
   }
 }

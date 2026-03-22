@@ -29,7 +29,7 @@ describe('SelfTuningDecayService', () => {
   beforeEach(() => {
     db = createInMemoryDb();
     feedbackRepo = new FeedbackRepository(db);
-    service = new SelfTuningDecayService(feedbackRepo);
+    service = new SelfTuningDecayService(feedbackRepo, db);
   });
 
   afterEach(() => {
@@ -45,12 +45,16 @@ describe('SelfTuningDecayService', () => {
     assert.equal(service.getDecayMultiplier('keyword'), 1.0);
   });
 
-  it('recomputes every tenth session check', () => {
+  it('triggers on the first session after construction, then every tenth session after recompute', () => {
+    assert.equal(service.shouldRecompute(), true);
+    assert.equal(service.shouldRecompute(), true);
+
+    service.recompute();
+
     for (let index = 0; index < 9; index += 1) {
       assert.equal(service.shouldRecompute(), false);
     }
 
-    assert.equal(service.shouldRecompute(), true);
     assert.equal(service.shouldRecompute(), true);
   });
 
@@ -78,5 +82,45 @@ describe('SelfTuningDecayService', () => {
     assert.equal(result.overrides[0]?.typeGradeKey, 'keyword');
     assert.ok((result.overrides[0]?.decayMultiplier ?? 0) > 1.0);
     assert.equal(service.getDecayMultiplier('keyword'), result.overrides[0]?.decayMultiplier);
+  });
+
+  it('persists overrides to SQLite and reloads them on construction', () => {
+    for (let index = 0; index < 5; index += 1) {
+      feedbackRepo.insert(buildFeedback({
+        id: `used-persist-${index}`,
+        strategy: 'semantic',
+        signal: 'used',
+        memoryId: `memory-used-persist-${index}`,
+      }));
+    }
+    feedbackRepo.insert(buildFeedback({
+      id: 'ignored-persist-1',
+      strategy: 'semantic',
+      signal: 'ignored',
+      memoryId: 'memory-ignored-persist-1',
+    }));
+
+    const result = service.recompute();
+    const row = db.prepare(`
+      SELECT type_grade_key, decay_multiplier, sample_count, last_updated
+      FROM tuning_overrides
+      WHERE type_grade_key = ?
+    `).get('semantic') as {
+      type_grade_key: string;
+      decay_multiplier: number;
+      sample_count: number;
+      last_updated: string;
+    } | undefined;
+
+    assert.deepEqual(row, {
+      type_grade_key: 'semantic',
+      decay_multiplier: result.overrides[0]?.decayMultiplier,
+      sample_count: 6,
+      last_updated: result.overrides[0]?.lastUpdated,
+    });
+
+    const reloaded = new SelfTuningDecayService(feedbackRepo, db);
+    assert.equal(reloaded.getDecayMultiplier('semantic'), result.overrides[0]?.decayMultiplier);
+    assert.equal(reloaded.getOverrides()[0]?.sampleCount, 6);
   });
 });

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import type Database from 'better-sqlite3';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { ProjectedProfile } from '../../types/profile.js';
 
@@ -32,8 +34,11 @@ export class DriftDetectionService {
   private readonly driftLog: PreferenceDrift[] = [];
 
   constructor(
+    private readonly db: Database.Database,
     private readonly debugRepo?: DebugRepository,
-  ) {}
+  ) {
+    this.driftLog.push(...this.loadPersistedDrifts());
+  }
 
   detectDrift(
     oldProfile: ProjectedProfile | null,
@@ -89,6 +94,9 @@ export class DriftDetectionService {
 
     if (drifts.length > 0) {
       this.driftLog.push(...drifts);
+      for (const drift of drifts) {
+        this.persistDrift(userId, drift);
+      }
       this.debugRepo?.log('profile_recomputed', userId, {
         event: 'preference_drift',
         drifts: drifts.length,
@@ -110,6 +118,44 @@ export class DriftDetectionService {
 
   getRecentDrifts(limit = 10): PreferenceDrift[] {
     return this.driftLog.slice(-limit);
+  }
+
+  private loadPersistedDrifts(): PreferenceDrift[] {
+    const rows = this.db.prepare(`
+      SELECT preference_key, old_value, new_value, drift_type, detected_at
+      FROM preference_drift_log
+      ORDER BY detected_at ASC
+    `).all() as Array<{
+      preference_key: string;
+      old_value: string;
+      new_value: string;
+      drift_type: PreferenceDrift['driftType'];
+      detected_at: string;
+    }>;
+
+    return rows.map((row) => ({
+      key: row.preference_key,
+      oldValue: row.old_value,
+      newValue: row.new_value,
+      driftType: row.drift_type,
+      detectedAt: row.detected_at,
+    }));
+  }
+
+  private persistDrift(userId: string, entry: PreferenceDrift): void {
+    this.db.prepare(`
+      INSERT INTO preference_drift_log (
+        id, user_id, preference_key, old_value, new_value, drift_type, detected_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      userId,
+      entry.key,
+      entry.oldValue,
+      entry.newValue,
+      entry.driftType,
+      entry.detectedAt,
+    );
   }
 
   private isReversal(oldValue: string, newValue: string): boolean {

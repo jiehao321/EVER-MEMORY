@@ -9,6 +9,7 @@ export interface EverMemoryBrowseToolInput {
   sinceMinutesAgo?: number;
   scope?: MemoryScope;
   source?: string;
+  includeArchived?: boolean;
 }
 
 export interface EverMemoryBrowseItem {
@@ -60,8 +61,8 @@ export function evermemoryBrowse(
     scope: input.scope,
     types: input.type && input.type !== 'all' ? [input.type as MemoryType] : undefined,
     lifecycles: lifecycle ? [lifecycle] : ['working', 'episodic', 'semantic'],
-    activeOnly: true,
-    archived: false,
+    activeOnly: input.includeArchived === true ? false : true,
+    archived: input.includeArchived === true ? undefined : false,
     limit: 500, // fetch more for sorting
   });
 

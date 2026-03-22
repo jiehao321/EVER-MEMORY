@@ -106,6 +106,8 @@ import type {
   SessionEndResult,
   SessionStartInput,
   SessionStartResult,
+  ProjectedProfile,
+  RuntimeUserProfile,
 } from './types.js';
 import type { EverMemoryEditToolInput, EverMemoryEditToolResult } from './tools/edit.js';
 import type { EverMemoryBrowseToolInput, EverMemoryBrowseToolResult } from './tools/browse.js';
@@ -116,6 +118,22 @@ export * from './core/io/exportService.js';
 
 export interface InitializeEverMemoryOptions {
   intentLLMAnalyzer?: IntentLLMAnalyzer;
+}
+
+function toRuntimeUserProfile(profile: ProjectedProfile | null): RuntimeUserProfile | undefined {
+  if (!profile) {
+    return undefined;
+  }
+
+  return {
+    communicationStyle: profile.derived.communicationStyle?.tendency,
+    likelyInterests: profile.derived.likelyInterests.map((item) => item.value),
+    workPatterns: profile.derived.workPatterns.map((item) => item.value),
+    explicitPreferences: Object.freeze(Object.fromEntries(
+      Object.entries(profile.stable.explicitPreferences).map(([key, value]) => [key, value.value]),
+    )),
+    displayName: profile.stable.displayName?.value,
+  };
 }
 
 export const defaultConfig = loadDefaultConfig();
@@ -213,9 +231,9 @@ export function initializeEverMemory(
   const compressionService = new MemoryCompressionService(memoryRepo, relationRepo, debugRepo);
   const predictiveContextService = new PredictiveContextService(intentRepo, memoryRepo);
   const proactiveAlertsService = new ProactiveAlertsService(memoryRepo);
-  const selfTuningDecayService = new SelfTuningDecayService(feedbackRepo, debugRepo);
+  const selfTuningDecayService = new SelfTuningDecayService(feedbackRepo, database.connection, debugRepo);
   const progressiveConsolidationService = new ProgressiveConsolidationService(compressionService, memoryRepo);
-  const driftDetectionService = new DriftDetectionService(debugRepo);
+  const driftDetectionService = new DriftDetectionService(database.connection, debugRepo);
   const housekeepingService = new MemoryHousekeepingService(
     memoryRepo,
     lifecycleService,
@@ -325,7 +343,14 @@ export function initializeEverMemory(
     archiveService,
     smartnessMetricsService,
     sessionStart(input: SessionStartInput): SessionStartResult {
-      return handleSessionStart(input, briefingService, behaviorService, debugRepo, profileRepo);
+      return handleSessionStart(
+        input,
+        briefingService,
+        behaviorService,
+        debugRepo,
+        profileRepo,
+        predictiveContextService,
+      );
     },
     getRuntimeSessionContext(sessionId: string) {
       return getSessionContext(sessionId);
@@ -346,6 +371,9 @@ export function initializeEverMemory(
       return intentService.analyze(input);
     },
     async messageReceived(input: MessageReceivedInput): Promise<MessageReceivedResult> {
+      const userProfile = input.scope?.userId
+        ? toRuntimeUserProfile(profileService.getByUserId(input.scope.userId))
+        : undefined;
       return handleMessageReceived(
         input,
         intentService,
@@ -356,6 +384,8 @@ export function initializeEverMemory(
         memoryRepo,
         proactiveRecallService,
         contradictionMonitor,
+        userProfile,
+        progressiveConsolidationService,
       );
     },
     async sessionEnd(input: SessionEndInput): Promise<SessionEndResult> {
@@ -370,6 +400,12 @@ export function initializeEverMemory(
         memoryRepo,
         profileService,
         housekeepingService,
+        profileRepo,
+        selfTuningDecayService,
+        driftDetectionService,
+        progressiveConsolidationService,
+        predictiveContextService,
+        contradictionMonitor,
       );
     },
     async housekeeping(scope: { userId?: string; chatId?: string; project?: string; global?: boolean }) {

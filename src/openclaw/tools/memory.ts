@@ -315,6 +315,7 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           sortBy: Type.Optional(Type.Union(BROWSE_SORT_BY.map((s) => Type.Literal(s)))),
           sinceMinutesAgo: Type.Optional(Type.Number({ minimum: 1, maximum: 10080 })),
           source: Type.Optional(Type.String({ description: 'Filter by source tag (e.g., "auto_capture")' })),
+          includeArchived: Type.Optional(Type.Boolean({ description: 'Include archived memories in browse results.' })),
           scope: scopeSchema,
         },
         { additionalProperties: false },
@@ -328,6 +329,7 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           sortBy: asOptionalEnum(params.sortBy, BROWSE_SORT_BY),
           sinceMinutesAgo: asOptionalInteger(params.sinceMinutesAgo),
           source: asOptionalString(params.source),
+          includeArchived: asOptionalBoolean(params.includeArchived),
           scope: mergeScope(baseScope, parseScope(params.scope)),
         });
         return {

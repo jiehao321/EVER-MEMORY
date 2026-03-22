@@ -653,7 +653,7 @@ export class RelationRepository {
   }
 
   private getFindConnectedStatement(types?: RelationType[]): Database.Statement {
-    const key = types && types.length > 0 ? `typed:${types.length}` : 'all';
+    const key = types && types.length > 0 ? `typed:${[...types].sort().join(',')}` : 'all';
     const cached = this.connectedStatementCache.get(key);
     if (cached) {
       return cached;

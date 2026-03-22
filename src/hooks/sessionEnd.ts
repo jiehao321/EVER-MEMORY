@@ -6,7 +6,12 @@ import type { ProfileProjectionService } from '../core/profile/projection.js';
 import type { ExperienceService } from '../core/reflection/experience.js';
 import type { ReflectionService } from '../core/reflection/service.js';
 import type { MemoryHousekeepingService } from '../core/memory/housekeeping.js';
+import type { PredictiveContextService } from '../core/memory/predictiveContext.js';
+import type { ProgressiveConsolidationService } from '../core/memory/progressiveConsolidation.js';
+import type { ContradictionMonitor } from '../core/memory/contradictionMonitor.js';
 import type { MemoryService } from '../core/memory/service.js';
+import type { SelfTuningDecayService } from '../core/memory/selfTuningDecay.js';
+import type { DriftDetectionService } from '../core/profile/driftDetection.js';
 import { processAutoCapture } from '../core/memory/autoCapture.js';
 import type { AutoCaptureResult } from '../core/memory/autoCapture.js';
 import { extractLearningInsights, storeInsights } from '../core/memory/activeLearning.js';
@@ -15,6 +20,7 @@ import { sanitizeContent } from '../core/policy/sanitize.js';
 import type { SessionEndInput, SessionEndResult } from '../types.js';
 import { clearSessionContext, getInteractionContext } from '../runtime/context.js';
 import { withTimeout } from '../util/timeout.js';
+import type { ProfileRepository } from '../storage/profileRepo.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -60,6 +66,12 @@ export async function handleSessionEnd(
   memoryRepo?: MemoryRepository,
   profileProjection?: ProfileProjectionService,
   housekeepingService?: MemoryHousekeepingService,
+  profileRepo?: ProfileRepository,
+  selfTuningDecayService?: SelfTuningDecayService,
+  driftDetectionService?: DriftDetectionService,
+  progressiveConsolidationService?: ProgressiveConsolidationService,
+  predictiveContextService?: PredictiveContextService,
+  contradictionMonitor?: ContradictionMonitor,
 ): Promise<SessionEndResult> {
   const sanitizedInput: SessionEndInput = {
     ...input,
@@ -182,14 +194,24 @@ export async function handleSessionEnd(
     return { storedCount: 0 };
   });
   let profileUpdated = false;
+  let previousProfile = input.scope?.userId && profileRepo
+    ? profileRepo.getByUserId(input.scope.userId)
+    : null;
   if (input.scope?.userId && profileProjection) {
     try {
-      await withTimeout(
+      const nextProfile = await withTimeout(
         Promise.resolve(profileProjection.recomputeForUser(input.scope.userId)),
         3_000,
         'recomputeForUser',
       );
       profileUpdated = true;
+      if (driftDetectionService && nextProfile) {
+        try {
+          driftDetectionService.detectDrift(previousProfile, nextProfile, input.scope.userId);
+        } catch {
+          // Best-effort drift detection must not block session teardown
+        }
+      }
     } catch (error) {
       // Profile refresh is best-effort and must never block session teardown.
       debugRepo?.log('profile_recompute_failed', input.sessionId ?? 'unknown', {
@@ -242,6 +264,38 @@ export async function handleSessionEnd(
         reason: isTimeoutError(error) ? 'timeout' : 'failed',
         error: getErrorMessage(error),
       });
+    }
+  }
+
+  if (selfTuningDecayService?.shouldRecompute()) {
+    try {
+      selfTuningDecayService.recompute();
+    } catch {
+      // Best-effort tuning must not block session teardown
+    }
+  }
+
+  if (progressiveConsolidationService) {
+    try {
+      progressiveConsolidationService.resetSession(input.sessionId);
+    } catch {
+      // Best-effort cleanup must not block session teardown
+    }
+  }
+
+  if (predictiveContextService) {
+    try {
+      predictiveContextService.clearCache(input.sessionId);
+    } catch {
+      // Best-effort cleanup must not block session teardown
+    }
+  }
+
+  if (contradictionMonitor) {
+    try {
+      contradictionMonitor.clearSession(input.sessionId);
+    } catch {
+      // Best-effort cleanup must not block session teardown
     }
   }
 

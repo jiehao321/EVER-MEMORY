@@ -206,3 +206,93 @@ test('handleMessageReceived adds a degraded note and skips semantic preload when
   assert.equal(result.recall.degraded, true);
   assert.deepEqual(result.recall.items.map((item) => item.id), ['m-1']);
 });
+
+test('handleMessageReceived triggers progressive consolidation as a best-effort hook', async () => {
+  const calls: string[] = [];
+
+  const result = await handleMessageReceived(
+    {
+      sessionId: 's-progressive',
+      messageId: 'msg-progressive',
+      text: '继续推进发布',
+      scope: { userId: 'u-1', project: 'evermemory' },
+      recallLimit: 3,
+    },
+    {
+      analyze: () => ({
+        id: 'intent-1',
+        intent: { type: 'planning', confidence: 0.9 },
+        signals: { memoryNeed: 'deep' },
+        query: '继续推进发布',
+      }),
+    } as never,
+    {
+      getActiveRules: () => [],
+    } as never,
+    {
+      recallForIntent: async () => ({
+        items: [],
+        total: 0,
+        limit: 3,
+      }),
+    } as never,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      onMessage: (sessionId: string) => {
+        calls.push(sessionId);
+        return { triggered: false };
+      },
+    } as never,
+  );
+
+  assert.equal(result.sessionId, 's-progressive');
+  assert.deepEqual(calls, ['s-progressive']);
+});
+
+test('handleMessageReceived swallows progressive consolidation errors', async () => {
+  const result = await handleMessageReceived(
+    {
+      sessionId: 's-progressive-error',
+      messageId: 'msg-progressive-error',
+      text: '继续推进发布',
+      scope: { userId: 'u-1', project: 'evermemory' },
+      recallLimit: 3,
+    },
+    {
+      analyze: () => ({
+        id: 'intent-1',
+        intent: { type: 'planning', confidence: 0.9 },
+        signals: { memoryNeed: 'deep' },
+        query: '继续推进发布',
+      }),
+    } as never,
+    {
+      getActiveRules: () => [],
+    } as never,
+    {
+      recallForIntent: async () => ({
+        items: [],
+        total: 0,
+        limit: 3,
+      }),
+    } as never,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      onMessage: () => {
+        throw new Error('progressive consolidation failed');
+      },
+    } as never,
+  );
+
+  assert.equal(result.sessionId, 's-progressive-error');
+});

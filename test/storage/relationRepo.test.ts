@@ -169,6 +169,17 @@ describe('RelationRepository', () => {
       const connected = repo.findConnected('a', { types: ['supports'] });
       assert.deepEqual(connected.map((node) => node.memoryId), ['b', 'd']);
     });
+
+    it('should not reuse cached statements for different type arrays of the same length', () => {
+      repo.upsert(makeRelation({ id: 'rel-1', sourceId: 'a', targetId: 'b', relationType: 'supports' }));
+      repo.upsert(makeRelation({ id: 'rel-2', sourceId: 'a', targetId: 'c', relationType: 'causes' }));
+
+      const supports = repo.findConnected('a', { types: ['supports'] });
+      const causes = repo.findConnected('a', { types: ['causes'] });
+
+      assert.deepEqual(supports.map((node) => node.memoryId), ['b']);
+      assert.deepEqual(causes.map((node) => node.memoryId), ['c']);
+    });
   });
 
   describe('findCausalChain', () => {

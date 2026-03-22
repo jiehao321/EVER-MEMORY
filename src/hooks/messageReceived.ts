@@ -2,6 +2,7 @@ import type { IntentService } from '../core/intent/service.js';
 import type { BehaviorService } from '../core/behavior/service.js';
 import type { ContradictionMonitor } from '../core/memory/contradictionMonitor.js';
 import type { ProactiveRecallService } from '../core/memory/proactiveRecall.js';
+import type { ProgressiveConsolidationService } from '../core/memory/progressiveConsolidation.js';
 import type { RetrievalService } from '../retrieval/service.js';
 import { getSessionContext } from '../runtime/context.js';
 import { setInteractionContext } from '../runtime/context.js';
@@ -94,6 +95,7 @@ export async function handleMessageReceived(
   proactiveRecallService?: ProactiveRecallService,
   contradictionMonitor?: ContradictionMonitor,
   userProfile?: RuntimeUserProfile,
+  progressiveConsolidationService?: ProgressiveConsolidationService,
 ): Promise<MessageReceivedResult> {
   const intent = intentService.analyze({
     text: input.text,
@@ -221,6 +223,14 @@ export async function handleMessageReceived(
   }
 
   const alerts = contradictionMonitor?.drainAlerts(input.sessionId);
+
+  if (progressiveConsolidationService) {
+    try {
+      progressiveConsolidationService.onMessage(input.sessionId);
+    } catch {
+      // Best-effort progressive consolidation must not affect regular flow
+    }
+  }
 
   return {
     sessionId: input.sessionId,

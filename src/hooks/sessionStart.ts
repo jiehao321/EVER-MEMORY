@@ -3,6 +3,7 @@ import type { DebugRepository } from '../storage/debugRepo.js';
 import type { BehaviorService } from '../core/behavior/service.js';
 import { normalizeCommunicationStyle, type BriefingService } from '../core/briefing/service.js';
 import type { ProfileRepository } from '../storage/profileRepo.js';
+import type { PredictiveContextService } from '../core/memory/predictiveContext.js';
 import { setSessionContext } from '../runtime/context.js';
 import { DEFAULT_BOOT_TOKEN_BUDGET } from '../constants.js';
 import type { BootBriefing, MemoryScope, ProjectedProfile, RuntimeUserProfile, SessionStartInput, SessionStartResult } from '../types.js';
@@ -33,6 +34,7 @@ export function handleSessionStart(
   behaviorService: BehaviorService,
   debugRepo?: DebugRepository,
   profileRepo?: ProfileRepository,
+  predictiveContextService?: PredictiveContextService,
 ): SessionStartResult {
   const scope = buildScope(input);
   const userProfile = profileRepo && input.userId
@@ -111,6 +113,14 @@ export function handleSessionStart(
       actualApproxTokens: briefing.actualApproxTokens,
     },
   });
+
+  if (predictiveContextService) {
+    try {
+      predictiveContextService.buildPredictiveCache(input.sessionId, scope);
+    } catch {
+      // Best-effort cache warming must not block session startup
+    }
+  }
 
   return {
     sessionId: input.sessionId,
