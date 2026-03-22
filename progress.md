@@ -1,12 +1,7 @@
-# Progress Log
+# Progress
 
-## 2026-03-22
-- Activated the required skills and reviewed the adapter, relation implementation, and existing OpenClaw plugin tests.
-- Updated the planning files for the current task: register `evermemory_relations` in the OpenClaw memory adapter and verify with tests/build.
-- Confirmed `asOptionalEnum` and `asOptionalInteger` are already imported in `src/openclaw/tools/memory.ts`.
-- Confirmed the right regression test target is `test/openclaw-plugin.test.ts`, since it already resolves and asserts registered OpenClaw tools.
-- Added a new assertion for `evermemory_relations` in `test/openclaw-plugin.test.ts`.
-- Ran `npm run build:test` and `node --test dist-test/test/openclaw-plugin.test.js`; the test failed first with `assert.ok(relationsTool)`, which confirmed the missing registration.
-- Patched `src/openclaw/tools/memory.ts` to register `evermemory_relations` with the requested schema and execution mapping.
-- Rebuilt tests and reran `node --test dist-test/test/openclaw-plugin.test.js`; all 4 subtests passed.
-- Ran `npm run build`; it completed successfully and recorded the dist fingerprint.
+- Re-read and reset the planning files for the current three-bug persistence/archive task.
+- Confirmed the target schema columns in `src/storage/migrations.ts`.
+- Identified existing test homes: `test/core/profile/driftDetection.test.ts`, `test/core/memory/selfTuningDecay.test.ts`, `test/tools.test.ts`, and `test/openclaw-plugin.test.ts`.
+- Added regression coverage first, captured the expected red build from the missing constructor/input changes, then implemented the requested source fixes.
+- Verified with `npm run build:test && node --test dist-test/test/core/profile/driftDetection.test.js dist-test/test/core/memory/selfTuningDecay.test.js dist-test/test/tools.test.js dist-test/test/openclaw-plugin.test.js` (4/4 passed).

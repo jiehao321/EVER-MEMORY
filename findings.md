@@ -1,15 +1,8 @@
 # Findings
 
-## OpenClaw Memory Adapter
-- `src/openclaw/tools/memory.ts` already imports `asOptionalEnum` and `asOptionalInteger` from `../shared.js`; no new shared import is needed.
-- Existing tool constants live near the top of the file as `const ... as const`, so `RELATION_TYPES` and `RELATION_ACTIONS` fit the current style.
-- `registerMemoryTools(...)` currently ends after the `evermemory_browse` registration; the new relation tool belongs immediately before the function closing brace.
-
-## Existing Relation Support
-- Runtime support already exists at `src/index.ts` via `evermemory.evermemoryRelations(...)`.
-- Tool logic exists in `src/tools/relations.ts`.
-- Unit coverage for relation behavior already exists in `test/tools/relations.test.ts`; the missing piece is OpenClaw adapter registration.
-
-## Best Test Target
-- `test/openclaw-plugin.test.ts` already exercises tool registration through `resolveTools(...)` and asserts the presence/execution of other registered tools.
-- Adding a single assertion for `tools.get('evermemory_relations')` is the minimal test-first proof for this change.
+- `preference_drift_log` columns from schema v17 are: `id`, `user_id`, `preference_key`, `old_value`, `new_value`, `drift_type`, `detected_at`.
+- `tuning_overrides` columns from schema v18 are: `type_grade_key`, `decay_multiplier`, `sample_count`, `last_updated`.
+- `DriftDetectionService` currently appends drifts only to an in-memory array and logs debug events; constructor currently takes only `debugRepo`.
+- `SelfTuningDecayService` currently writes overrides only to an in-memory `Map`; constructor currently takes `feedbackRepo` and optional `debugRepo`.
+- `evermemoryBrowse()` hardcodes `activeOnly: true` and `archived: false`, so archived rows can never be returned.
+- The OpenClaw browse tool registration currently exposes `type`, `lifecycle`, `limit`, `sortBy`, `sinceMinutesAgo`, `source`, and `scope`, but not an archive toggle.

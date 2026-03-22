@@ -1,22 +1,21 @@
 # Task Plan
 
 ## Goal
-Register the `evermemory_relations` OpenClaw tool in `src/openclaw/tools/memory.ts`, keep adapter tests aligned, and verify compilation with `npm run build`.
+Fix 3 medium-priority bugs with minimal, targeted changes only.
 
 ## Phases
 | Phase | Status | Notes |
 |---|---|---|
-| Context review | complete | Reviewed `src/openclaw/tools/memory.ts`, existing relation support, and OpenClaw plugin registration tests. |
-| Test-first change | complete | Added an assertion in `test/openclaw-plugin.test.ts`, rebuilt tests, and confirmed the test failed because `evermemory_relations` was not registered. |
-| Adapter implementation | complete | Added `RELATION_TYPES`, `RELATION_ACTIONS`, and the `evermemory_relations` registration to `registerMemoryTools`. |
-| Verification | complete | Rebuilt test output, reran `dist-test/test/openclaw-plugin.test.js` successfully, and ran `npm run build` successfully. |
+| Inspect implementation, schema, and existing tests | completed | Verified `preference_drift_log` and `tuning_overrides` schema columns plus current browse filters. |
+| Add failing regression coverage | completed | Added drift persistence, tuning persistence, browse archive, and OpenClaw browse registration regressions. |
+| Implement minimal fixes | completed | Added SQLite load/persist logic to the two services, archive toggle to browse, and `db` wiring in `src/index.ts`. |
+| Verify targeted tests | completed | `npm run build:test && node --test dist-test/test/core/profile/driftDetection.test.js dist-test/test/core/memory/selfTuningDecay.test.js dist-test/test/tools.test.js dist-test/test/openclaw-plugin.test.js` passed. |
 
 ## Decisions
-- Keep the change local to the OpenClaw adapter and its registration test; relation business logic already exists elsewhere in the repo.
-- Reuse the existing plugin integration test instead of introducing a new test file, since the behavior under change is tool registration.
-- Preserve the requested tool schema and summary strings exactly unless the compiler requires a narrow compatibility tweak.
+- Reuse the current in-memory DB helpers because migrations already create both persistence tables.
+- Keep persistence logic inside the affected services instead of introducing new repositories.
+- Preserve existing default browse behavior; only relax archive filtering when `includeArchived` is explicitly true.
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |---|---|---|
-| None | 1 | Focused test and production build both passed after the adapter patch. |
