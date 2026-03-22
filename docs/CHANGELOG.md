@@ -3,7 +3,21 @@
 All notable changes to EverMemory are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [2.0.0-rc1] - 2026-03-21
+## [2.0.0-rc1] - 2026-03-22
+
+### Fixed — Bug Sweep (10 issues)
+- **CRITICAL**: Wire Phase 3 services into hooks (progressive consolidation, predictive context, self-tuning decay, drift detection were dead code)
+- **CRITICAL**: Fix `estimateActiveCount()` always returning 101 when any memory existed
+- **CRITICAL**: Fix `ContradictionMonitor` memory leak — pending alerts never cleared on session end
+- **HIGH**: Fix Chinese antonym substring false positives in relation detection
+- **HIGH**: Fix `selfTuningDecay` session counter reset on restart — now triggers on first session
+- **HIGH**: Fix graph traversal cache key collision (used `types.length` instead of actual values)
+- **HIGH**: Wire `userProfile` into `messageReceived` for proactive recall profile matching
+- **MEDIUM**: Persist drift detection entries to `preference_drift_log` table (was in-memory only)
+- **MEDIUM**: Persist tuning overrides to `tuning_overrides` table (was in-memory only)
+- **MEDIUM**: Add `includeArchived` option to browse tool (archived memories were inaccessible)
+
+## [2.0.0-rc1-initial] - 2026-03-21
 
 ### Added — Phase 1: Knowledge Graph
 - **Knowledge Graph** — `memory_relations` table with 7 relation types (causes, contradicts, supports, evolves_from, supersedes, depends_on, related_to)

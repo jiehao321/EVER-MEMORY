@@ -43,13 +43,13 @@ npm run release:preflight  # Cross-platform install & version consistency check
 - Run `npm run validate` before commits; `teams:release` before publishing.
 
 ## Current Status
-- Version: v2.0.0-rc1 (2026-03-21)
-- Tests: 413/413 pass; stability check 全绿（recall accuracy=1.0, unitTestPassRate=1.0）.
+- Version: v2.0.0-rc1 (2026-03-22)
+- Tests: 430/430 pass; stability check 全绿（recall accuracy=1.0, unitTestPassRate=1.0）.
 - KPI: recall accuracy=1.0, unit pass=1.0, continuity=true, autoCaptureAcceptRate=0.75.
 - 19 tools (16 original + evermemory_edit + evermemory_browse + evermemory_relations), 18 schema migrations, built-in semantic search.
 - Knowledge graph with 7 relation types, proactive recall, contradiction monitoring, adaptive retrieval weights.
 - Memory compression, predictive context, preference drift detection, self-tuning decay.
-- Track A/B/C/D 质量冲刺全部完成，Phase 1-3 进化全部完成。
+- Track A/B/C/D 质量冲刺全部完成，Phase 1-3 进化全部完成，10 个 bug 已修复（3 CRITICAL + 4 HIGH + 3 MEDIUM）。
 
 ## Recent Changes (2026-03-16 Quality Sprint)
 
