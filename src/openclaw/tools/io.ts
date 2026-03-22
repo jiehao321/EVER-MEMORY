@@ -113,6 +113,21 @@ export function registerIOTools({ api, evermemory, sessionScopes }: OpenClawRegi
         const content = typeof params.content === 'string' ? params.content : undefined;
         if (format && content !== undefined) {
           const baseScope = resolveToolScope(sessionScopes, toolContext);
+          const approvedValue = asOptionalBoolean(params.approved);
+          if (approvedValue === false) {
+            return {
+              content: [{
+                type: 'text',
+                text: `Import preview (approved=false): content provided as ${format}, ${content.length} chars. Set approved=true to apply.`,
+              }],
+              details: {
+                mode: 'review',
+                applied: false,
+                format,
+                contentLength: content.length,
+              },
+            };
+          }
           const result = await evermemory.import(
             content,
             format,

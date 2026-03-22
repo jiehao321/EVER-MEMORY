@@ -1,8 +1,8 @@
 # Findings
 
-- `preference_drift_log` columns from schema v17 are: `id`, `user_id`, `preference_key`, `old_value`, `new_value`, `drift_type`, `detected_at`.
-- `tuning_overrides` columns from schema v18 are: `type_grade_key`, `decay_multiplier`, `sample_count`, `last_updated`.
-- `DriftDetectionService` currently appends drifts only to an in-memory array and logs debug events; constructor currently takes only `debugRepo`.
-- `SelfTuningDecayService` currently writes overrides only to an in-memory `Map`; constructor currently takes `feedbackRepo` and optional `debugRepo`.
-- `evermemoryBrowse()` hardcodes `activeOnly: true` and `archived: false`, so archived rows can never be returned.
-- The OpenClaw browse tool registration currently exposes `type`, `lifecycle`, `limit`, `sortBy`, `sinceMinutesAgo`, `source`, and `scope`, but not an archive toggle.
+- In `src/openclaw/tools/io.ts`, the `format + content` import branch calls `evermemory.import(...)` directly and currently ignores `params.approved`.
+- `src/openclaw/tools/memory.ts` formats recall items with `#${item.id.slice(0, 8)}`, which is not enough for `evermemory_edit`.
+- `src/tools/recall.ts` does not format IDs itself, so no parallel truncation fix is needed there.
+- `src/openclaw/shared/convert.ts` defines `importModeSchema`, `retrievalModeSchema`, and `restoreModeSchema` without descriptions listing allowed values.
+- `src/openclaw/tools/memory.ts` relations graph summary currently reports only `Graph: ${result.total} node(s) found.`, which hides that the source node is excluded from the returned graph nodes.
+- `test/openclaw-plugin.test.ts` already resolves real registered tools and is the best focused place to verify the OpenClaw tool responses and parameter schema metadata.

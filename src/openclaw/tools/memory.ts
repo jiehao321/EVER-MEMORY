@@ -164,7 +164,7 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
 
         const lines = recall.items
           .slice(0, 6)
-          .map((item, index) => `${index + 1}. #${item.id.slice(0, 8)} [${item.type}/${item.lifecycle}] ${truncate(item.content, 120)}`);
+          .map((item, index) => `${index + 1}. [${item.id}] [${item.type}/${item.lifecycle}] ${truncate(item.content, 120)}`);
 
         return {
           content: [{
@@ -377,7 +377,7 @@ export function registerMemoryTools({ api, evermemory, sessionScopes }: OpenClaw
           relationId: asOptionalString(params.relationId),
         });
         const summary = result.action === 'graph'
-          ? `Graph: ${result.total} node(s) found.`
+          ? `Graph from ${asOptionalString(params.memoryId)?.slice(0, 8) ?? '?'}: ${result.total} connected node(s) found (depth ${asOptionalInteger(params.depth) ?? 2}).`
           : result.action === 'list'
             ? `Found ${result.total} relation(s).`
             : result.action === 'add'

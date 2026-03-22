@@ -229,7 +229,10 @@ export const memoryTypeSchema = Type.Optional(Type.Union(MEMORY_TYPES.map((value
 export const memoryLifecycleSchema = Type.Optional(
   Type.Union(MEMORY_LIFECYCLES.map((value) => Type.Literal(value))),
 );
-export const retrievalModeSchema = Type.Optional(Type.Union(RETRIEVAL_MODES.map((value) => Type.Literal(value))));
+export const retrievalModeSchema = Type.Optional(Type.Union(
+  RETRIEVAL_MODES.map((value) => Type.Literal(value)),
+  { description: `Retrieval mode. One of: ${RETRIEVAL_MODES.join(', ')}.` },
+));
 export const intentTypeSchema = Type.Optional(Type.Union(INTENT_TYPES.map((value) => Type.Literal(value))));
 export const consolidationModeSchema = Type.Optional(
   Type.Union(CONSOLIDATION_MODES.map((value) => Type.Literal(value))),
@@ -251,11 +254,11 @@ export const rulesActionSchema = Type.Optional(Type.Union([
 export const importModeSchema = Type.Optional(Type.Union([
   Type.Literal('review'),
   Type.Literal('apply'),
-]));
+], { description: 'Import mode. One of: review, apply.' }));
 export const restoreModeSchema = Type.Optional(Type.Union([
   Type.Literal('review'),
   Type.Literal('apply'),
-]));
+], { description: 'Restore mode. One of: review, apply.' }));
 export const restoreLifecycleSchema = Type.Optional(Type.Union([
   Type.Literal('working'),
   Type.Literal('episodic'),

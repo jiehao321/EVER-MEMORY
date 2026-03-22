@@ -172,6 +172,18 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   assert.ok(restoreTool);
   assert.ok(relationsTool);
   assert.ok(browseTool);
+  assert.match(
+    String((importTool as { parameters?: { properties?: Record<string, { description?: string }> } }).parameters?.properties?.mode?.description ?? ''),
+    /review, apply/,
+  );
+  assert.match(
+    String((recallTool as { parameters?: { properties?: Record<string, { description?: string }> } }).parameters?.properties?.mode?.description ?? ''),
+    /structured, keyword, hybrid/,
+  );
+  assert.match(
+    String((restoreTool as { parameters?: { properties?: Record<string, { description?: string }> } }).parameters?.properties?.mode?.description ?? ''),
+    /review, apply/,
+  );
   assert.equal(
     typeof (browseTool as { parameters?: { properties?: Record<string, unknown> } }).parameters?.properties?.includeArchived,
     'object',
@@ -190,6 +202,7 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
     limit: 3,
   });
   assert.ok(recallResult.details.total >= 1);
+  assert.match(String(recallResult.content[0]?.text ?? ''), new RegExp(`\\[${recallResult.details.items[0]?.id}\\]`));
 
   const hookResult = await runHook(
     hooks,
@@ -210,6 +223,26 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   const prependContext = (hookResult as { prependContext?: unknown }).prependContext;
   assert.equal(typeof prependContext, 'string');
   assert.match(String(prependContext), /evermemory-context/i);
+
+  const previewOnlyMarkdown = '## [fact] preview-only-import-marker\n- 标签: imported\n- 创建时间: 2026-03-15\n- 重要性: 0.7';
+  const markdownPreview = await memoryImportTool.execute('tc-import-md-preview', {
+    format: 'markdown',
+    content: previewOnlyMarkdown,
+    approved: false,
+  });
+  assert.equal(markdownPreview.details.mode, 'review');
+  assert.equal(markdownPreview.details.applied, false);
+  assert.equal(markdownPreview.details.format, 'markdown');
+  assert.equal(markdownPreview.details.contentLength, previewOnlyMarkdown.length);
+  assert.match(String(markdownPreview.content[0]?.text ?? ''), /approved=false/);
+  const previewDb = new Database(databasePath, { readonly: true });
+  try {
+    const previewRow = previewDb.prepare('SELECT COUNT(*) AS count FROM memory_items WHERE content = ?')
+      .get('preview-only-import-marker') as { count: number };
+    assert.equal(previewRow.count, 0);
+  } finally {
+    previewDb.close();
+  }
 
   const statusResult = await statusTool.execute('tc-3', {});
   assert.ok(statusResult.details.memoryCount >= 1);
@@ -310,6 +343,37 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
     mode: 'review',
   });
   assert.equal(restoreResult.details.mode, 'review');
+
+  const relationSource = await storeTool.execute('tc-relation-source', {
+    content: '关系图源节点',
+    type: 'fact',
+  });
+  const relationTarget = await storeTool.execute('tc-relation-target', {
+    content: '关系图目标节点',
+    type: 'fact',
+  });
+  const relationSourceId = String(relationSource.details.memory?.id ?? '');
+  const relationTargetId = String(relationTarget.details.memory?.id ?? '');
+  assert.ok(relationSourceId);
+  assert.ok(relationTargetId);
+
+  const relationAddResult = await relationsTool.execute('tc-rel-add', {
+    action: 'add',
+    memoryId: relationSourceId,
+    targetId: relationTargetId,
+    relationType: 'related_to',
+  });
+  assert.equal(relationAddResult.details.action, 'add');
+
+  const relationGraphResult = await relationsTool.execute('tc-rel-graph', {
+    action: 'graph',
+    memoryId: relationSourceId,
+    depth: 1,
+  });
+  assert.equal(
+    relationGraphResult.content[0]?.text,
+    `Graph from ${relationSourceId.slice(0, 8)}: 1 connected node(s) found (depth 1).`,
+  );
 
   await runHook(
     hooks,
