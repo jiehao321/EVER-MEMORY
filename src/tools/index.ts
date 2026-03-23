@@ -17,3 +17,6 @@ export { evermemoryImport } from './import.js';
 export { evermemoryReview } from './review.js';
 export { evermemoryRestore } from './restore.js';
 export { evermemoryRelations } from './relations.js';
+export { butlerStatus } from './butlerStatus.js';
+export { butlerBrief } from './butlerBrief.js';
+export { butlerTune } from './butlerTune.js';

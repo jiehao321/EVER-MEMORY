@@ -33,6 +33,21 @@ test('migrations are idempotent and preserve schema version', () => {
   const retrievalFeedbackTableRow = db.connection.prepare(`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'retrieval_feedback'
   `).get() as { name: string } | undefined;
+  const butlerStateTableRow = db.connection.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'butler_state'
+  `).get() as { name: string } | undefined;
+  const butlerTasksTableRow = db.connection.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'butler_tasks'
+  `).get() as { name: string } | undefined;
+  const narrativeThreadsTableRow = db.connection.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'narrative_threads'
+  `).get() as { name: string } | undefined;
+  const butlerInsightsTableRow = db.connection.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'butler_insights'
+  `).get() as { name: string } | undefined;
+  const llmInvocationsTableRow = db.connection.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'llm_invocations'
+  `).get() as { name: string } | undefined;
 
   assert.equal(first, CURRENT_SCHEMA_VERSION);
   assert.equal(second, CURRENT_SCHEMA_VERSION);
@@ -44,6 +59,11 @@ test('migrations are idempotent and preserve schema version', () => {
   assert.equal(semanticIndexTableRow?.name, 'semantic_index');
   assert.equal(projectedProfileTableRow?.name, 'projected_profiles');
   assert.equal(retrievalFeedbackTableRow?.name, 'retrieval_feedback');
+  assert.equal(butlerStateTableRow?.name, 'butler_state');
+  assert.equal(butlerTasksTableRow?.name, 'butler_tasks');
+  assert.equal(narrativeThreadsTableRow?.name, 'narrative_threads');
+  assert.equal(butlerInsightsTableRow?.name, 'butler_insights');
+  assert.equal(llmInvocationsTableRow?.name, 'llm_invocations');
 
   closeDatabase(db);
   rmSync(databasePath, { force: true });

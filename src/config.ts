@@ -21,6 +21,7 @@ export interface EverMemoryConfigInput {
   semantic?: unknown;
   intent?: unknown;
   retrieval?: unknown;
+  butler?: unknown;
 }
 
 function readBoolean(value: unknown, field: string, fallback: boolean): boolean {
@@ -95,6 +96,21 @@ function readObject(value: unknown, field: string): Record<string, unknown> | un
   return value as Record<string, unknown>;
 }
 
+function readEnum<T extends readonly string[]>(
+  value: unknown,
+  field: string,
+  allowed: T,
+  fallback: T[number],
+): T[number] {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== 'string' || !(allowed as readonly string[]).includes(value)) {
+    throw new Error(`Invalid evermemory config: ${field} must be one of ${allowed.join(', ')}.`);
+  }
+  return value as T[number];
+}
+
 function normalizeWeights<T extends Record<string, number>>(weights: T, field: string): T {
   const total = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
   if (total <= 0) {
@@ -110,8 +126,12 @@ export function loadConfig(input: EverMemoryConfigInput = {}): EverMemoryConfig 
   const intentInput = readObject(input.intent, 'intent');
   const semanticInput = readObject(input.semantic, 'semantic');
   const retrievalInput = readObject(input.retrieval, 'retrieval');
+  const butlerInput = readObject(input.butler, 'butler');
   const keywordWeightsInput = readObject(retrievalInput?.keywordWeights, 'retrieval.keywordWeights');
   const hybridWeightsInput = readObject(retrievalInput?.hybridWeights, 'retrieval.hybridWeights');
+  const butlerCognitionInput = readObject(butlerInput?.cognition, 'butler.cognition');
+  const butlerTimeBudgetsInput = readObject(butlerInput?.timeBudgets, 'butler.timeBudgets');
+  const butlerAttentionInput = readObject(butlerInput?.attention, 'butler.attention');
 
   const keywordWeights = normalizeWeights({
     keyword: readNonNegativeNumber(
@@ -212,6 +232,66 @@ export function loadConfig(input: EverMemoryConfigInput = {}): EverMemoryConfig 
     retrieval: {
       keywordWeights,
       hybridWeights,
+    },
+    butler: {
+      enabled: readBoolean(butlerInput?.enabled, 'butler.enabled', true),
+      mode: readEnum(butlerInput?.mode, 'butler.mode', ['steward', 'reduced'] as const, 'steward'),
+      cognition: {
+        dailyTokenBudget: readPositiveInteger(
+          butlerCognitionInput?.dailyTokenBudget,
+          'butler.cognition.dailyTokenBudget',
+          50000,
+        ),
+        sessionTokenBudget: readPositiveInteger(
+          butlerCognitionInput?.sessionTokenBudget,
+          'butler.cognition.sessionTokenBudget',
+          10000,
+        ),
+        taskTimeoutMs: readPositiveInteger(
+          butlerCognitionInput?.taskTimeoutMs,
+          'butler.cognition.taskTimeoutMs',
+          15000,
+        ),
+        fallbackToHeuristics: readBoolean(
+          butlerCognitionInput?.fallbackToHeuristics,
+          'butler.cognition.fallbackToHeuristics',
+          true,
+        ),
+      },
+      timeBudgets: {
+        sessionStartMs: readPositiveInteger(
+          butlerTimeBudgetsInput?.sessionStartMs,
+          'butler.timeBudgets.sessionStartMs',
+          3000,
+        ),
+        beforeAgentMs: readPositiveInteger(
+          butlerTimeBudgetsInput?.beforeAgentMs,
+          'butler.timeBudgets.beforeAgentMs',
+          2000,
+        ),
+        agentEndMs: readPositiveInteger(
+          butlerTimeBudgetsInput?.agentEndMs,
+          'butler.timeBudgets.agentEndMs',
+          2000,
+        ),
+      },
+      attention: {
+        maxInsightsPerBriefing: readPositiveInteger(
+          butlerAttentionInput?.maxInsightsPerBriefing,
+          'butler.attention.maxInsightsPerBriefing',
+          3,
+        ),
+        tokenBudgetPercent: readUnitInterval(
+          butlerAttentionInput?.tokenBudgetPercent,
+          'butler.attention.tokenBudgetPercent',
+          0.2,
+        ),
+        minConfidence: readUnitInterval(
+          butlerAttentionInput?.minConfidence,
+          'butler.attention.minConfidence',
+          0.4,
+        ),
+      },
     },
   };
 }

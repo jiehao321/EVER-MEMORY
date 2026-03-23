@@ -1,12 +1,27 @@
+import { ButlerAgent } from '../core/butler/agent.js';
+import { AttentionService } from '../core/butler/attention/service.js';
+import { CommitmentWatcher } from '../core/butler/commitments/watcher.js';
+import { CognitiveEngine } from '../core/butler/cognition.js';
+import { ButlerLlmClient } from '../core/butler/llmClient.js';
+import { NarrativeThreadService } from '../core/butler/narrative/service.js';
+import { ButlerStateManager } from '../core/butler/state.js';
+import { StrategicOverlayGenerator } from '../core/butler/strategy/overlay.js';
+import { TaskQueueService } from '../core/butler/taskQueue.js';
 import { PLUGIN_NAME, PLUGIN_VERSION } from '../constants.js';
 import { registerHooks } from './hooks/index.js';
-import { createRegistrationContext, type OpenClawApi, toErrorMessage } from './shared.js';
+import { createRegistrationContext, isRecord, type OpenClawApi, toErrorMessage } from './shared.js';
+import { registerButlerTools } from './tools/butler.js';
 import { registerBriefingTools } from './tools/briefing.js';
 import { registerIOTools } from './tools/io.js';
 import { registerMemoryTools } from './tools/memory.js';
 import { registerProfileTools } from './tools/profile.js';
 import { embeddingManager, type EmbeddingConfig } from '../embedding/manager.js';
 import { isFirstRun, runAutoSetup, writeWelcomeMemory } from '../core/setup/autoSetup.js';
+import { ButlerInsightRepository } from '../storage/butlerInsightRepo.js';
+import { ButlerStateRepository } from '../storage/butlerStateRepo.js';
+import { ButlerTaskRepository } from '../storage/butlerTaskRepo.js';
+import { LlmInvocationRepo } from '../storage/llmInvocationRepo.js';
+import { NarrativeRepository } from '../storage/narrativeRepo.js';
 
 const memoryPlugin = {
   id: PLUGIN_NAME,
@@ -16,6 +31,63 @@ const memoryPlugin = {
   kind: 'memory' as const,
   register(api: OpenClawApi) {
     const context = createRegistrationContext(api);
+    const butlerEnabled = !isRecord(api.pluginConfig?.butler) || api.pluginConfig?.butler?.enabled !== false;
+    const butlerConfig = context.evermemory.config.butler;
+    const db = context.evermemory.database.connection;
+    const butler = butlerEnabled && butlerConfig
+      ? (() => {
+          const insightRepo = new ButlerInsightRepository(db);
+          const stateManager = new ButlerStateManager({
+            stateRepo: new ButlerStateRepository(db),
+            logger: api.logger,
+          });
+          const taskQueue = new TaskQueueService({
+            taskRepo: new ButlerTaskRepository(db),
+            logger: api.logger,
+          });
+          const cognitiveEngine = new CognitiveEngine({
+            llmClient: new ButlerLlmClient({ gateway: api.llm, logger: api.logger }),
+            invocationRepo: new LlmInvocationRepo(db),
+            config: butlerConfig.cognition,
+            logger: api.logger,
+          });
+          const overlayGenerator = new StrategicOverlayGenerator({
+            cognitiveEngine,
+            insightRepo,
+            logger: api.logger,
+          });
+          return {
+            agent: new ButlerAgent({
+              stateManager,
+              taskQueue,
+              cognitiveEngine,
+              insightRepo,
+              logger: api.logger,
+            }),
+            overlayGenerator,
+            narrativeService: new NarrativeThreadService({
+              narrativeRepo: new NarrativeRepository(db),
+              cognitiveEngine,
+              logger: api.logger,
+            }),
+            commitmentWatcher: new CommitmentWatcher({
+              memoryRepo: context.evermemory.memoryRepo,
+              insightRepo,
+              cognitiveEngine,
+              logger: api.logger,
+            }),
+            attentionService: new AttentionService({
+              insightRepo,
+              config: butlerConfig.attention,
+              logger: api.logger,
+            }),
+            stateManager,
+            taskQueue,
+            cognitiveEngine,
+            config: butlerConfig,
+          };
+        })()
+      : undefined;
     const originalSessionStart = context.evermemory.sessionStart.bind(context.evermemory);
 
     context.evermemory.sessionStart = (input) => {
@@ -36,11 +108,34 @@ const memoryPlugin = {
       return result;
     };
 
-    registerHooks(context);
+    registerHooks(
+      context,
+      butler
+        ? {
+            agent: butler.agent,
+            overlayGenerator: butler.overlayGenerator,
+            attentionService: butler.attentionService,
+          }
+        : undefined,
+    );
     registerMemoryTools(context);
     registerBriefingTools(context);
     registerProfileTools(context);
     registerIOTools(context);
+    if (butler) {
+      registerButlerTools({
+        api,
+        agent: butler.agent,
+        overlayGenerator: butler.overlayGenerator,
+        narrativeService: butler.narrativeService,
+        commitmentWatcher: butler.commitmentWatcher,
+        attentionService: butler.attentionService,
+        stateManager: butler.stateManager,
+        taskQueue: butler.taskQueue,
+        cognitiveEngine: butler.cognitiveEngine,
+        config: butler.config,
+      });
+    }
 
     api.registerService({
       id: PLUGIN_NAME,
@@ -62,6 +157,11 @@ const memoryPlugin = {
           await embeddingManager.embed('EverMemory startup diagnostic');
         } catch {
           // Diagnostics stay best-effort; startup must continue.
+        }
+        if (butler) {
+          await butler.agent.runCycle({ type: 'service_started' }).catch((error: unknown) => {
+            api.logger.warn(`[EverMemory] Butler startup cycle failed: ${toErrorMessage(error)}`);
+          });
         }
         const setup = await runAutoSetup(context.evermemory.memoryRepo, embeddingManager);
         api.logger.info(`[EverMemory] Ready. memories=${setup.memoryCount}, embedding=${setup.embeddingProvider}`);

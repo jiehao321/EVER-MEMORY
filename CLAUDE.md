@@ -136,6 +136,83 @@ node --test 'dist-test/test/**/*.test.js' 'dist-test/test/*.test.js'
 - `SelfTuningDecayService` — per-(type, sourceGrade) decay multiplier adjustment every 10 sessions
 - `ProgressiveConsolidationService` — every 5 messages triggers light compression if >100 active memories
 
+## Butler Agent (Phase 1)
+
+The Butler is a persistent episodic agent that transforms EverMemory from a passive memory layer into an active cognitive layer.
+
+### Architecture
+- **OODA Loop**: Each hook invocation runs: LOAD STATE → OBSERVE → ORIENT → DECIDE → ACT → PERSIST
+- **Three-layer Output**: Memory Context (facts) + Strategic Overlay (mode/priorities/risks) + Watchlist (monitoring)
+- **LLM Integration**: Host LlmGateway (OpenClawApi.llm) → ButlerLlmClient → CognitiveEngine
+- **Reduced Mode**: When LLM unavailable, heuristic fallback (no overlay, no posture recommendations)
+
+### Key Components
+```
+src/core/butler/
+├── agent.ts              # Butler Agent (OODA loop + cycle trace)
+├── state.ts              # Thin state manager (singleton + working memory)
+├── cognition.ts          # CognitiveEngine (LLM wrapper + budget)
+├── llmClient.ts          # ButlerLlmClient (gateway > bridge > unavailable)
+├── taskQueue.ts          # Deferred task queue with drain budgets
+├── types.ts              # All Butler types
+├── strategy/
+│   ├── overlay.ts        # StrategicOverlay generation (LLM + heuristic fallback)
+│   └── compiler.ts       # Overlay → <evermemory-butler> XML render
+├── narrative/
+│   └── service.ts        # Cross-session narrative thread management
+├── commitments/
+│   └── watcher.ts        # Commitment extraction from memories
+└── attention/
+    └── service.ts        # Insight ranking + surfacing + cooldown
+```
+
+### New DB Tables (v19–v23)
+- `butler_state` — singleton agent state
+- `butler_tasks` — deferred task queue
+- `narrative_threads` — cross-session narrative tracking
+- `butler_insights` — generated insights (commitment/theme/anomaly/open_loop/recommendation)
+- `llm_invocations` — LLM call audit trail
+
+### 3 New Tools
+| Tool | Purpose |
+|------|---------|
+| `butler_status` | Agent state, narratives, queue, LLM usage |
+| `butler_brief` | LLM executive briefing with strategy overlay |
+| `butler_tune` | Runtime config adjustment (mode, budgets, sensitivity) |
+
+### Hook Integration
+- `session_start`: Butler cycle (observe + drain tasks)
+- `before_agent_start`: Butler cycle + overlay generation → `<evermemory-butler>` XML injected via prependContext
+- `agent_end`: Butler cycle (result absorption)
+- `session_end`: Butler cycle (enqueue deferred tasks only, 0ms extra)
+- All Butler hook code wrapped in try/catch — failures never block existing functionality.
+
+### Configuration
+```json
+{
+  "butler": {
+    "enabled": true,
+    "mode": "steward",
+    "cognition": {
+      "dailyTokenBudget": 50000,
+      "sessionTokenBudget": 10000,
+      "taskTimeoutMs": 15000,
+      "fallbackToHeuristics": true
+    },
+    "timeBudgets": {
+      "sessionStartMs": 3000,
+      "beforeAgentMs": 2000,
+      "agentEndMs": 2000
+    },
+    "attention": {
+      "maxInsightsPerBriefing": 3,
+      "tokenBudgetPercent": 0.2,
+      "minConfidence": 0.4
+    }
+  }
+}
+```
+
 ## Stability Verification
 ```bash
 npm run stability:check

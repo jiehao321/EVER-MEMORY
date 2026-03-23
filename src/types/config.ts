@@ -1,3 +1,5 @@
+import type { ButlerConfig } from '../core/butler/types.js';
+
 export interface RetrievalKeywordWeights {
   keyword: number;
   recency: number;
@@ -34,4 +36,5 @@ export interface EverMemoryConfig {
     keywordWeights: RetrievalKeywordWeights;
     hybridWeights: RetrievalHybridWeights;
   };
+  butler?: ButlerConfig;
 }

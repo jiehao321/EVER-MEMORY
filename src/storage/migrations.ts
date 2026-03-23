@@ -20,7 +20,12 @@ export const PHASE13_RETRIEVAL_FEEDBACK_SCHEMA_VERSION = 15;
 export const PHASE14_MEMORY_COMPRESSION_SCHEMA_VERSION = 16;
 export const PHASE15_PREFERENCE_DRIFT_SCHEMA_VERSION = 17;
 export const PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION = 18;
-export const CURRENT_SCHEMA_VERSION = PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION;
+export const PHASE17_BUTLER_STATE_SCHEMA_VERSION = 19;
+export const PHASE18_BUTLER_TASKS_SCHEMA_VERSION = 20;
+export const PHASE19_NARRATIVE_THREADS_SCHEMA_VERSION = 21;
+export const PHASE20_BUTLER_INSIGHTS_SCHEMA_VERSION = 22;
+export const PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION = 23;
+export const CURRENT_SCHEMA_VERSION = PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION;
 
 const CREATE_PHASE1_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS schema_version (\n    version INTEGER NOT NULL\n  )`,
@@ -225,6 +230,95 @@ const CREATE_PHASE16_TUNING_OVERRIDES_SQL = [
   )`,
 ] as const;
 
+const CREATE_PHASE17_BUTLER_STATE_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_state (
+    id TEXT PRIMARY KEY DEFAULT 'singleton',
+    strategy_frame_json TEXT NOT NULL DEFAULT '{}',
+    self_model_json TEXT NOT NULL DEFAULT '{}',
+    working_memory_json TEXT NOT NULL DEFAULT '[]',
+    mode TEXT NOT NULL DEFAULT 'steward',
+    last_cycle_at TEXT,
+    last_cycle_version INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  )`,
+] as const;
+
+const CREATE_PHASE18_BUTLER_TASKS_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_tasks (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 5,
+    status TEXT NOT NULL DEFAULT 'queued',
+    trigger TEXT,
+    payload_json TEXT,
+    budget_class TEXT NOT NULL DEFAULT 'low',
+    scheduled_at TEXT,
+    lease_until TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    idempotency_key TEXT UNIQUE,
+    result_json TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_tasks_status ON butler_tasks(status, priority)',
+] as const;
+
+const CREATE_PHASE19_NARRATIVE_THREADS_SQL = [
+  `CREATE TABLE IF NOT EXISTS narrative_threads (
+    id TEXT PRIMARY KEY,
+    theme TEXT NOT NULL,
+    objective TEXT,
+    current_phase TEXT NOT NULL DEFAULT 'exploring',
+    momentum TEXT NOT NULL DEFAULT 'steady',
+    recent_events_json TEXT NOT NULL DEFAULT '[]',
+    blockers_json TEXT NOT NULL DEFAULT '[]',
+    likely_next_turn TEXT,
+    strategic_importance REAL NOT NULL DEFAULT 0.5,
+    scope_json TEXT,
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    closed_at TEXT
+  )`,
+] as const;
+
+const CREATE_PHASE20_BUTLER_INSIGHTS_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_insights (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    scope_json TEXT,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    importance REAL NOT NULL DEFAULT 0.5,
+    fresh_until TEXT,
+    source_refs_json TEXT,
+    model_used TEXT,
+    cycle_trace_id TEXT,
+    surfaced_count INTEGER NOT NULL DEFAULT 0,
+    last_surfaced_at TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_insights_kind ON butler_insights(kind, importance DESC)',
+] as const;
+
+const CREATE_PHASE21_LLM_INVOCATIONS_SQL = [
+  `CREATE TABLE IF NOT EXISTS llm_invocations (
+    id TEXT PRIMARY KEY,
+    task_type TEXT NOT NULL,
+    trace_id TEXT,
+    provider TEXT,
+    model TEXT,
+    prompt_tokens INTEGER,
+    completion_tokens INTEGER,
+    latency_ms INTEGER,
+    cache_hit INTEGER NOT NULL DEFAULT 0,
+    success INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  )`,
+] as const;
+
 function ensureSchemaVersionTable(db: Database.Database): void {
   db.prepare(CREATE_PHASE1_SCHEMA_SQL[0]).run();
 
@@ -397,6 +491,36 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
       }
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION);
     });
+    const phase17ButlerStateTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE17_BUTLER_STATE_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE17_BUTLER_STATE_SCHEMA_VERSION);
+    });
+    const phase18ButlerTasksTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE18_BUTLER_TASKS_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE18_BUTLER_TASKS_SCHEMA_VERSION);
+    });
+    const phase19NarrativeThreadsTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE19_NARRATIVE_THREADS_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE19_NARRATIVE_THREADS_SCHEMA_VERSION);
+    });
+    const phase20ButlerInsightsTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE20_BUTLER_INSIGHTS_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE20_BUTLER_INSIGHTS_SCHEMA_VERSION);
+    });
+    const phase21LlmInvocationsTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE21_LLM_INVOCATIONS_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -476,6 +600,31 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
     if (currentVersion < PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION) {
       phase16TuningOverridesTx();
       currentVersion = PHASE16_TUNING_OVERRIDES_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE17_BUTLER_STATE_SCHEMA_VERSION) {
+      phase17ButlerStateTx();
+      currentVersion = PHASE17_BUTLER_STATE_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE18_BUTLER_TASKS_SCHEMA_VERSION) {
+      phase18ButlerTasksTx();
+      currentVersion = PHASE18_BUTLER_TASKS_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE19_NARRATIVE_THREADS_SCHEMA_VERSION) {
+      phase19NarrativeThreadsTx();
+      currentVersion = PHASE19_NARRATIVE_THREADS_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE20_BUTLER_INSIGHTS_SCHEMA_VERSION) {
+      phase20ButlerInsightsTx();
+      currentVersion = PHASE20_BUTLER_INSIGHTS_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION) {
+      phase21LlmInvocationsTx();
+      currentVersion = PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION;
     }
 
     return currentVersion;

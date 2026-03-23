@@ -142,6 +142,94 @@
             }
           }
         }
+      },
+      "butler": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Butler Agent configuration. The Butler is a persistent episodic agent that provides strategic overlay, narrative tracking, and cognitive capabilities.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable the Butler Agent. When disabled, EverMemory operates in passive mode without strategic overlay or narrative tracking. Default: true."
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["steward", "reduced"],
+            "description": "Butler operating mode. 'steward' uses LLM for full cognitive capabilities; 'reduced' uses heuristics only (no LLM calls). Default: steward."
+          },
+          "cognition": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Cognitive engine (LLM) budget and timeout settings.",
+            "properties": {
+              "dailyTokenBudget": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum tokens the Butler may consume per day across all LLM calls. Default: 50000."
+              },
+              "sessionTokenBudget": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum tokens the Butler may consume per session. Default: 10000."
+              },
+              "taskTimeoutMs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Timeout in milliseconds for a single cognitive task (LLM call). Default: 15000."
+              },
+              "fallbackToHeuristics": {
+                "type": "boolean",
+                "description": "Fall back to heuristic analysis when LLM is unavailable or budget is exhausted. Default: true."
+              }
+            }
+          },
+          "timeBudgets": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Wall-clock time budgets for Butler cycles at each hook.",
+            "properties": {
+              "sessionStartMs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Max time for Butler cycle at session_start (includes task drain). Default: 3000."
+              },
+              "beforeAgentMs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Max time for Butler cycle at before_agent_start (strategic overlay generation). Default: 2000."
+              },
+              "agentEndMs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Max time for Butler cycle at agent_end (result absorption). Default: 2000."
+              }
+            }
+          },
+          "attention": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Attention and insight surfacing configuration.",
+            "properties": {
+              "maxInsightsPerBriefing": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum number of insights surfaced per briefing cycle. Default: 3."
+              },
+              "tokenBudgetPercent": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Fraction of context window budget allocated to Butler overlay [0-1]. Default: 0.2."
+              },
+              "minConfidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Minimum confidence threshold for surfacing insights [0-1]. Default: 0.4."
+              }
+            }
+          }
+        }
       }
     }
   },

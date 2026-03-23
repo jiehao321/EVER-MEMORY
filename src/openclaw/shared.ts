@@ -1,4 +1,5 @@
 import { PLUGIN_NAME } from '../constants.js';
+import type { LlmGateway } from '../core/butler/types.js';
 import { EverMemoryError } from '../errors.js';
 import { getDefaultConfig, initializeEverMemory } from '../index.js';
 import {
@@ -55,6 +56,7 @@ export interface OpenClawApi {
   on: (name: string, handler: HookHandler) => void;
   registerTool: (tool: unknown, opts?: ToolRegistrationOptions) => void;
   registerService: (service: OpenClawService) => void;
+  llm?: LlmGateway;
 }
 
 export interface OpenClawRegistrationContext {
