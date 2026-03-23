@@ -9,6 +9,7 @@ import type { CognitiveResult, CognitiveTask } from '../../src/core/butler/types
 import type { CognitiveEngine } from '../../src/core/butler/cognition.js';
 import { AttentionService } from '../../src/core/butler/attention/service.js';
 import { CommitmentWatcher } from '../../src/core/butler/commitments/watcher.js';
+import { ButlerFeedbackRepository } from '../../src/storage/butlerFeedbackRepo.js';
 import { openDatabase, closeDatabase, type DatabaseHandle } from '../../src/storage/db.js';
 import { runMigrations } from '../../src/storage/migrations.js';
 import { ButlerInsightRepository } from '../../src/storage/butlerInsightRepo.js';
@@ -221,6 +222,7 @@ test('AttentionService getTopInsights returns scored and sorted results', () => 
 
     const service = new AttentionService({
       insightRepo: repo,
+      feedbackRepo: new ButlerFeedbackRepository(ctx.db),
       config: { maxInsightsPerBriefing: 2, minConfidence: 0.5, tokenBudgetPercent: 0.2 },
       logger: createLogger(),
     });
@@ -250,6 +252,7 @@ test('AttentionService filters by minConfidence', () => {
 
     const service = new AttentionService({
       insightRepo: repo,
+      feedbackRepo: new ButlerFeedbackRepository(ctx.db),
       config: { maxInsightsPerBriefing: 5, minConfidence: 0.4, tokenBudgetPercent: 0.2 },
       logger: createLogger(),
     });
@@ -277,6 +280,7 @@ test('AttentionService shouldSurface respects time cooldown', () => {
 
     const service = new AttentionService({
       insightRepo: repo,
+      feedbackRepo: new ButlerFeedbackRepository(ctx.db),
       config: { maxInsightsPerBriefing: 5, minConfidence: 0.4, tokenBudgetPercent: 0.2 },
       logger: createLogger(),
     });
@@ -316,6 +320,7 @@ test('AttentionService rankInsights is a pure sort', () => {
   ];
   const service = new AttentionService({
     insightRepo: {} as ButlerInsightRepository,
+    feedbackRepo: {} as ButlerFeedbackRepository,
     config: { maxInsightsPerBriefing: 5, minConfidence: 0.4, tokenBudgetPercent: 0.2 },
     logger: createLogger(),
   });
@@ -342,6 +347,7 @@ test('AttentionService pruneStale deletes expired insights', () => {
 
     const service = new AttentionService({
       insightRepo: repo,
+      feedbackRepo: new ButlerFeedbackRepository(ctx.db),
       config: { maxInsightsPerBriefing: 5, minConfidence: 0.4, tokenBudgetPercent: 0.2 },
       logger: createLogger(),
     });

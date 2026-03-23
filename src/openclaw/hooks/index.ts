@@ -1,6 +1,7 @@
 import type { ButlerAgent } from '../../core/butler/agent.js';
 import type { AttentionService } from '../../core/butler/attention/service.js';
-import { compileOverlay } from '../../core/butler/strategy/compiler.js';
+import type { ButlerGoalService } from '../../core/butler/goals/service.js';
+import { compileOverlay, compileSessionWatchlist } from '../../core/butler/strategy/compiler.js';
 import type { StrategicOverlayGenerator } from '../../core/butler/strategy/overlay.js';
 import type { OpenClawRegistrationContext } from '../shared.js';
 import {
@@ -17,6 +18,7 @@ interface ButlerHookContext {
   agent: ButlerAgent;
   overlayGenerator: StrategicOverlayGenerator;
   attentionService: AttentionService;
+  goalService?: ButlerGoalService;
 }
 
 function logButlerFailure(
@@ -68,6 +70,18 @@ export function registerHooks(
       sessionId,
       scope: scopeState.scope,
     });
+    if (!butler) {
+      return undefined;
+    }
+    try {
+      const insights = butler.attentionService.getCriticalInsights(3);
+      const goals = butler.goalService?.getActiveGoals().slice(0, 3) ?? [];
+      const watchlist = compileSessionWatchlist(insights, goals);
+      return watchlist ? { prependContext: watchlist } : undefined;
+    } catch (error) {
+      logButlerFailure(registrationContext, 'session_start_watchlist', error);
+      return undefined;
+    }
   });
 
   registerHook(api, 'before_agent_start', async (event: unknown, hookContext: unknown) => {

@@ -20,3 +20,4 @@ export { evermemoryRelations } from './relations.js';
 export { butlerStatus } from './butlerStatus.js';
 export { butlerBrief } from './butlerBrief.js';
 export { butlerTune } from './butlerTune.js';
+export { butlerReview } from './butlerReview.js';

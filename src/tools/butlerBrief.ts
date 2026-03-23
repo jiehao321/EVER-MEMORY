@@ -1,5 +1,6 @@
 import type { AttentionService } from '../core/butler/attention/service.js';
 import type { CommitmentWatcher } from '../core/butler/commitments/watcher.js';
+import type { ButlerGoalService } from '../core/butler/goals/service.js';
 import type { NarrativeThreadService } from '../core/butler/narrative/service.js';
 import { compileOverlay } from '../core/butler/strategy/compiler.js';
 import type { StrategicOverlayGenerator } from '../core/butler/strategy/overlay.js';
@@ -7,12 +8,14 @@ import type {
   ButlerAgent,
 } from '../core/butler/agent.js';
 import type { ButlerInsight, NarrativeThread, StrategicOverlay } from '../core/butler/types.js';
+import type { ButlerGoal } from '../storage/butlerGoalRepo.js';
 
 export interface ButlerBriefResult {
   overlayXml: string;
   overlay: StrategicOverlay;
   narratives?: NarrativeThread[];
   commitments?: ButlerInsight[];
+  goals?: ButlerGoal[];
 }
 
 function toScopedRecord(scope?: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -41,9 +44,11 @@ export async function butlerBrief(input: {
   narrativeService: NarrativeThreadService;
   commitmentWatcher: CommitmentWatcher;
   attentionService: AttentionService;
+  goalService?: ButlerGoalService;
   scope?: Record<string, unknown>;
   includeNarratives?: boolean;
   includeCommitments?: boolean;
+  includeGoals?: boolean;
 }): Promise<ButlerBriefResult> {
   const scope = toScopedRecord(input.scope);
   const state = await ensureState(input.agent, scope);
@@ -56,10 +61,12 @@ export async function butlerBrief(input: {
   const commitments = input.includeCommitments
     ? (await input.commitmentWatcher.scanCommitments(scope), input.commitmentWatcher.getActiveCommitments())
     : undefined;
+  const goals = input.includeGoals && input.goalService ? input.goalService.getActiveGoals(scope) : undefined;
   return {
     overlayXml: compileOverlay(overlay, topInsights),
     overlay,
     narratives,
     commitments,
+    goals,
   };
 }

@@ -3,6 +3,7 @@ import type { ButlerAgent } from '../../core/butler/agent.js';
 import type { AttentionService } from '../../core/butler/attention/service.js';
 import type { CommitmentWatcher } from '../../core/butler/commitments/watcher.js';
 import type { CognitiveEngine } from '../../core/butler/cognition.js';
+import type { ButlerGoalService } from '../../core/butler/goals/service.js';
 import type { NarrativeThreadService } from '../../core/butler/narrative/service.js';
 import type { ButlerStateManager } from '../../core/butler/state.js';
 import type { StrategicOverlayGenerator } from '../../core/butler/strategy/overlay.js';
@@ -30,6 +31,7 @@ export interface ButlerRegistrationContext {
   narrativeService: NarrativeThreadService;
   commitmentWatcher: CommitmentWatcher;
   attentionService: AttentionService;
+  goalService: ButlerGoalService;
   stateManager: ButlerStateManager;
   taskQueue: TaskQueueService;
   cognitiveEngine: CognitiveEngine;
@@ -50,6 +52,7 @@ export function registerButlerTools(context: ButlerRegistrationContext): void {
           taskQueue: context.taskQueue,
           cognitiveEngine: context.cognitiveEngine,
           attentionService: context.attentionService,
+          goalService: context.goalService,
           scope: parseScope(params.scope),
         });
         return {
@@ -74,6 +77,7 @@ export function registerButlerTools(context: ButlerRegistrationContext): void {
           scope: scopeSchema,
           includeNarratives: Type.Optional(Type.Boolean()),
           includeCommitments: Type.Optional(Type.Boolean()),
+          includeGoals: Type.Optional(Type.Boolean()),
         },
         { additionalProperties: false },
       ),
@@ -84,9 +88,11 @@ export function registerButlerTools(context: ButlerRegistrationContext): void {
           narrativeService: context.narrativeService,
           commitmentWatcher: context.commitmentWatcher,
           attentionService: context.attentionService,
+          goalService: context.goalService,
           scope: parseScope(params.scope),
           includeNarratives: asOptionalBoolean(params.includeNarratives),
           includeCommitments: asOptionalBoolean(params.includeCommitments),
+          includeGoals: asOptionalBoolean(params.includeGoals),
         });
         return {
           content: [{

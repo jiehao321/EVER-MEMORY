@@ -2,6 +2,7 @@ import { ButlerAgent } from '../core/butler/agent.js';
 import { AttentionService } from '../core/butler/attention/service.js';
 import { CommitmentWatcher } from '../core/butler/commitments/watcher.js';
 import { CognitiveEngine } from '../core/butler/cognition.js';
+import { ButlerGoalService } from '../core/butler/goals/service.js';
 import { ButlerLlmClient } from '../core/butler/llmClient.js';
 import { NarrativeThreadService } from '../core/butler/narrative/service.js';
 import { ButlerStateManager } from '../core/butler/state.js';
@@ -17,11 +18,14 @@ import { registerMemoryTools } from './tools/memory.js';
 import { registerProfileTools } from './tools/profile.js';
 import { embeddingManager, type EmbeddingConfig } from '../embedding/manager.js';
 import { isFirstRun, runAutoSetup, writeWelcomeMemory } from '../core/setup/autoSetup.js';
+import { ButlerFeedbackRepository } from '../storage/butlerFeedbackRepo.js';
+import { ButlerGoalRepository } from '../storage/butlerGoalRepo.js';
 import { ButlerInsightRepository } from '../storage/butlerInsightRepo.js';
 import { ButlerStateRepository } from '../storage/butlerStateRepo.js';
 import { ButlerTaskRepository } from '../storage/butlerTaskRepo.js';
 import { LlmInvocationRepo } from '../storage/llmInvocationRepo.js';
 import { NarrativeRepository } from '../storage/narrativeRepo.js';
+import { registerButlerReviewTool } from './tools/butlerReview.js';
 
 const memoryPlugin = {
   id: PLUGIN_NAME,
@@ -35,8 +39,10 @@ const memoryPlugin = {
     const butlerConfig = context.evermemory.config.butler;
     const db = context.evermemory.database.connection;
     const butler = butlerEnabled && butlerConfig
-      ? (() => {
+        ? (() => {
           const insightRepo = new ButlerInsightRepository(db);
+          const feedbackRepo = new ButlerFeedbackRepository(db);
+          const goalRepo = new ButlerGoalRepository(db);
           const stateManager = new ButlerStateManager({
             stateRepo: new ButlerStateRepository(db),
             logger: api.logger,
@@ -56,12 +62,18 @@ const memoryPlugin = {
             insightRepo,
             logger: api.logger,
           });
+          const goalService = new ButlerGoalService({
+            goalRepo,
+            insightRepo,
+            logger: api.logger,
+          });
           return {
             agent: new ButlerAgent({
               stateManager,
               taskQueue,
               cognitiveEngine,
               insightRepo,
+              goalService,
               logger: api.logger,
             }),
             overlayGenerator,
@@ -78,9 +90,13 @@ const memoryPlugin = {
             }),
             attentionService: new AttentionService({
               insightRepo,
+              feedbackRepo,
               config: butlerConfig.attention,
               logger: api.logger,
             }),
+            goalService,
+            feedbackRepo,
+            insightRepo,
             stateManager,
             taskQueue,
             cognitiveEngine,
@@ -115,6 +131,7 @@ const memoryPlugin = {
             agent: butler.agent,
             overlayGenerator: butler.overlayGenerator,
             attentionService: butler.attentionService,
+            goalService: butler.goalService,
           }
         : undefined,
     );
@@ -130,10 +147,18 @@ const memoryPlugin = {
         narrativeService: butler.narrativeService,
         commitmentWatcher: butler.commitmentWatcher,
         attentionService: butler.attentionService,
+        goalService: butler.goalService,
         stateManager: butler.stateManager,
         taskQueue: butler.taskQueue,
         cognitiveEngine: butler.cognitiveEngine,
         config: butler.config,
+      });
+      registerButlerReviewTool({
+        api,
+        feedbackRepo: butler.feedbackRepo,
+        insightRepo: butler.insightRepo,
+        attentionService: butler.attentionService,
+        stateManager: butler.stateManager,
       });
     }
 

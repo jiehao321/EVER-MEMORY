@@ -10,6 +10,7 @@ import { ButlerAgent } from '../../src/core/butler/agent.js';
 import { AttentionService } from '../../src/core/butler/attention/service.js';
 import { CommitmentWatcher } from '../../src/core/butler/commitments/watcher.js';
 import { CognitiveEngine } from '../../src/core/butler/cognition.js';
+import { ButlerGoalService } from '../../src/core/butler/goals/service.js';
 import { ButlerLlmClient } from '../../src/core/butler/llmClient.js';
 import { NarrativeThreadService } from '../../src/core/butler/narrative/service.js';
 import { ButlerStateManager } from '../../src/core/butler/state.js';
@@ -19,6 +20,8 @@ import type { ButlerConfig, ButlerInsight, LlmGateway, LlmRequest } from '../../
 import { registerHooks } from '../../src/openclaw/hooks/index.js';
 import { buildInjectedContext } from '../../src/openclaw/shared.js';
 import { openDatabase, closeDatabase, type DatabaseHandle } from '../../src/storage/db.js';
+import { ButlerFeedbackRepository } from '../../src/storage/butlerFeedbackRepo.js';
+import { ButlerGoalRepository } from '../../src/storage/butlerGoalRepo.js';
 import { ButlerInsightRepository } from '../../src/storage/butlerInsightRepo.js';
 import { ButlerStateRepository } from '../../src/storage/butlerStateRepo.js';
 import { ButlerTaskRepository } from '../../src/storage/butlerTaskRepo.js';
@@ -203,6 +206,8 @@ function createButlerFixture() {
   const config = createConfig();
   const memoryRepo = new MemoryRepository(dbContext.db);
   const insightRepo = new ButlerInsightRepository(dbContext.db);
+  const feedbackRepo = new ButlerFeedbackRepository(dbContext.db);
+  const goalRepo = new ButlerGoalRepository(dbContext.db);
   const stateRepo = new ButlerStateRepository(dbContext.db);
   const taskRepo = new ButlerTaskRepository(dbContext.db);
   const narrativeRepo = new NarrativeRepository(dbContext.db);
@@ -223,7 +228,13 @@ function createButlerFixture() {
   });
   const attentionService = new AttentionService({
     insightRepo,
+    feedbackRepo,
     config: config.attention,
+    logger,
+  });
+  const goalService = new ButlerGoalService({
+    goalRepo,
+    insightRepo,
     logger,
   });
   const overlayGenerator = new StrategicOverlayGenerator({
@@ -242,6 +253,7 @@ function createButlerFixture() {
     taskQueue,
     cognitiveEngine,
     insightRepo,
+    goalService,
     logger,
   });
   return {
@@ -249,6 +261,9 @@ function createButlerFixture() {
     config,
     memoryRepo,
     insightRepo,
+    feedbackRepo,
+    goalRepo,
+    goalService,
     stateManager,
     taskQueue,
     narrativeService,
@@ -313,6 +328,7 @@ test('butlerStatus returns current Butler summary structure', async () => {
       taskQueue: fixture.taskQueue,
       cognitiveEngine: fixture.cognitiveEngine,
       attentionService: fixture.attentionService,
+      goalService: fixture.goalService,
       scope: { project: 'evermemory' },
     });
 
@@ -355,15 +371,18 @@ test('butlerBrief returns overlay XML and optional narratives and commitments', 
       narrativeService: fixture.narrativeService,
       commitmentWatcher: fixture.commitmentWatcher,
       attentionService: fixture.attentionService,
+      goalService: fixture.goalService,
       scope: { project: 'evermemory' },
       includeNarratives: true,
       includeCommitments: true,
+      includeGoals: true,
     });
 
     assert.match(result.overlayXml, /<evermemory-butler>/);
     assert.equal(result.overlay.currentMode, 'implementing');
     assert.equal(result.narratives?.length, 1);
     assert.ok((result.commitments?.length ?? 0) >= 1);
+    assert.ok(Array.isArray(result.goals));
   } finally {
     fixture.cleanup();
   }

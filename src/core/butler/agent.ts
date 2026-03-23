@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { OpenClawLogger } from '../../openclaw/shared.js';
+import type { ButlerGoalService } from './goals/service.js';
 import { ButlerInsightRepository } from '../../storage/butlerInsightRepo.js';
 import type { CognitiveEngine } from './cognition.js';
 import { ButlerStateManager } from './state.js';
@@ -17,6 +18,7 @@ interface ButlerAgentOptions {
   taskQueue: TaskQueueService;
   cognitiveEngine: CognitiveEngine;
   insightRepo: ButlerInsightRepository;
+  goalService?: ButlerGoalService;
   logger?: OpenClawLogger;
 }
 
@@ -70,6 +72,18 @@ function toJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function parseTaskPayload(task: ButlerTask): Record<string, unknown> | undefined {
+  if (!task.payloadJson) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(task.payloadJson) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function updateMetrics(
   state: ButlerPersistentState,
   durationMs: number,
@@ -89,6 +103,7 @@ export class ButlerAgent {
   private readonly taskQueue: TaskQueueService;
   private readonly cognitiveEngine: CognitiveEngine;
   private readonly insightRepo: ButlerInsightRepository;
+  private readonly goalService?: ButlerGoalService;
   private readonly logger?: OpenClawLogger;
   private currentState: ButlerPersistentState | null = null;
 
@@ -97,6 +112,7 @@ export class ButlerAgent {
     this.taskQueue = options.taskQueue;
     this.cognitiveEngine = options.cognitiveEngine;
     this.insightRepo = options.insightRepo;
+    this.goalService = options.goalService;
     this.logger = options.logger;
   }
 
@@ -337,6 +353,7 @@ export class ButlerAgent {
     const completedTaskTypes: string[] = [];
     for (const task of tasks) {
       try {
+        this.runDeferredTask(task);
         this.taskQueue.complete(task.id, { completedBy: 'butler-agent', cycleId });
         completedTaskTypes.push(task.type);
       } catch (error) {
@@ -345,6 +362,13 @@ export class ButlerAgent {
       }
     }
     return completedTaskTypes;
+  }
+
+  private runDeferredTask(task: ButlerTask): void {
+    if (task.type !== 'goal_derivation' || !this.goalService) {
+      return;
+    }
+    this.goalService.deriveGoalsFromInsights(parseTaskPayload(task));
   }
 
   private surfaceFreshInsights(): string[] {
@@ -378,13 +402,21 @@ export class ButlerAgent {
         budgetClass: 'medium',
         idempotencyKey: `session-ended:insight:${sessionId}`,
       }),
+      this.taskQueue.enqueue({
+        type: 'goal_derivation',
+        priority: 5,
+        trigger: trigger.type,
+        payload: trigger.scope ?? {},
+        budgetClass: 'medium',
+        idempotencyKey: `session-ended:goals:${sessionId}`,
+      }),
     ];
 
     return {
       ...result,
       actions: {
         queuedTaskIds,
-        queuedTaskTypes: ['narrative_update', 'insight_refresh'],
+        queuedTaskTypes: ['narrative_update', 'insight_refresh', 'goal_derivation'],
       },
     };
   }

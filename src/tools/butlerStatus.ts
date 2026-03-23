@@ -1,5 +1,6 @@
 import type { AttentionService } from '../core/butler/attention/service.js';
 import type { CognitiveEngine } from '../core/butler/cognition.js';
+import type { ButlerGoalService } from '../core/butler/goals/service.js';
 import type { NarrativeThreadService } from '../core/butler/narrative/service.js';
 import type { TaskQueueService } from '../core/butler/taskQueue.js';
 import type { ButlerAgent } from '../core/butler/agent.js';
@@ -31,6 +32,17 @@ export interface ButlerStatusResult {
     confidence: number;
     importance: number;
   }>;
+  goals: {
+    active: number;
+    paused: number;
+    completed: number;
+    topGoals: Array<{
+      id: string;
+      title: string;
+      priority: number;
+      deadline?: string;
+    }>;
+  };
 }
 
 function toScopedRecord(scope?: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -61,11 +73,13 @@ export function butlerStatus(input: {
   taskQueue: TaskQueueService;
   cognitiveEngine: CognitiveEngine;
   attentionService: AttentionService;
+  goalService: ButlerGoalService;
   scope?: Record<string, unknown>;
 }): ButlerStatusResult {
   const scope = toScopedRecord(input.scope);
   const state = input.agent.getState();
   const mode = state?.mode ?? (input.agent.isReduced() ? 'reduced' : 'steward');
+  const goals = input.goalService.getGoalSummary(scope);
   return {
     mode,
     cycleVersion: state?.lastCycleVersion ?? 0,
@@ -87,5 +101,16 @@ export function butlerStatus(input: {
       confidence: insight.confidence,
       importance: insight.importance,
     })),
+    goals: {
+      active: goals.active,
+      paused: goals.paused,
+      completed: goals.completed,
+      topGoals: goals.topGoals.map((goal) => ({
+        id: goal.id,
+        title: goal.title,
+        priority: goal.priority,
+        deadline: goal.deadline,
+      })),
+    },
   };
 }

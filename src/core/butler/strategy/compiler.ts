@@ -38,6 +38,30 @@ export function renderWatchlist(overlay: StrategicOverlay, insights: ButlerInsig
   return lines.join('\n');
 }
 
+export function compileSessionWatchlist(
+  insights: ButlerInsight[],
+  goals: Array<{ title: string; priority: number }>,
+): string {
+  const reminderLines = insights
+    .slice(0, 3)
+    .map((insight) => `    [${escapeXml(insight.kind)}] ${escapeXml(insight.title)}`);
+  const goalLines = goals
+    .slice(0, 3)
+    .map((goal) => `    ${goal.priority <= 3 ? '●' : '○'} ${escapeXml(goal.title)}`);
+  if (reminderLines.length === 0 && goalLines.length === 0) {
+    return '';
+  }
+  const lines = ['<evermemory-watchlist>'];
+  if (reminderLines.length > 0) {
+    lines.push(`  <reminders count="${reminderLines.length}">`, ...reminderLines, '  </reminders>');
+  }
+  if (goalLines.length > 0) {
+    lines.push(`  <goals active="${goalLines.length}">`, ...goalLines, '  </goals>');
+  }
+  lines.push('</evermemory-watchlist>');
+  return lines.join('\n');
+}
+
 export function compileOverlay(overlay: StrategicOverlay, insights: ButlerInsight[] = []): string {
   return [
     '<evermemory-butler>',

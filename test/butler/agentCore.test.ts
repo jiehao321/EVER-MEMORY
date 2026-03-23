@@ -337,7 +337,8 @@ test('ButlerAgent runCycle for session_ended only enqueues', async () => {
     });
 
     assert.equal(trace.hook, 'session_ended');
-    assert.equal(taskQueue.getPendingCount(), 2);
+    assert.equal(taskQueue.getPendingCount(), 3);
+    assert.match(trace.actionsJson, /goal_derivation/);
     assert.doesNotMatch(trace.actionsJson, /completed/i);
   } finally {
     ctx.cleanup();

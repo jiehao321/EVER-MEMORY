@@ -1,4 +1,5 @@
 import type { OpenClawLogger } from '../../../openclaw/shared.js';
+import { ButlerFeedbackRepository } from '../../../storage/butlerFeedbackRepo.js';
 import type { ButlerInsight } from '../types.js';
 import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
 
@@ -13,6 +14,7 @@ interface AttentionConfig {
 
 interface AttentionServiceOptions {
   insightRepo: ButlerInsightRepository;
+  feedbackRepo: ButlerFeedbackRepository;
   config: AttentionConfig;
   logger?: OpenClawLogger;
 }
@@ -51,11 +53,13 @@ function combinedScore(insight: ButlerInsight, referenceMs: number): number {
 
 export class AttentionService {
   private readonly insightRepo: ButlerInsightRepository;
+  private readonly feedbackRepo: ButlerFeedbackRepository;
   private readonly config: AttentionConfig;
   private readonly logger?: OpenClawLogger;
 
   constructor(options: AttentionServiceOptions) {
     this.insightRepo = options.insightRepo;
+    this.feedbackRepo = options.feedbackRepo;
     this.config = options.config;
     this.logger = options.logger;
   }
@@ -63,6 +67,36 @@ export class AttentionService {
   getTopInsights(limit = this.config.maxInsightsPerBriefing): ButlerInsight[] {
     const insights = this.insightRepo.findFresh(limit * 4);
     return this.rankInsights(insights.filter((insight) => this.shouldSurface(insight))).slice(0, limit);
+  }
+
+  shouldForceSurface(insight: ButlerInsight): boolean {
+    if (insight.importance < 0.9) {
+      return false;
+    }
+    if (this.feedbackRepo.isSnoozed(insight.id)) {
+      return false;
+    }
+    return !this.feedbackRepo.isDismissed(insight.id);
+  }
+
+  getCriticalInsights(limit = this.config.maxInsightsPerBriefing): ButlerInsight[] {
+    const maxItems = Math.max(1, limit);
+    const freshInsights = this.insightRepo.findFresh(maxItems * 4);
+    const forced = this.rankInsights(freshInsights.filter((insight) => this.shouldForceSurface(insight)));
+    const regular = this.getTopInsights(maxItems);
+    const deduped: ButlerInsight[] = [];
+    const seen = new Set<string>();
+    for (const insight of [...forced, ...regular]) {
+      if (seen.has(insight.id)) {
+        continue;
+      }
+      seen.add(insight.id);
+      deduped.push(insight);
+      if (deduped.length >= maxItems) {
+        break;
+      }
+    }
+    return deduped;
   }
 
   rankInsights(insights: ButlerInsight[]): ButlerInsight[] {
@@ -79,6 +113,9 @@ export class AttentionService {
     if (insight.confidence < this.config.minConfidence || insight.importance < 0.3) {
       return false;
     }
+    if (this.feedbackRepo.isBlocked(insight.id)) {
+      return false;
+    }
     const lastSurfacedMs = toMs(insight.lastSurfacedAt);
     return lastSurfacedMs === null || nowMs() - lastSurfacedMs > SURFACE_COOLDOWN_MS;
   }
@@ -92,5 +129,9 @@ export class AttentionService {
 
   pruneStale(): number {
     return this.insightRepo.deleteExpired();
+  }
+
+  pruneExpiredFeedback(): void {
+    this.feedbackRepo.pruneExpired();
   }
 }

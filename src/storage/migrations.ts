@@ -25,7 +25,9 @@ export const PHASE18_BUTLER_TASKS_SCHEMA_VERSION = 20;
 export const PHASE19_NARRATIVE_THREADS_SCHEMA_VERSION = 21;
 export const PHASE20_BUTLER_INSIGHTS_SCHEMA_VERSION = 22;
 export const PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION = 23;
-export const CURRENT_SCHEMA_VERSION = PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION;
+export const PHASE22_BUTLER_FEEDBACK_SCHEMA_VERSION = 24;
+export const PHASE23_BUTLER_GOALS_SCHEMA_VERSION = 25;
+export const CURRENT_SCHEMA_VERSION = PHASE23_BUTLER_GOALS_SCHEMA_VERSION;
 
 const CREATE_PHASE1_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS schema_version (\n    version INTEGER NOT NULL\n  )`,
@@ -319,6 +321,39 @@ const CREATE_PHASE21_LLM_INVOCATIONS_SQL = [
   )`,
 ] as const;
 
+const CREATE_PHASE22_BUTLER_FEEDBACK_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_feedback (
+    id TEXT PRIMARY KEY,
+    insight_id TEXT NOT NULL REFERENCES butler_insights(id) ON DELETE CASCADE,
+    action TEXT NOT NULL CHECK(action IN ('accepted','rejected','snoozed','dismissed')),
+    snooze_until TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_feedback_insight ON butler_feedback(insight_id)',
+  'CREATE INDEX IF NOT EXISTS idx_butler_feedback_created ON butler_feedback(created_at)',
+] as const;
+
+const CREATE_PHASE23_BUTLER_GOALS_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_goals (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'active'
+      CHECK(status IN ('active','paused','completed','abandoned')),
+    scope_json TEXT,
+    priority INTEGER NOT NULL DEFAULT 5,
+    deadline TEXT,
+    progress_notes TEXT,
+    source_insight_ids TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_goals_status ON butler_goals(status)',
+  'CREATE INDEX IF NOT EXISTS idx_butler_goals_priority ON butler_goals(priority)',
+] as const;
+
 function ensureSchemaVersionTable(db: Database.Database): void {
   db.prepare(CREATE_PHASE1_SCHEMA_SQL[0]).run();
 
@@ -521,6 +556,18 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
       }
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION);
     });
+    const phase22ButlerFeedbackTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE22_BUTLER_FEEDBACK_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE22_BUTLER_FEEDBACK_SCHEMA_VERSION);
+    });
+    const phase23ButlerGoalsTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE23_BUTLER_GOALS_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE23_BUTLER_GOALS_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -625,6 +672,16 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
     if (currentVersion < PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION) {
       phase21LlmInvocationsTx();
       currentVersion = PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE22_BUTLER_FEEDBACK_SCHEMA_VERSION) {
+      phase22ButlerFeedbackTx();
+      currentVersion = PHASE22_BUTLER_FEEDBACK_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE23_BUTLER_GOALS_SCHEMA_VERSION) {
+      phase23ButlerGoalsTx();
+      currentVersion = PHASE23_BUTLER_GOALS_SCHEMA_VERSION;
     }
 
     return currentVersion;

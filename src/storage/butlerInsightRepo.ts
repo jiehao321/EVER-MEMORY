@@ -23,8 +23,25 @@ interface ChangesRow {
   count: number;
 }
 
+const OPEN_LOOP_FRESH_HOURS = 72;
+
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function futureIso(hours: number): string {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+}
+
+function normalizeInsight(insight: NewButlerInsight): NewButlerInsight {
+  if (insight.kind !== 'open_loop') {
+    return insight;
+  }
+  return {
+    ...insight,
+    freshUntil: insight.freshUntil ?? futureIso(OPEN_LOOP_FRESH_HOURS),
+    sourceRefs: insight.sourceRefs ?? [],
+  };
 }
 
 function toButlerInsight(row: ButlerInsightRow): ButlerInsight {
@@ -93,19 +110,20 @@ export class ButlerInsightRepository {
   }
 
   insert(insight: NewButlerInsight): string {
+    const normalized = normalizeInsight(insight);
     const id = randomUUID();
     this.stmtInsert.run(
       id,
-      insight.kind,
-      insight.scope === undefined ? null : JSON.stringify(insight.scope),
-      insight.title,
-      insight.summary,
-      insight.confidence ?? 0.5,
-      insight.importance ?? 0.5,
-      insight.freshUntil ?? null,
-      insight.sourceRefs === undefined ? null : JSON.stringify(insight.sourceRefs),
-      insight.modelUsed ?? null,
-      insight.cycleTraceId ?? null,
+      normalized.kind,
+      normalized.scope === undefined ? null : JSON.stringify(normalized.scope),
+      normalized.title,
+      normalized.summary,
+      normalized.confidence ?? 0.5,
+      normalized.importance ?? 0.5,
+      normalized.freshUntil ?? null,
+      normalized.sourceRefs === undefined ? null : JSON.stringify(normalized.sourceRefs),
+      normalized.modelUsed ?? null,
+      normalized.cycleTraceId ?? null,
       nowIso(),
     );
     return id;
