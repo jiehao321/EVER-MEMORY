@@ -155,31 +155,31 @@
           "mode": {
             "type": "string",
             "enum": ["steward", "reduced"],
-            "description": "Butler operating mode. 'steward' uses LLM for full cognitive capabilities; 'reduced' uses heuristics only (no LLM calls). Default: steward."
+            "description": "Butler operating mode. 'steward' uses LLM for full cognitive capabilities (requires LLM gateway, not yet available in public SDK); 'reduced' uses heuristics only (no LLM calls). Default: reduced."
           },
           "cognition": {
             "type": "object",
             "additionalProperties": false,
-            "description": "Cognitive engine (LLM) budget and timeout settings.",
+            "description": "Cognitive engine (LLM) budget and timeout settings (effective only in steward mode).",
             "properties": {
               "dailyTokenBudget": {
                 "type": "integer",
                 "minimum": 1,
-                "description": "Maximum tokens the Butler may consume per day across all LLM calls. Default: 50000."
+                "description": "Maximum tokens the Butler may consume per day across all LLM calls (effective only in steward mode). Default: 50000."
               },
               "sessionTokenBudget": {
                 "type": "integer",
                 "minimum": 1,
-                "description": "Maximum tokens the Butler may consume per session. Default: 10000."
+                "description": "Maximum tokens the Butler may consume per session (effective only in steward mode). Default: 10000."
               },
               "taskTimeoutMs": {
                 "type": "integer",
                 "minimum": 1,
-                "description": "Timeout in milliseconds for a single cognitive task (LLM call). Default: 15000."
+                "description": "Timeout in milliseconds for a single cognitive task (effective only in steward mode). Default: 15000."
               },
               "fallbackToHeuristics": {
                 "type": "boolean",
-                "description": "Fall back to heuristic analysis when LLM is unavailable or budget is exhausted. Default: true."
+                "description": "Fall back to heuristic analysis when LLM is unavailable or budget is exhausted (effective only in steward mode). Default: true."
               }
             }
           },

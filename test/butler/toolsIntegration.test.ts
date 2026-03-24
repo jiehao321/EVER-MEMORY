@@ -46,7 +46,7 @@ function createLogger() {
 function createConfig(): ButlerConfig {
   return {
     enabled: true,
-    mode: 'steward',
+    mode: 'reduced',
     cognition: {
       dailyTokenBudget: 100,
       sessionTokenBudget: 80,
@@ -62,6 +62,11 @@ function createConfig(): ButlerConfig {
       maxInsightsPerBriefing: 3,
       tokenBudgetPercent: 0.2,
       minConfidence: 0.4,
+    },
+    workers: {
+      enabled: false,
+      maxWorkers: 2,
+      taskTimeoutMs: 10000,
     },
   };
 }
@@ -332,7 +337,7 @@ test('butlerStatus returns current Butler summary structure', async () => {
       scope: { project: 'evermemory' },
     });
 
-    assert.equal(result.mode, 'steward');
+    assert.equal(result.mode, 'reduced');
     assert.equal(typeof result.cycleVersion, 'number');
     assert.equal(typeof result.lastCycleAt, 'string');
     assert.equal(result.pendingTasks, 1);
@@ -397,7 +402,7 @@ test('butlerTune get returns current config snapshot', () => {
       action: 'get',
     });
 
-    assert.equal(result.config.mode, 'steward');
+    assert.equal(result.config.mode, 'reduced');
     assert.equal(result.config.attention.maxInsightsPerBriefing, 3);
   } finally {
     fixture.cleanup();

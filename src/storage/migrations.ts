@@ -238,7 +238,7 @@ const CREATE_PHASE17_BUTLER_STATE_SQL = [
     strategy_frame_json TEXT NOT NULL DEFAULT '{}',
     self_model_json TEXT NOT NULL DEFAULT '{}',
     working_memory_json TEXT NOT NULL DEFAULT '[]',
-    mode TEXT NOT NULL DEFAULT 'steward',
+    mode TEXT NOT NULL DEFAULT 'reduced',
     last_cycle_at TEXT,
     last_cycle_version INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL

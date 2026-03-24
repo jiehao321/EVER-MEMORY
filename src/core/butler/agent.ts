@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import type { OpenClawLogger } from '../../openclaw/shared.js';
 import type { ButlerGoalService } from './goals/service.js';
 import { ButlerInsightRepository } from '../../storage/butlerInsightRepo.js';
 import type { CognitiveEngine } from './cognition.js';
 import { ButlerStateManager } from './state.js';
 import { TaskQueueService } from './taskQueue.js';
+import type { WorkerThreadPool } from './worker/pool.js';
 import type {
   ButlerCycleTrace,
+  ButlerLogger,
   ButlerPersistentState,
   ButlerTask,
   ButlerTrigger,
@@ -19,7 +20,8 @@ interface ButlerAgentOptions {
   cognitiveEngine: CognitiveEngine;
   insightRepo: ButlerInsightRepository;
   goalService?: ButlerGoalService;
-  logger?: OpenClawLogger;
+  workerPool?: WorkerThreadPool;
+  logger?: ButlerLogger;
 }
 
 interface CyclePhaseResult {
@@ -104,7 +106,8 @@ export class ButlerAgent {
   private readonly cognitiveEngine: CognitiveEngine;
   private readonly insightRepo: ButlerInsightRepository;
   private readonly goalService?: ButlerGoalService;
-  private readonly logger?: OpenClawLogger;
+  private readonly workerPool?: WorkerThreadPool;
+  private readonly logger?: ButlerLogger;
   private currentState: ButlerPersistentState | null = null;
 
   constructor(options: ButlerAgentOptions) {
@@ -113,6 +116,7 @@ export class ButlerAgent {
     this.cognitiveEngine = options.cognitiveEngine;
     this.insightRepo = options.insightRepo;
     this.goalService = options.goalService;
+    this.workerPool = options.workerPool;
     this.logger = options.logger;
   }
 
@@ -357,7 +361,7 @@ export class ButlerAgent {
         this.taskQueue.complete(task.id, { completedBy: 'butler-agent', cycleId });
         completedTaskTypes.push(task.type);
       } catch (error) {
-        this.logger?.error('ButlerAgent failed to complete task.', error);
+        this.logger?.error('ButlerAgent failed to complete task', { error: error instanceof Error ? error.message : String(error) });
         this.taskQueue.fail(task.id, error instanceof Error ? error.message : String(error));
       }
     }
@@ -365,6 +369,16 @@ export class ButlerAgent {
   }
 
   private runDeferredTask(task: ButlerTask): void {
+    if (task.type === 'narrative_update' || task.type === 'insight_refresh') {
+      if (this.workerPool) {
+        this.workerPool
+          .dispatch({ id: task.id, type: 'cognitive_task', payload: parseTaskPayload(task) })
+          .catch((err: unknown) => {
+            this.logger?.warn('ButlerAgent worker dispatch failed', { taskType: task.type, error: err instanceof Error ? err.message : String(err) });
+          });
+      }
+      return;
+    }
     if (task.type !== 'goal_derivation' || !this.goalService) {
       return;
     }

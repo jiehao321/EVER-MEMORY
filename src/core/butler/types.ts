@@ -1,3 +1,11 @@
+// Butler logger — matches RuntimeLogger shape without importing from openclaw SDK
+export type ButlerLogger = {
+  debug?: (message: string, meta?: Record<string, unknown>) => void;
+  info: (message: string, meta?: Record<string, unknown>) => void;
+  warn: (message: string, meta?: Record<string, unknown>) => void;
+  error: (message: string, meta?: Record<string, unknown>) => void;
+};
+
 // LLM
 export interface LlmGateway {
   invoke(request: LlmRequest): Promise<LlmResponse>;
@@ -275,5 +283,10 @@ export interface ButlerConfig {
     maxInsightsPerBriefing: number;
     tokenBudgetPercent: number;
     minConfidence: number;
+  };
+  workers: {
+    enabled: boolean;
+    maxWorkers: number;
+    taskTimeoutMs: number;
   };
 }

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { ButlerAgent } from '../../core/butler/agent.js';
 import type { AttentionService } from '../../core/butler/attention/service.js';
 import type { ButlerGoalService } from '../../core/butler/goals/service.js';
@@ -12,6 +13,7 @@ import {
   registerHook,
   syncSessionStartScope,
   upsertScopeState,
+  upsertScopeStateFromCtx,
 } from '../shared.js';
 
 interface ButlerHookContext {
@@ -43,72 +45,61 @@ function runButlerCycle(
   });
 }
 
-function mergePrependContext(current: string | undefined, overlayXml: string): { prependContext: string } {
-  return {
-    prependContext: [current, overlayXml].filter((value): value is string => Boolean(value)).join('\n\n'),
-  };
-}
-
 export function registerHooks(
   registrationContext: OpenClawRegistrationContext,
   butler?: ButlerHookContext,
 ): void {
   const { api, evermemory, sessionScopes } = registrationContext;
-  registerHook(api, 'session_start', (event: unknown, hookContext: unknown) => {
+
+  // session_start: scope init + Butler cycle only. No return value (new SDK requires void).
+  registerHook(api, 'session_start', (event, ctx) => {
     const sessionId = (
-      (isRecord(event) ? asOptionalString(event.sessionId) : undefined)
-      ?? (isRecord(hookContext) ? asOptionalString(hookContext.sessionId) : undefined)
+      (isRecord(event) ? asOptionalString((event as Record<string, unknown>).sessionId) : undefined)
+      ?? (isRecord(ctx) ? asOptionalString((ctx as Record<string, unknown>).sessionId) : undefined)
     );
     if (!sessionId) {
       return;
     }
 
-    const scopeState = upsertScopeState(sessionScopes, sessionId, event, hookContext);
+    const scopeState = upsertScopeState(sessionScopes, sessionId, event, ctx);
     syncSessionStartScope(evermemory, sessionId, scopeState);
     runButlerCycle(registrationContext, butler, 'session_start', {
       type: 'session_started',
       sessionId,
       scope: scopeState.scope,
     });
-    if (!butler) {
-      return undefined;
-    }
-    try {
-      const insights = butler.attentionService.getCriticalInsights(3);
-      const goals = butler.goalService?.getActiveGoals().slice(0, 3) ?? [];
-      const watchlist = compileSessionWatchlist(insights, goals);
-      return watchlist ? { prependContext: watchlist } : undefined;
-    } catch (error) {
-      logButlerFailure(registrationContext, 'session_start_watchlist', error);
-      return undefined;
-    }
+    // No return value — new SDK session_start is void
   });
 
-  registerHook(api, 'before_agent_start', async (event: unknown, hookContext: unknown) => {
-    if (!isRecord(hookContext)) {
+  // before_agent_start: memory recall + watchlist + overlay computation.
+  // Watchlist is computed here (not cached from session_start).
+  registerHook(api, 'before_agent_start', async (event, ctx) => {
+    if (!isRecord(ctx)) {
       return undefined;
     }
-    const prompt = isRecord(event) ? asOptionalString(event.prompt) : undefined;
-    const sessionId = asOptionalString(hookContext.sessionId)
-      ?? (isRecord(event) ? asOptionalString(event.sessionId) : undefined);
+    const prompt = isRecord(event) ? asOptionalString((event as Record<string, unknown>).prompt) : undefined;
+    const sessionId = asOptionalString((ctx as Record<string, unknown>).sessionId)
+      ?? (isRecord(event) ? asOptionalString((event as Record<string, unknown>).sessionId) : undefined);
     if (!prompt || !sessionId) {
       return undefined;
     }
 
-    const scopeState = upsertScopeState(sessionScopes, sessionId, event, hookContext);
+    const scopeState = upsertScopeStateFromCtx(sessionScopes, sessionId, event, ctx);
     const scopeRebound = syncSessionStartScope(evermemory, sessionId, scopeState);
-    const runId = asOptionalString(hookContext.runId);
+
+    // Self-generate turnId (no longer relies on host runId)
+    const turnId = `turn-${sessionId}-${crypto.randomUUID()}`;
 
     const result = await evermemory.messageReceived({
       sessionId,
-      messageId: runId,
+      messageId: turnId,
       text: prompt,
       scope: scopeState.scope,
       channel: scopeState.channel,
     });
 
     const injected = buildInjectedContext(result.recall.items, result.behaviorRules);
-    evermemory.debugRepo.log('interaction_processed', runId, {
+    evermemory.debugRepo.log('interaction_processed', turnId, {
       sessionId,
       source: 'before_agent_start_injection',
       scopeUserId: scopeState.scope.userId,
@@ -121,9 +112,24 @@ export function registerHooks(
       recalled: result.recall.total,
       ...injected.stats,
     });
-    if (!butler) {
-      return injected.prependContext ? { prependContext: injected.prependContext } : undefined;
+
+    // Compute watchlist (per-turn, not cached)
+    let watchlistXml: string | undefined;
+    if (butler) {
+      try {
+        const insights = butler.attentionService.getCriticalInsights(3);
+        const goals = butler.goalService?.getActiveGoals().slice(0, 3) ?? [];
+        watchlistXml = compileSessionWatchlist(insights, goals) ?? undefined;
+      } catch (error) {
+        logButlerFailure(registrationContext, 'before_agent_start_watchlist', error);
+      }
     }
+
+    if (!butler) {
+      const parts = [injected.prependContext, watchlistXml].filter(Boolean);
+      return parts.length > 0 ? { prependContext: parts.join('\n\n') } : undefined;
+    }
+
     try {
       await butler.agent.runCycle({
         type: 'message_received',
@@ -133,55 +139,65 @@ export function registerHooks(
       });
       const state = butler.agent.getState();
       if (!state) {
-        return injected.prependContext ? { prependContext: injected.prependContext } : undefined;
+        const parts = [injected.prependContext, watchlistXml].filter(Boolean);
+        return parts.length > 0 ? { prependContext: parts.join('\n\n') } : undefined;
       }
       const topInsights = butler.attentionService.getTopInsights();
       const overlay = await butler.overlayGenerator.generateOverlay(state, {
         recentMessages: [prompt],
         scope: scopeState.scope,
       });
-      return mergePrependContext(injected.prependContext, compileOverlay(overlay, topInsights));
+      const overlayXml = compileOverlay(overlay, topInsights);
+      const parts = [injected.prependContext, watchlistXml, overlayXml].filter(Boolean);
+      return parts.length > 0 ? { prependContext: parts.join('\n\n') } : undefined;
     } catch (error) {
       logButlerFailure(registrationContext, 'before_agent_start', error);
-      return injected.prependContext ? { prependContext: injected.prependContext } : undefined;
+      const parts = [injected.prependContext, watchlistXml].filter(Boolean);
+      return parts.length > 0 ? { prependContext: parts.join('\n\n') } : undefined;
     }
   });
 
-  registerHook(api, 'agent_end', async (event: unknown, hookContext: unknown) => {
+  // agent_end: self-generate turnId, no dependency on host runId
+  registerHook(api, 'agent_end', async (event, ctx) => {
     const sessionId = (
-      (isRecord(hookContext) ? asOptionalString(hookContext.sessionId) : undefined)
-      ?? (isRecord(event) ? asOptionalString(event.sessionId) : undefined)
+      (isRecord(ctx) ? asOptionalString((ctx as Record<string, unknown>).sessionId) : undefined)
+      ?? (isRecord(event) ? asOptionalString((event as Record<string, unknown>).sessionId) : undefined)
     );
     if (!sessionId) {
       return;
     }
-    const scopeState = upsertScopeState(sessionScopes, sessionId, event, hookContext);
+    const scopeState = upsertScopeStateFromCtx(sessionScopes, sessionId, event, ctx);
     syncSessionStartScope(evermemory, sessionId, scopeState);
 
-    const messages = isRecord(event) && Array.isArray(event.messages) ? event.messages : [];
+    const messages = isRecord(event) && Array.isArray((event as Record<string, unknown>).messages)
+      ? (event as Record<string, unknown>).messages as unknown[]
+      : [];
     const exchange = extractLastExchange(messages);
+
+    const turnId = `turn-${sessionId}-${crypto.randomUUID()}`;
 
     await evermemory.sessionEnd({
       sessionId,
-      messageId: isRecord(hookContext) ? asOptionalString(hookContext.runId) : undefined,
+      messageId: turnId,
       scope: scopeState.scope,
       channel: scopeState.channel,
       inputText: exchange.userText,
       actionSummary: exchange.assistantText,
-      outcomeSummary: isRecord(event) && event.success === true ? 'run_success' : 'run_failed',
+      outcomeSummary: isRecord(event) && (event as Record<string, unknown>).success === true ? 'run_success' : 'run_failed',
     });
     runButlerCycle(registrationContext, butler, 'agent_end', {
       type: 'agent_ended',
       sessionId,
       scope: scopeState.scope,
-      payload: { success: isRecord(event) && event.success === true },
+      payload: { success: isRecord(event) && (event as Record<string, unknown>).success === true },
     });
   });
 
-  registerHook(api, 'session_end', (event: unknown, hookContext: unknown) => {
+  // session_end: simple cleanup
+  registerHook(api, 'session_end', (event, ctx) => {
     const sessionId = (
-      (isRecord(event) ? asOptionalString(event.sessionId) : undefined)
-      ?? (isRecord(hookContext) ? asOptionalString(hookContext.sessionId) : undefined)
+      (isRecord(event) ? asOptionalString((event as Record<string, unknown>).sessionId) : undefined)
+      ?? (isRecord(ctx) ? asOptionalString((ctx as Record<string, unknown>).sessionId) : undefined)
     );
     if (!sessionId) {
       return;

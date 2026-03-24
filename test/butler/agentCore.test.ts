@@ -46,7 +46,7 @@ function createState(overrides: Partial<ButlerPersistentState> = {}): ButlerPers
       lastEvaluatedAt: '2026-03-23T00:00:00.000Z',
     },
     workingMemory: overrides.workingMemory ?? [],
-    mode: overrides.mode ?? 'steward',
+    mode: overrides.mode ?? 'reduced',
     lastCycleAt: overrides.lastCycleAt ?? '2026-03-23T00:00:00.000Z',
     lastCycleVersion: overrides.lastCycleVersion ?? 1,
   };
@@ -107,9 +107,9 @@ test('ButlerStateManager load creates default when empty', () => {
 
     const state = manager.load();
 
-    assert.equal(state.mode, 'steward');
+    assert.equal(state.mode, 'reduced');
     assert.deepEqual(state.workingMemory, []);
-    assert.equal(manager.getMode(), 'steward');
+    assert.equal(manager.getMode(), 'reduced');
   } finally {
     ctx.cleanup();
   }

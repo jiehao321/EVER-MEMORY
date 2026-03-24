@@ -4,13 +4,13 @@ import type { ButlerStateManager } from '../../core/butler/state.js';
 import type { ButlerFeedbackRepository } from '../../storage/butlerFeedbackRepo.js';
 import type { ButlerInsightRepository } from '../../storage/butlerInsightRepo.js';
 import { butlerReview } from '../../tools/butlerReview.js';
-import type { OpenClawApi, UnknownRecord } from '../shared.js';
+import type { OpenClawPluginApi, UnknownRecord } from '../shared.js';
 import { asOptionalEnum, asOptionalInteger, asOptionalString } from '../shared.js';
 
 const REVIEW_ACTIONS = ['list', 'accept', 'reject', 'snooze', 'dismiss'] as const;
 
 export function registerButlerReviewTool(context: {
-  api: OpenClawApi;
+  api: OpenClawPluginApi;
   feedbackRepo: ButlerFeedbackRepository;
   insightRepo: ButlerInsightRepository;
   attentionService: AttentionService;

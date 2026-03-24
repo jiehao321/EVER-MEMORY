@@ -132,6 +132,7 @@ export function loadConfig(input: EverMemoryConfigInput = {}): EverMemoryConfig 
   const butlerCognitionInput = readObject(butlerInput?.cognition, 'butler.cognition');
   const butlerTimeBudgetsInput = readObject(butlerInput?.timeBudgets, 'butler.timeBudgets');
   const butlerAttentionInput = readObject(butlerInput?.attention, 'butler.attention');
+  const butlerWorkersInput = readObject(butlerInput?.workers, 'butler.workers');
 
   const keywordWeights = normalizeWeights({
     keyword: readNonNegativeNumber(
@@ -235,7 +236,7 @@ export function loadConfig(input: EverMemoryConfigInput = {}): EverMemoryConfig 
     },
     butler: {
       enabled: readBoolean(butlerInput?.enabled, 'butler.enabled', true),
-      mode: readEnum(butlerInput?.mode, 'butler.mode', ['steward', 'reduced'] as const, 'steward'),
+      mode: readEnum(butlerInput?.mode, 'butler.mode', ['steward', 'reduced'] as const, 'reduced'),
       cognition: {
         dailyTokenBudget: readPositiveInteger(
           butlerCognitionInput?.dailyTokenBudget,
@@ -290,6 +291,19 @@ export function loadConfig(input: EverMemoryConfigInput = {}): EverMemoryConfig 
           butlerAttentionInput?.minConfidence,
           'butler.attention.minConfidence',
           0.4,
+        ),
+      },
+      workers: {
+        enabled: readBoolean(butlerWorkersInput?.enabled, 'butler.workers.enabled', false),
+        maxWorkers: readPositiveInteger(
+          butlerWorkersInput?.maxWorkers,
+          'butler.workers.maxWorkers',
+          2,
+        ),
+        taskTimeoutMs: readPositiveInteger(
+          butlerWorkersInput?.taskTimeoutMs,
+          'butler.workers.taskTimeoutMs',
+          10000,
         ),
       },
     },

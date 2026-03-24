@@ -82,3 +82,27 @@ test('loadConfig rejects zero-sum hybrid retrieval weights', () => {
     /retrieval\.hybridWeights must have a total weight greater than 0/,
   );
 });
+
+test('loadConfig exposes Butler worker defaults', () => {
+  const config = loadConfig();
+
+  assert.equal(config.butler?.workers.enabled, false);
+  assert.equal(config.butler?.workers.maxWorkers, 2);
+  assert.equal(config.butler?.workers.taskTimeoutMs, 10000);
+});
+
+test('loadConfig accepts custom Butler worker config', () => {
+  const config = loadConfig({
+    butler: {
+      workers: {
+        enabled: true,
+        maxWorkers: 4,
+        taskTimeoutMs: 2500,
+      },
+    },
+  });
+
+  assert.equal(config.butler?.workers.enabled, true);
+  assert.equal(config.butler?.workers.maxWorkers, 4);
+  assert.equal(config.butler?.workers.taskTimeoutMs, 2500);
+});

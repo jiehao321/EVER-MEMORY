@@ -27,6 +27,11 @@ function createMockApi() {
       error(..._args: unknown[]) {},
       debug(..._args: unknown[]) {},
     },
+    runtime: {
+      logging: {
+        getChildLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }),
+      },
+    },
     on(name: string, handler: HookHandler) {
       const list = hooks.get(name) ?? [];
       list.push(handler);
@@ -38,6 +43,7 @@ function createMockApi() {
     registerService(service: Service) {
       services.push(service);
     },
+    registerMemoryPromptSection(_builder: Function) {},
   };
 
   return { api, hooks, services, toolRegistrations };
@@ -255,7 +261,7 @@ test('同一 session 的多条 message 可复用先前存储的记忆', async (t
 
 test('plugin stop 后完成资源清理，并可重新 register/start 后继续工作', async () => {
   const first = createMockApi();
-  await memoryPlugin.register(first.api);
+  await memoryPlugin.register(first.api as any);
   assert.equal(first.services.length, 1);
 
   await first.services[0].start();
@@ -276,7 +282,7 @@ test('plugin stop 后完成资源清理，并可重新 register/start 后继续�
   assert.equal(stoppedResult, undefined);
 
   const second = createMockApi();
-  await memoryPlugin.register(second.api);
+  await memoryPlugin.register(second.api as any);
   assert.equal(second.services.length, 1);
   await second.services[0].start();
   const tools = resolveTools(second.toolRegistrations, {

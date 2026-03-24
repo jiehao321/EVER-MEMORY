@@ -1,5 +1,4 @@
-import type { OpenClawLogger } from '../../../openclaw/shared.js';
-import type { ButlerInsight } from '../types.js';
+import type { ButlerInsight, ButlerLogger } from '../types.js';
 import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
 import {
   ButlerGoalRepository,
@@ -10,7 +9,7 @@ import {
 interface ButlerGoalServiceOptions {
   goalRepo: ButlerGoalRepository;
   insightRepo: ButlerInsightRepository;
-  logger?: OpenClawLogger;
+  logger?: ButlerLogger;
 }
 
 function parseScope(scopeJson: string | undefined): Record<string, unknown> | undefined {
@@ -57,7 +56,7 @@ function filterInsights(insights: ButlerInsight[], scope?: Record<string, unknow
 export class ButlerGoalService {
   private readonly goalRepo: ButlerGoalRepository;
   private readonly insightRepo: ButlerInsightRepository;
-  private readonly logger?: OpenClawLogger;
+  private readonly logger?: ButlerLogger;
 
   constructor(options: ButlerGoalServiceOptions) {
     this.goalRepo = options.goalRepo;
@@ -119,7 +118,7 @@ export class ButlerGoalService {
         created.push(goal);
         seenInsightIds.add(insight.id);
       } catch (error) {
-        this.logger?.warn('ButlerGoalService failed to derive goal from insight.', error);
+        this.logger?.warn('ButlerGoalService failed to derive goal from insight', { error: error instanceof Error ? error.message : String(error) });
       }
     }
     return created;

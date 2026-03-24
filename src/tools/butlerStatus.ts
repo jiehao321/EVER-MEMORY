@@ -8,6 +8,8 @@ import type { ButlerMode, SelfModelMetrics } from '../core/butler/types.js';
 
 export interface ButlerStatusResult {
   mode: ButlerMode;
+  llmAvailable: boolean;
+  modeReason?: string;
   cycleVersion: number;
   lastCycleAt: string;
   selfModel: SelfModelMetrics;
@@ -82,6 +84,8 @@ export function butlerStatus(input: {
   const goals = input.goalService.getGoalSummary(scope);
   return {
     mode,
+    llmAvailable: mode !== 'reduced',
+    modeReason: mode === 'reduced' ? 'SDK host does not expose LLM gateway' : undefined,
     cycleVersion: state?.lastCycleVersion ?? 0,
     lastCycleAt: state?.lastCycleAt ?? '',
     selfModel: state?.selfModel ?? createDefaultSelfModel(),

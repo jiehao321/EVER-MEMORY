@@ -1,5 +1,13 @@
+import type {
+  OpenClawPluginApi,
+  PluginLogger,
+} from 'openclaw/plugin-sdk/core';
+import type {
+  PluginHookName,
+  PluginHookHandlerMap,
+  RuntimeLogger,
+} from 'openclaw/plugin-sdk/plugin-runtime';
 import { PLUGIN_NAME } from '../constants.js';
-import type { LlmGateway } from '../core/butler/types.js';
 import { EverMemoryError } from '../errors.js';
 import { getDefaultConfig, initializeEverMemory } from '../index.js';
 import {
@@ -10,7 +18,6 @@ import {
 } from './shared/format.js';
 
 export type EverMemoryRuntime = ReturnType<typeof initializeEverMemory>;
-export type HookHandler = (event: unknown, context: unknown) => Promise<unknown> | unknown;
 
 export interface SessionScopeState {
   scope: {
@@ -31,39 +38,14 @@ export interface HostBinding {
   project?: string;
 }
 
-export interface OpenClawLogger {
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  debug: (...args: unknown[]) => void;
-}
-
-export interface ToolRegistrationOptions {
-  name?: string;
-  names?: string[];
-}
-
-export interface OpenClawService {
-  id: string;
-  start: () => void | Promise<void>;
-  stop?: () => void | Promise<void>;
-}
-
-export interface OpenClawApi {
-  pluginConfig?: UnknownRecord;
-  resolvePath: (input: string) => string;
-  logger: OpenClawLogger;
-  on: (name: string, handler: HookHandler) => void;
-  registerTool: (tool: unknown, opts?: ToolRegistrationOptions) => void;
-  registerService: (service: OpenClawService) => void;
-  llm?: LlmGateway;
-}
-
 export interface OpenClawRegistrationContext {
-  api: OpenClawApi;
+  api: OpenClawPluginApi;
+  butlerLogger: RuntimeLogger;
   evermemory: EverMemoryRuntime;
   sessionScopes: Map<string, SessionScopeState>;
 }
+
+export type { OpenClawPluginApi, PluginLogger, RuntimeLogger };
 
 export * from './shared/format.js';
 export * from './shared/convert.js';
@@ -78,25 +60,31 @@ function toPluginError(error: unknown, code: string): EverMemoryError {
   });
 }
 
-export function createRegistrationContext(api: OpenClawApi): OpenClawRegistrationContext {
+export function createRegistrationContext(api: OpenClawPluginApi): OpenClawRegistrationContext {
   const runtimeConfig = buildRuntimeConfig(api);
+  const butlerLogger = api.runtime.logging.getChildLogger({ plugin: 'evermemory', component: 'butler' });
   return {
     api,
+    butlerLogger,
     evermemory: initializeEverMemory(runtimeConfig),
     sessionScopes: new Map<string, SessionScopeState>(),
   };
 }
 
-export function registerHook(api: OpenClawApi, hookName: string, handler: HookHandler): void {
-  api.on(hookName, async (event: unknown, context: unknown) => {
+export function registerHook<K extends PluginHookName>(
+  api: OpenClawPluginApi,
+  hookName: K,
+  handler: PluginHookHandlerMap[K],
+): void {
+  api.on(hookName, (async (...args: unknown[]) => {
     try {
-      return await handler(event, context);
+      return await (handler as Function)(...args);
     } catch (error) {
       const pluginError = toPluginError(error, 'OPENCLAW_HOOK_ERROR');
       api.logger.warn(`${PLUGIN_NAME}: hook "${hookName}" failed: ${toErrorMessage(pluginError)}`);
       return undefined;
     }
-  });
+  }) as PluginHookHandlerMap[K]);
 }
 
 function readPath(source: unknown, path: readonly string[]): unknown {
@@ -334,6 +322,32 @@ export function upsertScopeState(
   context: unknown,
 ): SessionScopeState {
   const binding = resolveHostBinding(event, context);
+  const current = sessionScopes.get(sessionId);
+  const next = current
+    ? mergeScopeState(current, sessionId, binding)
+    : createScopeState(sessionId, binding);
+  sessionScopes.set(sessionId, next);
+  return next;
+}
+
+export function upsertScopeStateFromCtx(
+  sessionScopes: Map<string, SessionScopeState>,
+  sessionId: string,
+  event: unknown,
+  ctx: unknown,
+): SessionScopeState {
+  // 1. Prefer SDK strongly-typed fields
+  const typedCtx = ctx as { sessionKey?: string; channelId?: string };
+  // 2. Fallback: extract userId/chatId/project etc. via resolveHostBinding
+  const fallbackBinding = resolveHostBinding(event, ctx);
+  const binding: HostBinding = {
+    sessionKey: typedCtx.sessionKey ?? fallbackBinding.sessionKey,
+    channel: typedCtx.channelId ?? fallbackBinding.channel,
+    userId: fallbackBinding.userId,
+    chatId: fallbackBinding.chatId,
+    project: fallbackBinding.project,
+  };
+  // Merge into existing scope (preserve values resolved during session_start)
   const current = sessionScopes.get(sessionId);
   const next = current
     ? mergeScopeState(current, sessionId, binding)

@@ -23,12 +23,19 @@ function createMockApi(databasePath: string) {
     debug() {},
   };
 
+  let promptSectionBuilder: Function | undefined;
+
   const api = {
     pluginConfig: { databasePath, debugEnabled: true },
     resolvePath(input: string) {
       return input;
     },
     logger,
+    runtime: {
+      logging: {
+        getChildLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }),
+      },
+    },
     on(name: string, handler: HookHandler) {
       const handlers = hooks.get(name) ?? [];
       handlers.push(handler);
@@ -37,8 +44,11 @@ function createMockApi(databasePath: string) {
     registerTool(tool: unknown, opts?: { name?: string; names?: string[] }) {
       toolRegistrations.push({ tool, opts });
     },
-    registerService(service: { id: string; start: () => void | Promise<void>; stop?: () => void | Promise<void> }) {
+    registerService(service: { id: string; start: (_ctx?: unknown) => void | Promise<void>; stop?: (_ctx?: unknown) => void | Promise<void> }) {
       services.push(service);
+    },
+    registerMemoryPromptSection(builder: Function) {
+      promptSectionBuilder = builder;
     },
     registerHook() {},
     registerHttpRoute() {},
@@ -50,7 +60,7 @@ function createMockApi(databasePath: string) {
     registerContextEngine() {},
   };
 
-  return { api, hooks, infoLogs, toolRegistrations, services };
+  return { api, hooks, infoLogs, toolRegistrations, services, getPromptSectionBuilder: () => promptSectionBuilder };
 }
 
 async function runHook(
@@ -113,7 +123,7 @@ test('OpenClaw adapter registers services/tools/hooks and injects recall context
   const databasePath = createTempDbPath('openclaw-plugin');
   const { api, hooks, toolRegistrations, services } = createMockApi(databasePath);
 
-  await memoryPlugin.register(api);
+  await memoryPlugin.register(api as any);
   assert.equal(services.length, 1);
   await services[0].start();
 
@@ -407,7 +417,7 @@ test('OpenClaw adapter rebinds host user/chat/channel scope for main-session per
   const databasePath = createTempDbPath('openclaw-plugin-scope-binding');
   const { api, hooks, services } = createMockApi(databasePath);
 
-  await memoryPlugin.register(api);
+  await memoryPlugin.register(api as any);
   assert.equal(services.length, 1);
   await services[0].start();
 
@@ -503,23 +513,26 @@ test('OpenClaw adapter rebinds host user/chat/channel scope for main-session per
     assert.ok(latestBriefing);
     assert.equal(latestBriefing?.user_id, 'ou_real_host_user_1');
 
+    // turnId is now self-generated (crypto.randomUUID), so we query by session_id only
     const intentRow = db.prepare(`
       SELECT session_id, message_id
       FROM intent_records
-      WHERE session_id = ? AND message_id = ?
+      WHERE session_id = ?
+      ORDER BY created_at DESC
       LIMIT 1
-    `).get('session-feishu-main-1', 'run-feishu-main-1') as { session_id: string; message_id: string } | undefined;
+    `).get('session-feishu-main-1') as { session_id: string; message_id: string } | undefined;
     assert.equal(intentRow?.session_id, 'session-feishu-main-1');
-    assert.equal(intentRow?.message_id, 'run-feishu-main-1');
+    assert.ok(intentRow?.message_id?.startsWith('turn-'));
 
     const experienceRow = db.prepare(`
       SELECT session_id, message_id
       FROM experience_logs
-      WHERE session_id = ? AND message_id = ?
+      WHERE session_id = ?
+      ORDER BY created_at DESC
       LIMIT 1
-    `).get('session-feishu-main-1', 'run-feishu-main-1') as { session_id: string; message_id: string } | undefined;
+    `).get('session-feishu-main-1') as { session_id: string; message_id: string } | undefined;
     assert.equal(experienceRow?.session_id, 'session-feishu-main-1');
-    assert.equal(experienceRow?.message_id, 'run-feishu-main-1');
+    assert.ok(experienceRow?.message_id?.startsWith('turn-'));
 
     const interactionRows = db.prepare(`
       SELECT payload_json
@@ -579,7 +592,7 @@ test('OpenClaw adapter binds Feishu open_chat_id and preserves tool channel meta
   const databasePath = createTempDbPath('openclaw-plugin-feishu-open-chat');
   const { api, hooks, services, toolRegistrations } = createMockApi(databasePath);
 
-  await memoryPlugin.register(api);
+  await memoryPlugin.register(api as any);
   assert.equal(services.length, 1);
   await services[0].start();
 
@@ -695,7 +708,7 @@ test('OpenClaw adapter logs onboarding guidance on first start when no profile e
     warnLogs.push(args.map((arg) => String(arg)).join(' '));
   };
 
-  await memoryPlugin.register(api);
+  await memoryPlugin.register(api as any);
   assert.equal(services.length, 1);
 
   await services[0].start();

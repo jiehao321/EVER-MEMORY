@@ -1,10 +1,9 @@
-import type { OpenClawLogger } from '../../openclaw/shared.js';
-import type { ButlerTask, DrainBudget, NewButlerTask } from './types.js';
+import type { ButlerLogger, ButlerTask, DrainBudget, NewButlerTask } from './types.js';
 import { ButlerTaskRepository } from '../../storage/butlerTaskRepo.js';
 
 interface TaskQueueServiceOptions {
   taskRepo: ButlerTaskRepository;
-  logger?: OpenClawLogger;
+  logger?: ButlerLogger;
 }
 
 function maxPriorityForFilter(
@@ -30,7 +29,7 @@ function canContinue(startedAt: number, budget: DrainBudget, tasksDrained: numbe
 
 export class TaskQueueService {
   private readonly taskRepo: ButlerTaskRepository;
-  private readonly logger?: OpenClawLogger;
+  private readonly logger?: ButlerLogger;
 
   constructor(options: TaskQueueServiceOptions) {
     this.taskRepo = options.taskRepo;
@@ -50,7 +49,7 @@ export class TaskQueueService {
       if (recovered) {
         return recovered.id;
       }
-      this.logger?.error('TaskQueueService enqueue failed.', error);
+      this.logger?.error('TaskQueueService enqueue failed', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }

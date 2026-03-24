@@ -101,7 +101,7 @@ function insertInsight(
 function createConfig(): ButlerConfig {
   return {
     enabled: true,
-    mode: 'steward',
+    mode: 'reduced',
     cognition: {
       dailyTokenBudget: 100,
       sessionTokenBudget: 80,
@@ -117,6 +117,11 @@ function createConfig(): ButlerConfig {
       maxInsightsPerBriefing: 3,
       tokenBudgetPercent: 0.2,
       minConfidence: 0.4,
+    },
+    workers: {
+      enabled: false,
+      maxWorkers: 2,
+      taskTimeoutMs: 10000,
     },
   };
 }
@@ -344,7 +349,7 @@ test('compileSessionWatchlist escapes XML special characters', () => {
   assert.match(xml, /Ship &gt; docs &amp; tests/);
 });
 
-test('session_start injects watchlist prependContext when critical items exist', async () => {
+test('session_start returns void (watchlist now injected via before_agent_start)', async () => {
   const fixture = createButlerFixture();
   const hooks = new Map<string, HookHandler[]>();
   try {
@@ -356,11 +361,6 @@ test('session_start injects watchlist prependContext when critical items exist',
       confidence: 0.86,
       importance: 0.95,
       freshUntil: '2099-01-01T00:00:00.000Z',
-    });
-    fixture.goalRepo.insert({
-      title: 'Implement Butler Phase 2C',
-      priority: 2,
-      scope: { project: 'evermemory' },
     });
 
     registerHooks({
@@ -386,10 +386,8 @@ test('session_start injects watchlist prependContext when critical items exist',
       { sessionId: 'session-phase2c', sessionKey: 'chat:butler:phase2c', repoName: 'evermemory' },
     );
 
-    const prependContext = (result as { prependContext?: string } | undefined)?.prependContext ?? '';
-    assert.match(prependContext, /<evermemory-watchlist>/);
-    assert.match(prependContext, /Follow up on PR review/);
-    assert.match(prependContext, /Implement Butler Phase 2C/);
+    // session_start now returns void per SDK migration
+    assert.equal(result, undefined);
   } finally {
     fixture.cleanup();
   }

@@ -1,12 +1,11 @@
-import type { OpenClawLogger } from '../../openclaw/shared.js';
-import type { ButlerMode, ButlerPersistentState, WorkingMemoryEntry } from './types.js';
+import type { ButlerLogger, ButlerMode, ButlerPersistentState, WorkingMemoryEntry } from './types.js';
 import { ButlerStateRepository } from '../../storage/butlerStateRepo.js';
 
 const MAX_WORKING_MEMORY_ENTRIES = 20;
 
 interface ButlerStateManagerOptions {
   stateRepo: ButlerStateRepository;
-  logger?: OpenClawLogger;
+  logger?: ButlerLogger;
 }
 
 function nowIso(): string {
@@ -32,7 +31,7 @@ function withWorkingMemory(
 
 export class ButlerStateManager {
   private readonly stateRepo: ButlerStateRepository;
-  private readonly logger?: OpenClawLogger;
+  private readonly logger?: ButlerLogger;
   private currentState: ButlerPersistentState | null = null;
 
   constructor(options: ButlerStateManagerOptions) {
@@ -90,7 +89,7 @@ export class ButlerStateManager {
         lastEvaluatedAt: timestamp,
       },
       workingMemory: [],
-      mode: 'steward',
+      mode: 'reduced',
       lastCycleAt: timestamp,
       lastCycleVersion: 0,
     };
@@ -124,7 +123,7 @@ export class ButlerStateManager {
       ? new Date(Date.now() + ttlMs).toISOString()
       : undefined;
 
-    this.logger?.debug('ButlerStateManager adding working memory entry.', key);
+    this.logger?.debug?.('ButlerStateManager adding working memory entry', { key });
     return {
       key,
       value,

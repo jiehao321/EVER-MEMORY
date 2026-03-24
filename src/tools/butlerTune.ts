@@ -27,7 +27,10 @@ function readPositiveInteger(value: unknown, key: string): number {
 }
 
 function readMode(value: unknown): ButlerMode {
-  if (value !== 'steward' && value !== 'reduced') {
+  if (value === 'steward') {
+    throw new Error('Cannot set mode to steward: LLM gateway not available in current SDK host.');
+  }
+  if (value !== 'reduced') {
     throw new Error('Invalid Butler mode.');
   }
   return value;

@@ -51,7 +51,7 @@ function createState(overrides: Partial<ButlerPersistentState> = {}): ButlerPers
       { key: 'task', value: 'write tests', createdAt: '2026-03-23T00:00:00.000Z' },
       { key: 'stale', value: 'ignore me', createdAt: '2026-03-23T00:00:00.000Z', expiresAt: '2000-01-01T00:00:00.000Z' },
     ],
-    mode: overrides.mode ?? 'steward',
+    mode: overrides.mode ?? 'reduced',
     lastCycleAt: overrides.lastCycleAt ?? '2026-03-23T00:00:00.000Z',
     lastCycleVersion: overrides.lastCycleVersion ?? 4,
   };

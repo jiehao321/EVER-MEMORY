@@ -1,6 +1,5 @@
-import type { OpenClawLogger } from '../../../openclaw/shared.js';
 import type { CognitiveEngine } from '../cognition.js';
-import type { ButlerInsight, CognitiveTask, NewButlerInsight } from '../types.js';
+import type { ButlerInsight, ButlerLogger, CognitiveTask, NewButlerInsight } from '../types.js';
 import type { MemoryItem, MemoryScope } from '../../../types.js';
 import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
 import { MemoryRepository } from '../../../storage/memoryRepo.js';
@@ -36,7 +35,7 @@ interface CommitmentWatcherOptions {
   memoryRepo: MemoryRepository;
   insightRepo: ButlerInsightRepository;
   cognitiveEngine?: CognitiveEngine;
-  logger?: OpenClawLogger;
+  logger?: ButlerLogger;
 }
 
 function nowMs(): number {
@@ -160,7 +159,7 @@ export class CommitmentWatcher {
   private readonly memoryRepo: MemoryRepository;
   private readonly insightRepo: ButlerInsightRepository;
   private readonly cognitiveEngine?: CognitiveEngine;
-  private readonly logger?: OpenClawLogger;
+  private readonly logger?: ButlerLogger;
 
   constructor(options: CommitmentWatcherOptions) {
     this.memoryRepo = options.memoryRepo;
@@ -227,7 +226,7 @@ export class CommitmentWatcher {
       const result = await this.cognitiveEngine.runTask(task);
       return result.fallbackUsed ? buildHeuristicInsight(memory) : buildLlmInsight(memory, result.output);
     } catch (error) {
-      this.logger?.warn('CommitmentWatcher failed to extract commitment details.', error);
+      this.logger?.warn('CommitmentWatcher failed to extract commitment details', { error: error instanceof Error ? error.message : String(error) });
       return buildHeuristicInsight(memory);
     }
   }

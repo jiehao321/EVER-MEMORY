@@ -1,6 +1,6 @@
-import type { OpenClawLogger } from '../../../openclaw/shared.js';
 import type { CognitiveEngine } from '../cognition.js';
 import type {
+  ButlerLogger,
   CognitiveTask,
   NarrativeMomentum,
   NarrativePhase,
@@ -41,7 +41,7 @@ export class NarrativeThreadService {
     private readonly options: {
       narrativeRepo: NarrativeRepository;
       cognitiveEngine: CognitiveEngine;
-      logger?: OpenClawLogger;
+      logger?: ButlerLogger;
     },
   ) {}
 

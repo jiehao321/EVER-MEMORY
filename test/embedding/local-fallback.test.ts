@@ -44,6 +44,11 @@ function createMockApi(databasePath: string) {
       error(..._args: unknown[]) {},
       debug(..._args: unknown[]) {},
     },
+    runtime: {
+      logging: {
+        getChildLogger: () => ({ info() {}, warn() {}, error() {}, debug() {} }),
+      },
+    },
     on(name: string, handler: HookHandler) {
       const handlers = hooks.get(name) ?? [];
       handlers.push(handler);
@@ -53,6 +58,7 @@ function createMockApi(databasePath: string) {
     registerService(service: { id: string; start: () => void | Promise<void>; stop?: () => void | Promise<void> }) {
       services.push(service);
     },
+    registerMemoryPromptSection() {},
     registerHook() {},
     registerHttpRoute() {},
     registerChannel() {},
@@ -179,7 +185,7 @@ test('OpenClaw plugin defaults to the local embedding provider', async () => {
   delete process.env.EVERMEMORY_EMBEDDING_PROVIDER;
 
   try {
-    await memoryPlugin.register(api);
+    await memoryPlugin.register(api as any);
     assert.equal(services.length, 1);
 
     await services[0].start();

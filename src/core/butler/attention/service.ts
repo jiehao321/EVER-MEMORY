@@ -1,6 +1,5 @@
-import type { OpenClawLogger } from '../../../openclaw/shared.js';
 import { ButlerFeedbackRepository } from '../../../storage/butlerFeedbackRepo.js';
-import type { ButlerInsight } from '../types.js';
+import type { ButlerInsight, ButlerLogger } from '../types.js';
 import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
 
 const SURFACE_COOLDOWN_MS = 30 * 60 * 1000;
@@ -16,7 +15,7 @@ interface AttentionServiceOptions {
   insightRepo: ButlerInsightRepository;
   feedbackRepo: ButlerFeedbackRepository;
   config: AttentionConfig;
-  logger?: OpenClawLogger;
+  logger?: ButlerLogger;
 }
 
 function nowMs(): number {
@@ -55,7 +54,7 @@ export class AttentionService {
   private readonly insightRepo: ButlerInsightRepository;
   private readonly feedbackRepo: ButlerFeedbackRepository;
   private readonly config: AttentionConfig;
-  private readonly logger?: OpenClawLogger;
+  private readonly logger?: ButlerLogger;
 
   constructor(options: AttentionServiceOptions) {
     this.insightRepo = options.insightRepo;
@@ -124,7 +123,7 @@ export class AttentionService {
     for (const id of insightIds) {
       this.insightRepo.markSurfaced(id);
     }
-    this.logger?.debug('AttentionService marked insights surfaced.', { count: insightIds.length });
+    this.logger?.debug?.('AttentionService marked insights surfaced', { count: insightIds.length });
   }
 
   pruneStale(): number {

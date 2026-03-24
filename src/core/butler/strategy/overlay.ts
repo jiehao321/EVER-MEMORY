@@ -1,4 +1,4 @@
-import type { OpenClawLogger } from '../../../openclaw/shared.js';
+import type { ButlerLogger } from '../types.js';
 import type { CognitiveEngine } from '../cognition.js';
 import type {
   AssistantPosture,
@@ -96,7 +96,7 @@ export class StrategicOverlayGenerator {
     private readonly options: {
       cognitiveEngine: CognitiveEngine;
       insightRepo: ButlerInsightRepository;
-      logger?: OpenClawLogger;
+      logger?: ButlerLogger;
     },
   ) {}
 
@@ -122,7 +122,7 @@ export class StrategicOverlayGenerator {
     if (overlay) {
       return overlay;
     }
-    this.options.logger?.debug('StrategicOverlayGenerator fell back to heuristic overlay.');
+    this.options.logger?.debug?.('StrategicOverlayGenerator fell back to heuristic overlay.');
     return fallback;
   }
 

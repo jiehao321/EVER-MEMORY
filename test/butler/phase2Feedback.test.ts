@@ -97,7 +97,7 @@ function createState(overrides: Partial<ButlerPersistentState> = {}): ButlerPers
       lastEvaluatedAt: '2026-03-23T00:00:00.000Z',
     },
     workingMemory: overrides.workingMemory ?? [],
-    mode: overrides.mode ?? 'steward',
+    mode: overrides.mode ?? 'reduced',
     lastCycleAt: overrides.lastCycleAt ?? '2026-03-23T00:00:00.000Z',
     lastCycleVersion: overrides.lastCycleVersion ?? 3,
   };

@@ -12,7 +12,7 @@ import type { ButlerConfig } from '../../core/butler/types.js';
 import { butlerBrief } from '../../tools/butlerBrief.js';
 import { butlerStatus } from '../../tools/butlerStatus.js';
 import { butlerTune } from '../../tools/butlerTune.js';
-import type { OpenClawApi, UnknownRecord } from '../shared.js';
+import type { OpenClawPluginApi, UnknownRecord } from '../shared.js';
 import { asOptionalBoolean, asOptionalEnum, asOptionalString, parseScope, scopeSchema } from '../shared.js';
 
 const TUNE_ACTIONS = ['get', 'set'] as const;
@@ -25,7 +25,7 @@ const TUNE_KEYS = [
 ] as const;
 
 export interface ButlerRegistrationContext {
-  api: OpenClawApi;
+  api: OpenClawPluginApi;
   agent: ButlerAgent;
   overlayGenerator: StrategicOverlayGenerator;
   narrativeService: NarrativeThreadService;
@@ -58,7 +58,7 @@ export function registerButlerTools(context: ButlerRegistrationContext): void {
         return {
           content: [{
             type: 'text',
-            text: `Butler mode=${result.mode}, threads=${result.activeThreads.length}, pendingTasks=${result.pendingTasks}`,
+            text: `Butler mode=${result.mode}, llm=${result.llmAvailable ? 'available' : 'unavailable'}, threads=${result.activeThreads.length}, pendingTasks=${result.pendingTasks}`,
           }],
           details: result,
         };

@@ -34,7 +34,7 @@ function buildState(overrides: Partial<ButlerPersistentState> = {}): ButlerPersi
     workingMemory: overrides.workingMemory ?? [
       { key: 'active_task', value: 'phase-1', createdAt: '2026-03-23T00:00:00.000Z' },
     ],
-    mode: overrides.mode ?? 'steward',
+    mode: overrides.mode ?? 'reduced',
     lastCycleAt: overrides.lastCycleAt ?? '2026-03-23T00:00:00.000Z',
     lastCycleVersion: overrides.lastCycleVersion ?? 1,
   };
@@ -236,6 +236,6 @@ describe('Butler repositories', () => {
     repo.insert(secondInvocation);
 
     assert.deepEqual(repo.getSessionUsage('trace-1'), { totalTokens: 25, count: 2 });
-    assert.deepEqual(repo.getDailyUsage(), { totalTokens: 25, count: 2 });
+    assert.deepEqual(repo.getDailyUsage('2026-03-23'), { totalTokens: 25, count: 2 });
   });
 });

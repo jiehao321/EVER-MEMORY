@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { OpenClawLogger } from '../../openclaw/shared.js';
 import type {
   ButlerConfig,
+  ButlerLogger,
   CognitiveResult,
   CognitiveTask,
   LlmRequest,
@@ -29,7 +29,7 @@ interface CognitiveEngineOptions {
   llmClient: ButlerLlmClient;
   invocationRepo: LlmInvocationRepo;
   config: ButlerConfig['cognition'];
-  logger?: OpenClawLogger;
+  logger?: ButlerLogger;
 }
 
 const TOKEN_ESTIMATES: Record<CognitiveTask['budgetClass'], number> = {
@@ -133,7 +133,7 @@ export class CognitiveEngine {
   private readonly llmClient: ButlerLlmClient;
   private readonly invocationRepo: LlmInvocationRepo;
   private readonly config: ButlerConfig['cognition'];
-  private readonly logger?: OpenClawLogger;
+  private readonly logger?: ButlerLogger;
 
   constructor(options: CognitiveEngineOptions) {
     this.llmClient = options.llmClient;
@@ -206,7 +206,7 @@ export class CognitiveEngine {
       const parsed = JSON.parse(content) as unknown;
       return validateParsedOutput(parsed, schema) ? parsed : null;
     } catch (error) {
-      this.logger?.warn('CognitiveEngine failed to parse LLM response.', error);
+      this.logger?.warn('CognitiveEngine failed to parse LLM response', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }

@@ -1,10 +1,9 @@
-import type { OpenClawLogger } from '../../openclaw/shared.js';
-import type { LlmGateway, LlmMessage, LlmRequest, LlmResponse } from '../butler/types.js';
+import type { ButlerLogger, LlmGateway, LlmMessage, LlmRequest, LlmResponse } from '../butler/types.js';
 
 interface ButlerLlmClientOptions {
   gateway?: LlmGateway;
   llmBridge?: (messages: LlmMessage[]) => Promise<string>;
-  logger?: OpenClawLogger;
+  logger?: ButlerLogger;
 }
 
 function buildUnavailableResponse(reason: 'unavailable' | 'error'): LlmResponse {
@@ -31,7 +30,7 @@ export class ButlerLlmClient {
     | ((request: LlmRequest) => Promise<LlmResponse>)
     | undefined;
 
-  private readonly logger?: OpenClawLogger;
+  private readonly logger?: ButlerLogger;
 
   constructor(options: ButlerLlmClientOptions) {
     this.logger = options.logger;
@@ -51,7 +50,7 @@ export class ButlerLlmClient {
     try {
       return await this.transport(request);
     } catch (error) {
-      this.logger?.error('ButlerLlmClient invoke failed.', error);
+      this.logger?.error('ButlerLlmClient invoke failed', { error: error instanceof Error ? error.message : String(error) });
       return buildUnavailableResponse('error');
     }
   }
