@@ -1,10 +1,10 @@
-# Task Plan: Fix Four EverMemory Bugs
+# Task Plan: Verify evermemory compatibility with latest OpenClaw plugin registration
 
 ## Goal
-Apply minimal, targeted fixes for four reported bugs in EverMemory and verify the changed behavior with focused tests/checks.
+Confirm whether the `evermemory` plugin still works after upgrading to the latest `openclaw`, with emphasis on the changed plugin registration mechanism, and implement/verify any minimal compatibility fix if needed.
 
 ## Current Phase
-Phase 5
+All phases complete — archived 2026-03-24
 
 ## Phases
 ### Phase 1: Requirements & Discovery
@@ -13,46 +13,50 @@ Phase 5
 - [x] Document findings in findings.md
 - **Status:** complete
 
-### Phase 2: Planning & Structure
-- [x] Confirm root cause in current implementation
-- [x] Define minimal fix shape for each issue
-- [x] Document decisions with rationale
+### Phase 2: Compatibility Investigation
+- [x] Inspect current plugin manifests and entrypoints
+- [x] Identify latest OpenClaw registration expectations
+- [x] Reproduce or statically validate compatibility gap
 - **Status:** complete
 
-### Phase 3: Implementation
-- [x] Add or update focused tests for the reported bugs
-- [x] Apply minimal production changes
-- [x] Keep changes scoped to requested files unless evidence requires otherwise
+### Phase 3: Fix Implementation
+- [x] Add minimal compatibility changes if required
+- [x] Preserve existing packaging/registration behavior where possible
+- [x] Keep changes scoped to registration path
 - **Status:** complete
 
 ### Phase 4: Testing & Verification
-- [x] Run targeted tests/checks for touched behavior
+- [x] Run targeted tests/builds
+- [x] Verify plugin registration contract against latest OpenClaw expectations
 - [x] Document results in progress.md
-- [x] Fix any issues found
 - **Status:** complete
 
 ### Phase 5: Delivery
-- [x] Review diff for minimality
-- [ ] Summarize modified behavior and verification
-- [ ] Deliver to user
-- **Status:** in_progress
+- [x] Summarize outcome, evidence, and residual risks
+- [x] Point to key files and verification results
+- [x] Deliver conclusion to user
+- **Status:** complete
 
 ## Key Questions
-1. What existing tests cover hook/config/debug/relation/stability-check behavior, and where are the gaps?
-2. Can each requested fix be implemented without broad API churn beyond the touched call sites?
+1. What registration contract does the latest OpenClaw expect from plugins?
+2. Does `evermemory` already expose the required entry/metadata shape?
+3. If not, what is the smallest compatible change and how can it be verified?
 
 ## Decisions Made
 | Decision | Rationale |
 |----------|-----------|
-| Use planning files for this task | The request spans 6 source files plus verification and exceeds simple single-file scope |
-| Prefer minimal API extensions over architectural reshaping | User explicitly asked for targeted fixes only |
-| Implement the `enabled` kill switch in `initializeEverMemory()` entry methods | This keeps the dormant behavior local to runtime hooks and avoids deeper service churn |
-| Add runtime `dispose()` and route OpenClaw stop through it | This gives a single path to await warmup before DB shutdown |
+| Use file-based planning for this task | Multi-step compatibility investigation with likely 5+ tool calls and possible code changes |
+| Investigate root cause before patching | Registration changes can fail at metadata, packaging, or runtime entry boundaries |
+| Fix package distribution instead of registration code | Latest OpenClaw already accepted the registration contract; failure came from missing native runtime artifacts in installed plugin dependencies |
+| Bundle `sharp` directly instead of bundling all of `@xenova/transformers` | Bundling the full transformers tree exceeded OpenClaw archive extraction limits; only `sharp` native binding was actually missing in isolated installs |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
+| Fresh OpenClaw install failed with `StorageError: Failed to open database.` | 1 | Traced wrapped cause to missing `better-sqlite3` native binding in installed plugin package |
+| Bundling all of `@xenova/transformers` made the plugin archive exceed OpenClaw extraction limits | 1 | Narrowed bundling scope to `sharp`, which is the missing native runtime dependency for local embeddings |
 
 ## Notes
-- Re-read plan before major edits.
-- Keep the warmup lifecycle fix minimal and local to initialization/shutdown logic.
+- Focus first on plugin registration compatibility, not unrelated runtime behavior.
+- Local embedding startup is now fixed in isolated installs by bundling `sharp`; no embedding fallback warning reproduced in final verification.
+- Prefer repository evidence and official/latest OpenClaw source over assumptions.

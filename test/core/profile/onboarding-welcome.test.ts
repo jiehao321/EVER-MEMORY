@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 import { initializeEverMemory } from '../../../src/index.js';
 import { createTempDbPath } from '../../helpers.js';
 
-test('generateWelcomeMessage returns steward intro on first run', () => {
+test('generateWelcomeMessage returns butler intro on first run', () => {
   const databasePath = createTempDbPath('onboarding-welcome-first-run');
   const app = initializeEverMemory({ databasePath });
 
