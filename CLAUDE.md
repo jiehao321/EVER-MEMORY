@@ -1,7 +1,7 @@
 # EverMemory Guide (CLAUDE)
 
 ## Project Overview
-- EverMemory: deterministic memory plugin for OpenClaw, current version v2.0.0-rc1.
+- EverMemory: deterministic memory plugin for OpenClaw, current version v2.0.0.
 - Goal: reliable, explainable, rollback-capable workflows for knowledge storage, recall, rule governance, and user profiling.
 - Stack: Node.js 22.x, TypeScript strict ESM, SQLite WAL, better-sqlite3, TypeBox.
 - Principles: determinism first, operator first, progressive hardening.
@@ -43,13 +43,15 @@ npm run release:preflight  # Cross-platform install & version consistency check
 - Run `npm run validate` before commits; `teams:release` before publishing.
 
 ## Current Status
-- Version: v2.0.0-rc1 (2026-03-22)
-- Tests: 430/430 pass; stability check 全绿（recall accuracy=1.0, unitTestPassRate=1.0）.
+- Version: v2.0.0 (2026-03-24)
+- OpenClaw SDK: 2026.3.22 (fully migrated, no backward compat)
+- Tests: 523/525 pass (2 skip), stability check 全绿.
 - KPI: recall accuracy=1.0, unit pass=1.0, continuity=true, autoCaptureAcceptRate=0.75.
-- 19 tools (16 original + evermemory_edit + evermemory_browse + evermemory_relations), 18 schema migrations, built-in semantic search.
+- 23 tools (19 evermemory + 4 butler), 25 schema migrations, built-in semantic search.
 - Knowledge graph with 7 relation types, proactive recall, contradiction monitoring, adaptive retrieval weights.
 - Memory compression, predictive context, preference drift detection, self-tuning decay.
-- Track A/B/C/D 质量冲刺全部完成，Phase 1-3 进化全部完成，10 个 bug 已修复（3 CRITICAL + 4 HIGH + 3 MEDIUM）。
+- Butler agent: persistent episodic OODA loop, attention service, goal tracking, narrative threads (reduced mode).
+- Track A/B/C/D 质量冲刺全部完成，Phase 1-3 进化全部完成，Butler Phase 1-3 完成，OpenClaw SDK 全面迁移完成。
 
 ## Recent Changes (2026-03-16 Quality Sprint)
 

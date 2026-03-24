@@ -1,6 +1,6 @@
 {
   "name": "evermemory",
-  "version": "2.0.0-rc1",
+  "version": "2.0.0",
   "entry": "dist/index.js",
   "description": "EverMemory deterministic memory plugin with intent and reflection baseline",
   "kind": "memory",

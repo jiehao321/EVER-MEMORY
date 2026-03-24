@@ -3,6 +3,36 @@
 All notable changes to EverMemory are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.0] - 2026-03-24
+
+### Added — Butler Agent (Phase 1–3)
+- **Persistent episodic Butler agent** — OODA-loop cognitive layer with strategic overlay, attention service, and insight surfacing
+- **Three-layer output** — Memory Context (facts) + Strategic Overlay (mode/priorities) + Watchlist (monitoring)
+- **Butler tools** — `butler_status`, `butler_brief`, `butler_tune`, `butler_review` for runtime inspection and control
+- **Attention service** — insight ranking, force-surface logic, cooldown, and feedback (dismiss/snooze/rate)
+- **Goal tracking** — active goals with priority levels surfaced in session watchlist
+- **Narrative threads** — cross-session narrative tracking with momentum and phase management
+- **Commitment watcher** — automatic extraction of commitments from stored memories
+- **Task queue** — deferred task queue with lease-based execution and idempotency keys
+- **Cognitive engine** — LLM wrapper with token budget tracking and heuristic fallback
+- **Worker thread pool** — optional background task execution via worker threads (Phase 3)
+
+### Changed — OpenClaw SDK 2026.3.22 Migration
+- **Full SDK migration** — `definePluginEntry()`, focused subpath imports (`openclaw/plugin-sdk/core`, `openclaw/plugin-sdk/plugin-runtime`)
+- **session_start returns void** — watchlist computation moved to `before_agent_start` hook (per SDK spec)
+- **PluginLogger / RuntimeLogger split** — single-arg `PluginLogger` for public API, structured `RuntimeLogger` with meta for Butler internals
+- **Service lifecycle** — `start/stop` now receive `OpenClawPluginServiceContext`
+- **registerMemoryPromptSection** — SDK memory prompt section API with `citationsMode` and tool guide
+- **Self-generated turnId** — `turn-${sessionId}-${crypto.randomUUID()}` replaces host `runId`
+- **Butler forced reduced mode** — SDK host does not expose LLM gateway; steward mode unavailable
+- **Default mode steward→reduced** — across config, state, migrations, and plugin.json
+- **ButlerLogger type** — all 10 Butler components use structured meta-style logging
+- **Scope binding** — `upsertScopeStateFromCtx` prioritizes SDK typed fields with `resolveHostBinding` fallback
+- Removed backward compatibility with pre-2026.3.22 SDK
+
+### Fixed
+- Date-sensitive test in `butlerRepos` — `getDailyUsage()` now uses explicit date parameter
+
 ## [2.0.0-rc1] - 2026-03-22
 
 ### Fixed — Bug Sweep (10 issues)

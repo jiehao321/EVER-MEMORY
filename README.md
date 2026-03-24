@@ -12,7 +12,7 @@
     <a href="https://www.npmjs.com/package/evermemory"><img src="https://img.shields.io/npm/dm/evermemory.svg?style=flat-square&color=blue" alt="npm downloads"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="license"></a>
     <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg?style=flat-square" alt="node"></a>
-    <img src="https://img.shields.io/badge/tests-430%20passing-brightgreen.svg?style=flat-square" alt="tests">
+    <img src="https://img.shields.io/badge/tests-523%20passing-brightgreen.svg?style=flat-square" alt="tests">
     <img src="https://img.shields.io/badge/TypeScript-strict-blue.svg?style=flat-square" alt="typescript">
   </p>
 </p>
