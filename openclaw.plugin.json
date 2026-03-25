@@ -2,7 +2,7 @@
   "id": "evermemory",
   "name": "EverMemory",
   "description": "Deterministic memory plugin for OpenClaw with governed write/recall behavior.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "kind": "memory",
   "configSchema": {
     "type": "object",
@@ -180,6 +180,40 @@
               "fallbackToHeuristics": {
                 "type": "boolean",
                 "description": "Fall back to heuristic analysis when LLM is unavailable or budget is exhausted (effective only in steward mode). Default: true."
+              },
+              "modelTiers": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Model tier mapping for Butler cognitive tasks. Each tier maps to a provider and model. Unset tiers use the host agent defaults.",
+                "properties": {
+                  "cheap": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Model used for low-cost cognitive tasks (e.g. keyword extraction).",
+                    "properties": {
+                      "provider": { "type": "string", "description": "Provider name (e.g. 'anthropic', 'openai')." },
+                      "model": { "type": "string", "description": "Model identifier (e.g. 'claude-haiku-4-5-20251001')." }
+                    }
+                  },
+                  "balanced": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Model used for standard cognitive tasks (e.g. narrative assessment).",
+                    "properties": {
+                      "provider": { "type": "string", "description": "Provider name." },
+                      "model": { "type": "string", "description": "Model identifier." }
+                    }
+                  },
+                  "strong": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Model used for complex cognitive tasks (e.g. strategic overlay).",
+                    "properties": {
+                      "provider": { "type": "string", "description": "Provider name." },
+                      "model": { "type": "string", "description": "Model identifier." }
+                    }
+                  }
+                }
               }
             }
           },

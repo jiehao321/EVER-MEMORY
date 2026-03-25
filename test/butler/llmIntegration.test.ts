@@ -10,6 +10,7 @@ import type {
 } from '../../src/core/butler/types.js';
 import { ButlerLlmClient } from '../../src/core/butler/llmClient.js';
 import { CognitiveEngine } from '../../src/core/butler/cognition.js';
+import { ProviderDirectLlmGateway } from '../../src/openclaw/llmGateway.js';
 
 function createLogger() {
   return {
@@ -317,4 +318,106 @@ test('CognitiveEngine tracks session and daily token usage', async () => {
     dailyBudget: 100,
     sessionBudget: 50,
   });
+});
+
+test('ButlerLlmClient.getReadiness returns unavailable without gateway', () => {
+  const client = new ButlerLlmClient({ logger: createLogger() });
+  assert.equal(client.getReadiness(), 'unavailable');
+});
+
+test('ButlerLlmClient.getReadiness returns untested with fresh ProviderDirectLlmGateway', () => {
+  const gateway = new ProviderDirectLlmGateway({
+    resolveApiKey: async () => ({ apiKey: 'test-key' }),
+    applyAuth: (m) => m,
+    getModel: () => ({ id: 'test', name: 'test', api: 'anthropic-messages', provider: 'anthropic', baseUrl: '', maxTokens: 4096, reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 200000 }),
+    complete: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+    defaultProvider: 'anthropic',
+    defaultModel: 'claude-haiku-4-5-20251001',
+    logger: createLogger(),
+  });
+  const client = new ButlerLlmClient({ gateway, logger: createLogger() });
+  assert.equal(client.getReadiness(), 'untested');
+});
+
+test('ButlerLlmClient.getReadiness returns ready with mock gateway', () => {
+  const client = new ButlerLlmClient({
+    gateway: { invoke: async () => ({ content: '{}', provider: 'test' }) },
+    logger: createLogger(),
+  });
+  // Non-ProviderDirectLlmGateway gateways always report 'ready'
+  assert.equal(client.getReadiness(), 'ready');
+});
+
+test('CognitiveEngine with steward mock gateway processes tasks end-to-end', async () => {
+  const invocationRepo = new InvocationRepoStub();
+  const gateway: LlmGateway = {
+    async invoke(request: LlmRequest) {
+      // Simulate steward mode: privacy is cloud_allowed, real responses
+      assert.equal(request.privacy?.level, 'cloud_allowed');
+      return {
+        content: JSON.stringify({ phase: 'implementing', momentum: 'accelerating', likelyNextTurn: 'deploy' }),
+        usage: { inputTokens: 15, outputTokens: 8, totalTokens: 23 },
+        model: 'claude-haiku-4-5-20251001',
+        provider: 'anthropic',
+        latencyMs: 200,
+      };
+    },
+  };
+  const engine = new CognitiveEngine({
+    llmClient: new ButlerLlmClient({ gateway, logger: createLogger() }),
+    invocationRepo,
+    config: {
+      dailyTokenBudget: 50000,
+      sessionTokenBudget: 10000,
+      taskTimeoutMs: 5000,
+      fallbackToHeuristics: true,
+    },
+    logger: createLogger(),
+  });
+
+  const result = await engine.runTask<{ phase: string; momentum: string }>(createTask({
+    taskType: 'narrative-assessment',
+    latencyClass: 'foreground',
+    privacyClass: 'cloud_allowed',
+    budgetClass: 'cheap',
+    outputSchema: {
+      type: 'object',
+      required: ['phase', 'momentum'],
+      properties: {
+        phase: { type: 'string' },
+        momentum: { type: 'string' },
+        likelyNextTurn: { type: 'string' },
+      },
+    },
+  }));
+
+  assert.equal(result.fallbackUsed, false);
+  assert.equal(result.output.phase, 'implementing');
+  assert.equal(result.output.momentum, 'accelerating');
+  assert.equal(invocationRepo.inserted.length, 1);
+  assert.equal(invocationRepo.inserted[0]?.provider, 'anthropic');
+});
+
+test('ProviderDirectLlmGateway returns unavailable for privacy=local_only requests', async () => {
+  let resolveApiKeyCalled = false;
+  const gateway = new ProviderDirectLlmGateway({
+    resolveApiKey: async () => {
+      resolveApiKeyCalled = true;
+      return { apiKey: 'test-key' };
+    },
+    applyAuth: (m) => m,
+    getModel: () => ({ id: 'test', name: 'test', api: 'anthropic-messages', provider: 'anthropic', baseUrl: '', maxTokens: 4096, reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 200000 }),
+    complete: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+    defaultProvider: 'anthropic',
+    defaultModel: 'claude-haiku-4-5-20251001',
+    logger: createLogger(),
+  });
+
+  const response = await gateway.invoke(createRequest({
+    privacy: { level: 'local_only' },
+  }));
+
+  assert.equal(response.provider, 'unavailable');
+  assert.equal(response.content, '');
+  assert.equal(resolveApiKeyCalled, false, 'resolveApiKey should NOT be called for local_only');
 });

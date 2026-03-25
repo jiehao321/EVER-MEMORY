@@ -1,7 +1,7 @@
 # EverMemory Guide (CLAUDE)
 
 ## Project Overview
-- EverMemory: deterministic memory plugin for OpenClaw, current version v2.0.0.
+- EverMemory: deterministic memory plugin for OpenClaw, current version v2.1.0.
 - Goal: reliable, explainable, rollback-capable workflows for knowledge storage, recall, rule governance, and user profiling.
 - Stack: Node.js 22.x, TypeScript strict ESM, SQLite WAL, better-sqlite3, TypeBox.
 - Principles: determinism first, operator first, progressive hardening.
@@ -43,7 +43,7 @@ npm run release:preflight  # Cross-platform install & version consistency check
 - Run `npm run validate` before commits; `teams:release` before publishing.
 
 ## Current Status
-- Version: v2.0.0 (2026-03-24)
+- Version: v2.1.0 (2026-03-25)
 - OpenClaw SDK: 2026.3.22 (fully migrated, no backward compat)
 - Tests: 523/525 pass (2 skip), stability check 全绿.
 - KPI: recall accuracy=1.0, unit pass=1.0, continuity=true, autoCaptureAcceptRate=0.75.

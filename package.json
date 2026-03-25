@@ -1,6 +1,6 @@
 {
   "name": "evermemory",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": false,
   "description": "Deterministic memory plugin for OpenClaw — persistent, inspectable, governable AI memory.",
   "author": "jiehao321",

@@ -8,6 +8,7 @@ import type { NarrativeThreadService } from '../../core/butler/narrative/service
 import type { ButlerStateManager } from '../../core/butler/state.js';
 import type { StrategicOverlayGenerator } from '../../core/butler/strategy/overlay.js';
 import type { TaskQueueService } from '../../core/butler/taskQueue.js';
+import type { ButlerLlmClient } from '../../core/butler/llmClient.js';
 import type { ButlerConfig } from '../../core/butler/types.js';
 import { butlerBrief } from '../../tools/butlerBrief.js';
 import { butlerStatus } from '../../tools/butlerStatus.js';
@@ -35,6 +36,8 @@ export interface ButlerRegistrationContext {
   stateManager: ButlerStateManager;
   taskQueue: TaskQueueService;
   cognitiveEngine: CognitiveEngine;
+  llmClient?: ButlerLlmClient;
+  llmProbe?: () => Promise<void>;
   config: ButlerConfig;
 }
 
@@ -46,6 +49,10 @@ export function registerButlerTools(context: ButlerRegistrationContext): void {
       description: 'Return Butler state, active narratives, queue depth, and LLM usage.',
       parameters: Type.Object({ scope: scopeSchema }, { additionalProperties: false }),
       execute: async (_toolCallId: string, params: UnknownRecord) => {
+        // Ensure LLM probe has run before reporting status
+        if (context.llmProbe) {
+          await context.llmProbe().catch(() => { /* probe failures are non-fatal */ });
+        }
         const result = butlerStatus({
           agent: context.agent,
           narrativeService: context.narrativeService,
@@ -53,12 +60,13 @@ export function registerButlerTools(context: ButlerRegistrationContext): void {
           cognitiveEngine: context.cognitiveEngine,
           attentionService: context.attentionService,
           goalService: context.goalService,
+          llmClient: context.llmClient,
           scope: parseScope(params.scope),
         });
         return {
           content: [{
             type: 'text',
-            text: `Butler mode=${result.mode}, llm=${result.llmAvailable ? 'available' : 'unavailable'}, threads=${result.activeThreads.length}, pendingTasks=${result.pendingTasks}`,
+            text: `Butler mode=${result.mode}, llm=${result.llmAvailable ? 'available' : 'unavailable'}, readiness=${result.llmReadiness}, threads=${result.activeThreads.length}, pendingTasks=${result.pendingTasks}`,
           }],
           details: result,
         };

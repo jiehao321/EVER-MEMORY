@@ -21,6 +21,7 @@ interface ButlerHookContext {
   overlayGenerator: StrategicOverlayGenerator;
   attentionService: AttentionService;
   goalService?: ButlerGoalService;
+  llmProbe?: () => Promise<void>;
 }
 
 function logButlerFailure(
@@ -63,6 +64,12 @@ export function registerHooks(
 
     const scopeState = upsertScopeState(sessionScopes, sessionId, event, ctx);
     syncSessionStartScope(evermemory, sessionId, scopeState);
+    // Lazy LLM probe — fire on first session_start, don't block the hook
+    if (butler?.llmProbe) {
+      void butler.llmProbe().catch((error) => {
+        logButlerFailure(registrationContext, 'llm_probe', error);
+      });
+    }
     runButlerCycle(registrationContext, butler, 'session_start', {
       type: 'session_started',
       sessionId,
@@ -74,6 +81,12 @@ export function registerHooks(
   // before_agent_start: memory recall + watchlist + overlay computation.
   // Watchlist is computed here (not cached from session_start).
   registerHook(api, 'before_agent_start', async (event, ctx) => {
+    // Lazy LLM probe — fires once on first before_agent_start to check API key availability
+    if (butler?.llmProbe) {
+      await butler.llmProbe().catch((error) => {
+        logButlerFailure(registrationContext, 'llm_probe', error);
+      });
+    }
     if (!isRecord(ctx)) {
       return undefined;
     }

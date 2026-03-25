@@ -1,4 +1,5 @@
 import type { ButlerLogger, LlmGateway, LlmMessage, LlmRequest, LlmResponse } from '../butler/types.js';
+import type { ProviderDirectLlmGateway } from '../../openclaw/llmGateway.js';
 
 interface ButlerLlmClientOptions {
   gateway?: LlmGateway;
@@ -30,16 +31,39 @@ export class ButlerLlmClient {
     | ((request: LlmRequest) => Promise<LlmResponse>)
     | undefined;
 
+  private readonly gateway?: LlmGateway;
   private readonly logger?: ButlerLogger;
 
   constructor(options: ButlerLlmClientOptions) {
     this.logger = options.logger;
+    this.gateway = options.gateway;
     this.available = Boolean(options.gateway || options.llmBridge);
     this.transport = this.createTransport(options);
   }
 
   isAvailable(): boolean {
     return this.available;
+  }
+
+  getReadiness(): 'ready' | 'untested' | 'unavailable' {
+    if (!this.available) {
+      return 'unavailable';
+    }
+    if (this.gateway && 'authFailed' in this.gateway && 'authVerified' in this.gateway) {
+      const gw = this.gateway as ProviderDirectLlmGateway;
+      if (gw.authFailed) return 'unavailable';
+      if (gw.authVerified) return 'ready';
+      return 'untested';
+    }
+    return 'ready';
+  }
+
+  getProvider(): string | undefined {
+    if (!this.available) return undefined;
+    if (this.gateway && 'defaultProvider' in this.gateway) {
+      return (this.gateway as ProviderDirectLlmGateway).defaultProvider;
+    }
+    return this.gateway ? 'unknown' : undefined;
   }
 
   async invoke(request: LlmRequest): Promise<LlmResponse> {

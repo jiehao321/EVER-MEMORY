@@ -1,5 +1,5 @@
 export const PLUGIN_NAME = 'evermemory';
-export const PLUGIN_VERSION = '2.0.0';
+export const PLUGIN_VERSION = '2.1.0';
 
 export const DEFAULT_BOOT_TOKEN_BUDGET = 1200;
 export const DEFAULT_MAX_RECALL = 8;

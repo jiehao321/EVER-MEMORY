@@ -5,6 +5,9 @@ import type { CognitiveEngine } from './cognition.js';
 import { ButlerStateManager } from './state.js';
 import { TaskQueueService } from './taskQueue.js';
 import type { WorkerThreadPool } from './worker/pool.js';
+import type { NarrativeThreadService } from './narrative/service.js';
+import type { CommitmentWatcher } from './commitments/watcher.js';
+import type { MemoryScope } from '../../types/memory.js';
 import type {
   ButlerCycleTrace,
   ButlerLogger,
@@ -21,6 +24,8 @@ interface ButlerAgentOptions {
   insightRepo: ButlerInsightRepository;
   goalService?: ButlerGoalService;
   workerPool?: WorkerThreadPool;
+  narrativeService?: NarrativeThreadService;
+  commitmentWatcher?: CommitmentWatcher;
   logger?: ButlerLogger;
 }
 
@@ -107,6 +112,8 @@ export class ButlerAgent {
   private readonly insightRepo: ButlerInsightRepository;
   private readonly goalService?: ButlerGoalService;
   private readonly workerPool?: WorkerThreadPool;
+  private readonly narrativeService?: NarrativeThreadService;
+  private readonly commitmentWatcher?: CommitmentWatcher;
   private readonly logger?: ButlerLogger;
   private currentState: ButlerPersistentState | null = null;
 
@@ -117,6 +124,8 @@ export class ButlerAgent {
     this.insightRepo = options.insightRepo;
     this.goalService = options.goalService;
     this.workerPool = options.workerPool;
+    this.narrativeService = options.narrativeService;
+    this.commitmentWatcher = options.commitmentWatcher;
     this.logger = options.logger;
   }
 
@@ -130,7 +139,7 @@ export class ButlerAgent {
     state = observed.state;
 
     const oriented = this.orient(trigger, observed, state, startedAt, maxTimeMs);
-    const executed = this.act(trigger, oriented, startedAt, maxTimeMs, cycleId);
+    const executed = await this.act(trigger, oriented, startedAt, maxTimeMs, cycleId);
     state = this.finishState(executed.state, startedAt);
     this.stateManager.save(state);
     this.currentState = state;
@@ -313,16 +322,16 @@ export class ButlerAgent {
       : 'orientation skipped because budget or llm availability is insufficient';
   }
 
-  private act(
+  private async act(
     trigger: ButlerTrigger,
     result: CyclePhaseResult,
     startedAt: number,
     maxTimeMs: number,
     cycleId: string,
-  ): CyclePhaseResult {
+  ): Promise<CyclePhaseResult> {
     switch (trigger.type) {
       case 'session_started':
-        return this.executeSessionStart(result, startedAt, maxTimeMs, cycleId);
+        return await this.executeSessionStart(result, startedAt, maxTimeMs, cycleId);
       case 'session_ended':
         return this.executeSessionEnded(trigger, result);
       default:
@@ -330,18 +339,18 @@ export class ButlerAgent {
     }
   }
 
-  private executeSessionStart(
+  private async executeSessionStart(
     result: CyclePhaseResult,
     startedAt: number,
     maxTimeMs: number,
     cycleId: string,
-  ): CyclePhaseResult {
+  ): Promise<CyclePhaseResult> {
     if (!hasTimeRemaining(startedAt, maxTimeMs)) {
       return result;
     }
 
     const drained = this.taskQueue.drain(buildDrainBudget(startedAt, maxTimeMs));
-    const completedTaskTypes = this.completeTasks(drained, cycleId);
+    const completedTaskTypes = await this.completeTasks(drained, cycleId);
     const surfacedInsights = this.surfaceFreshInsights();
 
     return {
@@ -353,11 +362,11 @@ export class ButlerAgent {
     };
   }
 
-  private completeTasks(tasks: ButlerTask[], cycleId: string): string[] {
+  private async completeTasks(tasks: ButlerTask[], cycleId: string): Promise<string[]> {
     const completedTaskTypes: string[] = [];
     for (const task of tasks) {
       try {
-        this.runDeferredTask(task);
+        await this.runDeferredTask(task);
         this.taskQueue.complete(task.id, { completedBy: 'butler-agent', cycleId });
         completedTaskTypes.push(task.type);
       } catch (error) {
@@ -368,21 +377,31 @@ export class ButlerAgent {
     return completedTaskTypes;
   }
 
-  private runDeferredTask(task: ButlerTask): void {
-    if (task.type === 'narrative_update' || task.type === 'insight_refresh') {
-      if (this.workerPool) {
-        this.workerPool
-          .dispatch({ id: task.id, type: 'cognitive_task', payload: parseTaskPayload(task) })
-          .catch((err: unknown) => {
-            this.logger?.warn('ButlerAgent worker dispatch failed', { taskType: task.type, error: err instanceof Error ? err.message : String(err) });
-          });
+  private async runDeferredTask(task: ButlerTask): Promise<void> {
+    if (task.type === 'narrative_update') {
+      if (this.narrativeService) {
+        this.narrativeService.updateOrCreateForSession(parseTaskPayload(task) ?? {});
       }
       return;
     }
-    if (task.type !== 'goal_derivation' || !this.goalService) {
+
+    if (task.type === 'insight_refresh') {
+      if (this.commitmentWatcher) {
+        const payload = parseTaskPayload(task);
+        await this.commitmentWatcher.scanCommitments(
+          payload as MemoryScope | undefined,
+          { forceHeuristic: true },
+        );
+      }
       return;
     }
-    this.goalService.deriveGoalsFromInsights(parseTaskPayload(task));
+
+    if (task.type === 'goal_derivation') {
+      if (this.goalService) {
+        this.goalService.deriveGoalsFromInsights(parseTaskPayload(task));
+      }
+      return;
+    }
   }
 
   private surfaceFreshInsights(): string[] {

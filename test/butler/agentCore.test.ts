@@ -14,11 +14,16 @@ import type { CognitiveEngine } from '../../src/core/butler/cognition.js';
 import { ButlerAgent } from '../../src/core/butler/agent.js';
 import { ButlerStateManager } from '../../src/core/butler/state.js';
 import { TaskQueueService } from '../../src/core/butler/taskQueue.js';
+import { NarrativeThreadService } from '../../src/core/butler/narrative/service.js';
+import { CommitmentWatcher } from '../../src/core/butler/commitments/watcher.js';
 import { openDatabase, closeDatabase, type DatabaseHandle } from '../../src/storage/db.js';
 import { runMigrations } from '../../src/storage/migrations.js';
 import { ButlerInsightRepository } from '../../src/storage/butlerInsightRepo.js';
 import { ButlerStateRepository } from '../../src/storage/butlerStateRepo.js';
 import { ButlerTaskRepository } from '../../src/storage/butlerTaskRepo.js';
+import { NarrativeRepository } from '../../src/storage/narrativeRepo.js';
+import { MemoryRepository } from '../../src/storage/memoryRepo.js';
+import type { ButlerInsight } from '../../src/core/butler/types.js';
 
 function createLogger() {
   return {
@@ -415,6 +420,116 @@ test('ButlerAgent state persisted across cycles', async () => {
     assert.equal(reloaded.lastCycleVersion, 2);
     assert.equal(reloaded.workingMemory.length, 2);
     assert.match(JSON.stringify(reloaded.workingMemory), /worker-1/);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test('ButlerAgent drain executes narrative_update via narrativeService', async () => {
+  const ctx = createDbContext();
+  try {
+    const stateManager = new ButlerStateManager({
+      stateRepo: new ButlerStateRepository(ctx.db),
+      logger: createLogger(),
+    });
+    const taskQueue = new TaskQueueService({
+      taskRepo: new ButlerTaskRepository(ctx.db),
+      logger: createLogger(),
+    });
+    const narrativeRepo = new NarrativeRepository(ctx.db);
+    const narrativeService = new NarrativeThreadService({
+      narrativeRepo,
+      cognitiveEngine: createCognitiveStub(false),
+      logger: createLogger(),
+    });
+
+    // Pre-enqueue a narrative_update task
+    taskQueue.enqueue({
+      type: 'narrative_update',
+      priority: 4,
+      trigger: 'session_ended',
+      payload: { project: 'evermemory' },
+      budgetClass: 'medium',
+    });
+
+    const agent = new ButlerAgent({
+      stateManager,
+      taskQueue,
+      cognitiveEngine: createCognitiveStub(false),
+      insightRepo: new ButlerInsightRepository(ctx.db),
+      narrativeService,
+      logger: createLogger(),
+    });
+
+    await agent.runCycle({
+      type: 'session_started',
+      sessionId: 'drain-test-1',
+      scope: { project: 'evermemory' },
+    });
+
+    // After drain, a narrative thread should have been created
+    const threads = narrativeRepo.findActive();
+    assert.ok(threads.length > 0, 'Expected at least one narrative thread after drain');
+    assert.equal(threads[0]?.theme, 'session-narrative');
+    assert.equal(taskQueue.getPendingCount(), 0);
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test('ButlerAgent drain executes insight_refresh with forceHeuristic', async () => {
+  const ctx = createDbContext();
+  try {
+    const stateManager = new ButlerStateManager({
+      stateRepo: new ButlerStateRepository(ctx.db),
+      logger: createLogger(),
+    });
+    const taskQueue = new TaskQueueService({
+      taskRepo: new ButlerTaskRepository(ctx.db),
+      logger: createLogger(),
+    });
+    const insightRepo = new ButlerInsightRepository(ctx.db);
+
+    let scanCalled = false;
+    let scanOptions: unknown;
+    // Create a mock watcher that tracks invocations
+    const commitmentWatcher = {
+      scanCommitments: async (_scope: unknown, options: unknown): Promise<ButlerInsight[]> => {
+        scanCalled = true;
+        scanOptions = options;
+        return [];
+      },
+      getActiveCommitments: () => [],
+    } as unknown as CommitmentWatcher;
+
+    taskQueue.enqueue({
+      type: 'insight_refresh',
+      priority: 5,
+      trigger: 'session_ended',
+      payload: {},
+      budgetClass: 'medium',
+    });
+
+    const agent = new ButlerAgent({
+      stateManager,
+      taskQueue,
+      cognitiveEngine: createCognitiveStub(false),
+      insightRepo,
+      commitmentWatcher,
+      logger: createLogger(),
+    });
+
+    await agent.runCycle({
+      type: 'session_started',
+      sessionId: 'drain-test-2',
+    });
+
+    // scanCommitments is called async via .catch(), give it a tick
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.equal(scanCalled, true, 'Expected commitmentWatcher.scanCommitments to be called');
+    assert.deepEqual(scanOptions, { forceHeuristic: true }, 'Expected forceHeuristic: true during drain');
+    assert.equal(taskQueue.getPendingCount(), 0);
   } finally {
     ctx.cleanup();
   }

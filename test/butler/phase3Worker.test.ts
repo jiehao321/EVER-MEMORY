@@ -201,13 +201,33 @@ test('WorkerThreadPool drain resolves when idle', async () => {
   WorkerThreadPool.resetWorkerFactoryForTests();
 });
 
-test('ButlerAgent runDeferredTask dispatches narrative_update to pool', async () => {
-  const dispatched: WorkerTask[] = [];
-  const agent = createAgent({
-    dispatch: async (task) => {
-      dispatched.push(task);
-      return { processed: true };
-    },
+test('ButlerAgent runDeferredTask calls narrativeService.updateOrCreateForSession for narrative_update', () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const agent = new ButlerAgent({
+    stateManager: {
+      load: () => { throw new Error('unused'); },
+      save: () => undefined,
+      pruneExpiredWorkingMemory: () => { throw new Error('unused'); },
+      addWorkingMemoryEntry: () => { throw new Error('unused'); },
+    } as any,
+    taskQueue: {
+      drain: () => [],
+      complete: () => undefined,
+      fail: () => undefined,
+      enqueue: () => 'task-id',
+      getPendingCount: () => 0,
+    } as any,
+    cognitiveEngine: {
+      canAfford: () => false,
+      runTask: async () => ({ output: {}, confidence: 0, evidenceIds: [], fallbackUsed: true }),
+    } as unknown as CognitiveEngine,
+    insightRepo: {} as ButlerInsightRepository,
+    narrativeService: {
+      updateOrCreateForSession: (payload: Record<string, unknown>) => {
+        calls.push(payload);
+      },
+    } as any,
+    logger: createLogger(),
   });
 
   (agent as unknown as { runDeferredTask(task: unknown): void }).runDeferredTask({
@@ -216,10 +236,7 @@ test('ButlerAgent runDeferredTask dispatches narrative_update to pool', async ()
     payloadJson: JSON.stringify({ scope: 'project' }),
   });
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.deepEqual(dispatched, [
-    { id: 'task-1', type: 'cognitive_task', payload: { scope: 'project' } },
-  ]);
+  assert.deepEqual(calls, [{ scope: 'project' }]);
 });
 
 test('ButlerAgent runDeferredTask fallback when no pool', () => {

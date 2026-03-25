@@ -12,6 +12,7 @@ import { StrategicOverlayGenerator } from '../core/butler/strategy/overlay.js';
 import { TaskQueueService } from '../core/butler/taskQueue.js';
 import type { ButlerMode } from '../core/butler/types.js';
 import { WorkerThreadPool } from '../core/butler/worker/pool.js';
+import { ProviderDirectLlmGateway } from './llmGateway.js';
 import { PLUGIN_NAME, PLUGIN_VERSION } from '../constants.js';
 import { registerHooks } from './hooks/index.js';
 import { createRegistrationContext, isRecord, type OpenClawPluginApi, toErrorMessage } from './shared.js';
@@ -42,7 +43,7 @@ export default definePluginEntry({
     const rawButlerConfig = context.evermemory.config.butler;
     const db = context.evermemory.database.connection;
 
-    // Butler always runs in reduced mode under SDK host (no LLM gateway available)
+    // Butler starts in reduced mode; upgraded to steward if LLM probe succeeds in service start
     const effectiveButlerMode: ButlerMode = 'reduced';
     const butlerConfig = rawButlerConfig ? { ...rawButlerConfig, mode: effectiveButlerMode } : rawButlerConfig;
 
@@ -65,8 +66,22 @@ export default definePluginEntry({
             taskRepo: new ButlerTaskRepository(db),
             logger: api.logger,
           });
+
+          // Build LLM gateway using pi-ai complete() with auth from runtime.modelAuth
+          const runtimeModelAuth = api.runtime?.modelAuth;
+          const runtimeAgentDefaults = api.runtime?.agent?.defaults;
+          const hasModelAuth = runtimeModelAuth !== undefined && runtimeAgentDefaults !== undefined;
+          const llmGateway: ProviderDirectLlmGateway | undefined = hasModelAuth
+            ? buildPiAiGateway(api)
+            : undefined;
+
+          const llmClient = new ButlerLlmClient({
+            gateway: llmGateway,
+            logger: api.logger,
+          });
+
           const cognitiveEngine = new CognitiveEngine({
-            llmClient: new ButlerLlmClient({ gateway: undefined, logger: api.logger }),
+            llmClient,
             invocationRepo: new LlmInvocationRepo(db),
             config: butlerConfig.cognition,
             logger: api.logger,
@@ -90,6 +105,17 @@ export default definePluginEntry({
             insightRepo,
             logger: api.logger,
           });
+          const narrativeService = new NarrativeThreadService({
+            narrativeRepo: new NarrativeRepository(db),
+            cognitiveEngine,
+            logger: api.logger,
+          });
+          const commitmentWatcher = new CommitmentWatcher({
+            memoryRepo: context.evermemory.memoryRepo,
+            insightRepo,
+            cognitiveEngine,
+            logger: api.logger,
+          });
           return {
             agent: new ButlerAgent({
               stateManager,
@@ -98,21 +124,14 @@ export default definePluginEntry({
               insightRepo,
               goalService,
               workerPool,
+              narrativeService,
+              commitmentWatcher,
               logger: api.logger,
             }),
             workerPool,
             overlayGenerator,
-            narrativeService: new NarrativeThreadService({
-              narrativeRepo: new NarrativeRepository(db),
-              cognitiveEngine,
-              logger: api.logger,
-            }),
-            commitmentWatcher: new CommitmentWatcher({
-              memoryRepo: context.evermemory.memoryRepo,
-              insightRepo,
-              cognitiveEngine,
-              logger: api.logger,
-            }),
+            narrativeService,
+            commitmentWatcher,
             attentionService: new AttentionService({
               insightRepo,
               feedbackRepo,
@@ -125,6 +144,8 @@ export default definePluginEntry({
             stateManager,
             taskQueue,
             cognitiveEngine,
+            llmClient,
+            llmGateway,
             config: butlerConfig,
           };
         })()
@@ -149,6 +170,35 @@ export default definePluginEntry({
       return result;
     };
 
+    // Lazy LLM probe — runs once on first session_start, upgrades Butler to steward mode if successful
+    const llmProbe = butler
+      ? (() => {
+          let probed = false;
+          return async () => {
+            if (probed) return;
+            probed = true;
+            try {
+              const probeResult = await butler.llmClient.invoke({
+                purpose: 'auth-probe',
+                caller: { pluginId: 'evermemory', component: 'butler-init' },
+                messages: [{ role: 'user', content: 'ping' }],
+                budget: { maxOutputTokens: 1 },
+                timeoutMs: 5000,
+                privacy: { level: 'cloud_allowed' },
+              });
+              if (probeResult.provider !== 'unavailable' && probeResult.provider !== 'error') {
+                butler.stateManager.setMode('steward');
+                api.logger.info(`[EverMemory] Butler upgraded to steward mode (provider: ${probeResult.provider})`);
+              } else {
+                api.logger.info('[EverMemory] Butler staying in reduced mode (LLM not available)');
+              }
+            } catch (probeError: unknown) {
+              api.logger.info(`[EverMemory] Butler staying in reduced mode (LLM probe failed: ${probeError instanceof Error ? probeError.message : String(probeError)})`);
+            }
+          };
+        })()
+      : undefined;
+
     registerHooks(
       context,
       butler
@@ -157,6 +207,7 @@ export default definePluginEntry({
             overlayGenerator: butler.overlayGenerator,
             attentionService: butler.attentionService,
             goalService: butler.goalService,
+            llmProbe,
           }
         : undefined,
     );
@@ -176,6 +227,8 @@ export default definePluginEntry({
         stateManager: butler.stateManager,
         taskQueue: butler.taskQueue,
         cognitiveEngine: butler.cognitiveEngine,
+        llmClient: butler.llmClient,
+        llmProbe,
         config: butler.config,
       });
       registerButlerReviewTool({
@@ -222,7 +275,7 @@ export default definePluginEntry({
         profile_onboard: 'profile_onboard — first-time user onboarding',
         evermemory_export: 'evermemory_export — export memories to JSON',
         evermemory_import: 'evermemory_import — import memories from JSON',
-        butler_status: 'butler_status — Butler agent state and usage (reduced mode)',
+        butler_status: 'butler_status — Butler agent state, LLM readiness, and usage',
         butler_brief: 'butler_brief — executive briefing with strategic overlay',
         butler_tune: 'butler_tune — adjust Butler runtime config',
         butler_review: 'butler_review — review and rate Butler suggestions',
@@ -259,7 +312,13 @@ export default definePluginEntry({
           // Diagnostics stay best-effort; startup must continue.
         }
         if (butler) {
-          api.logger.info('[EverMemory] Butler running in reduced mode (heuristics only — LLM gateway not available in current SDK)');
+          // Probe LLM availability via shared lazy probe (idempotent — also triggered by session_start hook)
+          if (llmProbe) {
+            await llmProbe().catch((error: unknown) => {
+              api.logger.info(`[EverMemory] Butler LLM probe failed in service start: ${error instanceof Error ? error.message : String(error)}`);
+            });
+          }
+
           await butler.agent.runCycle({ type: 'service_started' }).catch((error: unknown) => {
             api.logger.warn(`[EverMemory] Butler startup cycle failed: ${toErrorMessage(error)}`);
           });
@@ -293,3 +352,97 @@ export default definePluginEntry({
     });
   },
 });
+
+function resolveModelTiers(
+  pluginConfig: unknown,
+): Record<string, { provider: string; model: string }> | undefined {
+  if (!isRecord(pluginConfig)) return undefined;
+  const butler = pluginConfig.butler;
+  if (!isRecord(butler)) return undefined;
+  const cognition = butler.cognition;
+  if (!isRecord(cognition)) return undefined;
+  const tiers = cognition.modelTiers;
+  if (!isRecord(tiers)) return undefined;
+
+  const result: Record<string, { provider: string; model: string }> = {};
+  for (const tier of ['cheap', 'balanced', 'strong'] as const) {
+    const entry = tiers[tier];
+    if (isRecord(entry) && typeof entry.provider === 'string' && typeof entry.model === 'string') {
+      result[tier] = { provider: entry.provider, model: entry.model };
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Build the pi-ai-backed LLM gateway.
+ * Returns a ProviderDirectLlmGateway that lazily imports pi-ai on first invoke.
+ * pi-ai and openclaw are runtime deps of the host process — always available when runtime.modelAuth exists.
+ */
+function buildPiAiGateway(api: OpenClawPluginApi): ProviderDirectLlmGateway {
+  // Lazy-loaded pi-ai functions — resolved on first call
+  let piAiLoaded: {
+    getModel: (provider: string, modelId: string) => unknown;
+    complete: (model: unknown, context: unknown, options?: unknown) => Promise<unknown>;
+    applyAuth: (model: unknown, auth: unknown) => unknown;
+  } | undefined;
+
+  async function ensurePiAi() {
+    if (piAiLoaded) return piAiLoaded;
+    const piAi = await import('@mariozechner/pi-ai');
+    let applyAuthFn: (model: unknown, auth: unknown) => unknown = (m) => m;
+    try {
+      const modelAuthModule = await import(
+        // @ts-expect-error — internal openclaw module, not typed in our project
+        'openclaw/plugin-sdk/src/agents/model-auth.js'
+      ) as { applyLocalNoAuthHeaderOverride: (model: unknown, auth: unknown) => unknown };
+      applyAuthFn = modelAuthModule.applyLocalNoAuthHeaderOverride;
+    } catch {
+      // Fallback: manually apply auth headers based on token type
+      applyAuthFn = (model: unknown, auth: unknown) => {
+        const m = model as Record<string, unknown>;
+        const a = auth as { apiKey?: string; mode?: string };
+        if (!a.apiKey) return model;
+        const headers = (m.headers ?? {}) as Record<string, string>;
+        if (a.mode === 'token' || (a.apiKey.startsWith('sk-ant-o'))) {
+          return { ...m, headers: { ...headers, authorization: `Bearer ${a.apiKey}` } };
+        }
+        return { ...m, headers: { ...headers, 'x-api-key': a.apiKey } };
+      };
+    }
+    piAiLoaded = {
+      getModel: piAi.getModel as unknown as (provider: string, modelId: string) => unknown,
+      complete: piAi.complete as unknown as (model: unknown, context: unknown, options?: unknown) => Promise<unknown>,
+      applyAuth: applyAuthFn,
+    };
+    return piAiLoaded!;
+  }
+
+  return new ProviderDirectLlmGateway({
+    resolveApiKey: async (provider) => {
+      // Eagerly load pi-ai on first resolveApiKey call (before getModel/applyAuth which are sync)
+      await ensurePiAi();
+      return api.runtime.modelAuth.resolveApiKeyForProvider({ provider });
+    },
+    applyAuth: (model, auth) => {
+      if (!piAiLoaded) return model;
+      return piAiLoaded.applyAuth(model, auth) as typeof model;
+    },
+    getModel: (provider, modelId) => {
+      if (!piAiLoaded) return undefined;
+      try {
+        return piAiLoaded.getModel(provider, modelId) as import('./llmGateway.js').PiAiModel;
+      } catch {
+        return undefined;
+      }
+    },
+    complete: async (model, context, options) => {
+      const loaded = (await ensurePiAi())!;
+      return loaded.complete(model, context, options) as Promise<import('./llmGateway.js').PiAiAssistantMessage>;
+    },
+    defaultProvider: api.runtime.agent.defaults.provider,
+    defaultModel: api.runtime.agent.defaults.model,
+    modelTiers: resolveModelTiers(api.pluginConfig),
+    logger: api.logger,
+  });
+}

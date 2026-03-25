@@ -4,11 +4,14 @@ import type { ButlerGoalService } from '../core/butler/goals/service.js';
 import type { NarrativeThreadService } from '../core/butler/narrative/service.js';
 import type { TaskQueueService } from '../core/butler/taskQueue.js';
 import type { ButlerAgent } from '../core/butler/agent.js';
+import type { ButlerLlmClient } from '../core/butler/llmClient.js';
 import type { ButlerMode, SelfModelMetrics } from '../core/butler/types.js';
 
 export interface ButlerStatusResult {
   mode: ButlerMode;
   llmAvailable: boolean;
+  llmReadiness: 'ready' | 'untested' | 'unavailable';
+  llmProvider?: string;
   modeReason?: string;
   cycleVersion: number;
   lastCycleAt: string;
@@ -76,16 +79,20 @@ export function butlerStatus(input: {
   cognitiveEngine: CognitiveEngine;
   attentionService: AttentionService;
   goalService: ButlerGoalService;
+  llmClient?: ButlerLlmClient;
   scope?: Record<string, unknown>;
 }): ButlerStatusResult {
   const scope = toScopedRecord(input.scope);
   const state = input.agent.getState();
   const mode = state?.mode ?? (input.agent.isReduced() ? 'reduced' : 'steward');
+  const llmReadiness = input.llmClient?.getReadiness() ?? 'unavailable';
   const goals = input.goalService.getGoalSummary(scope);
   return {
     mode,
     llmAvailable: mode !== 'reduced',
-    modeReason: mode === 'reduced' ? 'SDK host does not expose LLM gateway' : undefined,
+    llmReadiness,
+    llmProvider: input.llmClient?.getProvider(),
+    modeReason: mode === 'reduced' ? 'LLM gateway not available or API key missing' : undefined,
     cycleVersion: state?.lastCycleVersion ?? 0,
     lastCycleAt: state?.lastCycleAt ?? '',
     selfModel: state?.selfModel ?? createDefaultSelfModel(),

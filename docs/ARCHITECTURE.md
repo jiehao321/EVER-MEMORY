@@ -2,7 +2,7 @@
 
 EverMemory is a deterministic memory plugin for OpenClaw. It provides knowledge storage, recall, behavior rule governance, and user profile projection through reliable, explainable, and rollback-safe workflows.
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Runtime:** Node.js 22.x, TypeScript strict ESM
 **Storage:** SQLite WAL via better-sqlite3
 **Validation:** TypeBox schemas

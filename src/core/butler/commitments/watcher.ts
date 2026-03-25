@@ -38,6 +38,10 @@ interface CommitmentWatcherOptions {
   logger?: ButlerLogger;
 }
 
+interface ScanOptions {
+  forceHeuristic?: boolean;
+}
+
 function nowMs(): number {
   return Date.now();
 }
@@ -168,7 +172,7 @@ export class CommitmentWatcher {
     this.logger = options.logger;
   }
 
-  async scanCommitments(scope?: MemoryScope): Promise<ButlerInsight[]> {
+  async scanCommitments(scope?: MemoryScope, options?: ScanOptions): Promise<ButlerInsight[]> {
     const memories = this.findCandidateMemories(scope);
     const existingRefs = this.getExistingCommitmentRefs();
     const created: ButlerInsight[] = [];
@@ -176,7 +180,7 @@ export class CommitmentWatcher {
       if (existingRefs.has(memory.id)) {
         continue;
       }
-      const id = this.insightRepo.insert(await this.buildInsight(memory));
+      const id = this.insightRepo.insert(await this.buildInsight(memory, options));
       const stored = this.insightRepo.findById(id);
       if (stored) {
         created.push(stored);
@@ -214,7 +218,10 @@ export class CommitmentWatcher {
     return new Set(insights.flatMap((insight) => parseSourceRefs(insight.sourceRefsJson)));
   }
 
-  private async buildInsight(memory: MemoryItem): Promise<NewButlerInsight> {
+  private async buildInsight(memory: MemoryItem, options?: ScanOptions): Promise<NewButlerInsight> {
+    if (options?.forceHeuristic) {
+      return buildHeuristicInsight(memory);
+    }
     if (!this.cognitiveEngine) {
       return buildHeuristicInsight(memory);
     }

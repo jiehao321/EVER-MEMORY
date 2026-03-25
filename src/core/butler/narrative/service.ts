@@ -96,6 +96,38 @@ export class NarrativeThreadService {
     )) ?? null;
   }
 
+  updateOrCreateForSession(payload: {
+    scope?: Record<string, unknown>;
+    sessionId?: string;
+  }): void {
+    const existing = this.options.narrativeRepo.findActive(payload.scope);
+    if (existing.length > 0) {
+      const thread = existing[0];
+      this.options.narrativeRepo.update(thread.id, {
+        recentEvents: [
+          ...thread.recentEvents.slice(-9),
+          `session:${new Date().toISOString()}`,
+        ],
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      const timestamp = nowIso();
+      this.options.narrativeRepo.insert({
+        theme: 'session-narrative',
+        objective: 'Track cross-session work continuity',
+        currentPhase: 'exploring',
+        momentum: 'steady',
+        recentEvents: [`created:${timestamp}`],
+        blockers: [],
+        likelyNextTurn: '',
+        strategicImportance: 0.5,
+        scopeJson: payload.scope ? JSON.stringify(payload.scope) : undefined,
+        startedAt: timestamp,
+        updatedAt: timestamp,
+      });
+    }
+  }
+
   private async assessThread(
     thread: NarrativeThread,
     event: string,
