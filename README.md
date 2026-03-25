@@ -1,37 +1,32 @@
 # EverMemory
 
-EverMemory is a TypeScript memory system for OpenClaw. It combines a local SQLite-backed memory store, retrieval and briefing flows, profile projection, rule governance, import/export tools, and an optional Butler layer for strategic overlays.
+EverMemory gives OpenClaw a long-term memory that feels useful instead of noisy.
 
-This repository is active and functional, but the current repo state matters:
+It helps an agent remember preferences, constraints, recurring facts, and session context, then bring the right pieces back when they matter. Instead of treating memory as a raw chat dump, EverMemory stores it locally, governs what gets written, and turns recall into briefings, profiles, and usable context.
 
-- `npm run check` passes
-- `npm test` currently fails in release-packaging coverage
-- `npm pack --dry-run` succeeds
+## Why It Feels Different
 
-If you are evaluating the project, read the docs in [docs/INDEX.md](docs/INDEX.md) before treating historical claims in older internal material as current truth.
+- It remembers more than chat history: user preferences, identity facts, constraints, recurring patterns, and working context.
+- It stores memory locally in SQLite, so your agent is not depending on fragile in-session recall alone.
+- It uses governed write and recall behavior instead of blindly saving everything.
+- It can build briefings, profiles, and rules overlays instead of dumping raw memory lists back into the prompt.
+- It can add optional semantic recall and an optional Butler layer when you want a broader strategic overlay.
 
-## What It Contains
+## A Concrete Example
 
-- Persistent memory storage on SQLite (`better-sqlite3`)
-- Deterministic write policy and retrieval pipeline
-- Session briefing, profile projection, reflection, and rules flows
-- OpenClaw plugin adapter and tool registration
-- Optional local semantic search and optional OpenAI embeddings
-- Optional Butler subsystem for strategic overlays, task queues, and insight review
+Imagine a user tells your OpenClaw agent:
 
-## Current Scope
+- “Keep code review comments concise.”
+- “I work in Asia/Shanghai.”
+- “Stop asking me the same onboarding questions every session.”
 
-The codebase currently exposes:
+With EverMemory in place, those details do not need to be repeated every time. Later sessions can recover them, re-rank them against the current task, and feed them back into the agent as recall results, session briefings, or profile context.
 
-- EverMemory SDK functions for memory, briefing, profile, reflection, import/export, relations, and status flows
-- Butler SDK helpers for status, briefing, tuning, and review
-- OpenClaw tool registration across memory, briefing/status, profile/rules, import/export, and Butler surfaces
+That is the point of the plugin: not just to remember, but to remember in a way the agent can actually use.
 
-The repo is not a minimal plugin package anymore. It is a plugin-plus-runtime codebase with operations scripts, internal references, release checks, and historical planning material.
+## Quick Start
 
-## Installation
-
-### OpenClaw plugin
+### Install As An OpenClaw Plugin
 
 ```bash
 openclaw plugins install evermemory@2.1.0
@@ -40,11 +35,32 @@ openclaw config set plugins.slots.memory evermemory
 openclaw gateway restart
 ```
 
-### SDK dependency
+### Install As An SDK
 
 ```bash
 npm install evermemory
 ```
+
+## What You Get
+
+- Persistent memory storage on SQLite via `better-sqlite3`
+- Governed memory write and recall behavior for OpenClaw workflows
+- Session briefing and recall flows for bringing the right context back
+- Profile projection and rule-governance layers for longer-running agent relationships
+- Import/export tools for moving memory across environments
+- Optional semantic recall with local or OpenAI-backed embeddings
+- Optional Butler overlays for strategic summaries, review flows, and broader operational context
+
+## How It Works
+
+1. **Capture**
+   The agent sees messages, tool outputs, and session signals that may be worth remembering.
+2. **Store**
+   EverMemory decides what should be persisted, then writes it into a local SQLite-backed memory store.
+3. **Retrieve**
+   Later queries use governed keyword, structured, and optional semantic recall to find relevant memory.
+4. **Brief And Govern**
+   Retrieved memory can feed briefings, profile projections, and rule flows so the agent acts with continuity instead of starting cold every time.
 
 ## Minimal SDK Example
 
@@ -55,13 +71,13 @@ const em = initializeEverMemory({
   databasePath: './memory.db',
 });
 
-const storeResult = em.evermemoryStore({
+em.evermemoryStore({
   content: 'User prefers concise code review comments.',
   source: { kind: 'tool', actor: 'system' },
   scope: { userId: 'user-1' },
 });
 
-const recallResult = await em.evermemoryRecall({
+const recall = await em.evermemoryRecall({
   query: 'code review preference',
   mode: 'hybrid',
   scope: { userId: 'user-1' },
@@ -69,19 +85,21 @@ const recallResult = await em.evermemoryRecall({
 });
 ```
 
-## Runtime Requirements
+## Requirements
 
 - Node.js `>=22`
 - OpenClaw peer dependency `>=2026.3.22 <2027`
 - SQLite native dependency via `better-sqlite3`
 - Optional native/image stack for local embeddings via `sharp` and `@xenova/transformers`
 
-## Known Caveats
+## Caveats
 
-- The repository currently contains historical internal and process documents; only the docs linked from [docs/INDEX.md](docs/INDEX.md) should be treated as maintained entrypoints.
-- The release-packaging tests currently fail in this repo snapshot; do not describe packaging/native bundling as fully verified unless you re-run and confirm.
-- Local semantic search is optional and may degrade gracefully when embedding dependencies are unavailable.
-- The Butler layer exists in code and plugin registration, but it materially increases system scope and operational complexity.
+- The maintained public docs are the ones linked from [docs/INDEX.md](docs/INDEX.md). Historical internal material should not be treated as the current product contract.
+- `npm run check` passes in the current repo snapshot.
+- `npm test` currently fails in release-packaging coverage, so native bundling should not be described as fully verified unless re-tested.
+- `npm pack --dry-run` succeeds, but packaging confidence is still gated by the failing release coverage tests above.
+- Semantic recall is optional and may degrade gracefully when embedding dependencies are unavailable.
+- The Butler layer is optional, but it materially increases system scope and operational complexity.
 
 ## Documentation
 
@@ -94,7 +112,7 @@ const recallResult = await em.evermemoryRecall({
 - [Security Policy](SECURITY.md)
 - [中文 README](README.zh-CN.md)
 
-## Development
+## Development Snapshot
 
 ```bash
 npm install
@@ -103,4 +121,4 @@ npm test
 npm pack --dry-run
 ```
 
-For a fuller maintenance view, see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+For a maintainer-oriented view of the repository, start with [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
