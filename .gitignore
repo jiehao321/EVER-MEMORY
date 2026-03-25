@@ -4,8 +4,10 @@ node_modules/
 # Build outputs
 dist/
 dist-test/
+dist-target-*/
 *.tsbuildinfo
 .tsbuildinfo-test
+*.tgz
 
 # Runtime data
 .openclaw/
@@ -13,14 +15,33 @@ dist-test/
 *.sqlite
 *.sqlite3
 
+# Process / planning artifacts
+task_plan.md
+findings.md
+progress.md
+PHASE*_COMPLETION_SUMMARY.md
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Internal docs (archived process artifacts)
-docs/internal/
+# Internal docs are mostly archival/maintainer-only.
+docs/internal/*
+!docs/internal/INDEX.md
+!docs/internal/archive/
+docs/internal/archive/*
+!docs/internal/archive/history/
+!docs/internal/archive/process/
+docs/internal/archive/history/*
+docs/internal/archive/process/*
+!docs/internal/archive/history/INDEX.md
+!docs/internal/archive/process/INDEX.md
+!docs/internal/archive/process/PHASE1_COMPLETION_SUMMARY.md
+!docs/internal/archive/process/findings-2026-03-25-doc-cleanup.md
+!docs/internal/archive/process/progress-2026-03-25-doc-cleanup.md
+!docs/internal/archive/process/task_plan-2026-03-25-doc-cleanup.md
 
 # OS/editor
 .DS_Store

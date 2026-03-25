@@ -6,3 +6,8 @@ docs/
 .claude/
 tsconfig*.json
 *.test.ts
+task_plan.md
+findings.md
+progress.md
+PHASE*_COMPLETION_SUMMARY.md
+dist-target-*/

@@ -1,74 +1,80 @@
 # Contributing to EverMemory
 
+## Repository
+
+Current package metadata points to:
+
+- repository: `jiehao321/EVER-MEMORY`
+- package name: `evermemory`
+
+Do not rely on older docs that point at other repository paths.
+
 ## Prerequisites
+
 - Node.js 22+
 - npm
+- OpenClaw only if you are working on plugin integration paths
 
-## Development Setup
+## Setup
+
 ```bash
-git clone https://github.com/anthropics/evermemory.git
-cd evermemory
+git clone https://github.com/jiehao321/EVER-MEMORY.git
+cd EVER-MEMORY
 npm install
-npm run build
 ```
 
-## Build & Test
-| Command | Purpose |
-|---|---|
-| npm run build | Build with fingerprint cache |
-| npm run build:test | Build test suite |
-| npm run check | TypeScript type check (no emit) |
-| npm test | Run unit tests |
-| npm run validate | Full validation: doctor + check + test |
-| npm run doctor | Diagnose database, migrations, embeddings health |
+## Core Development Commands
 
-## Project Structure
+```bash
+npm run check
+npm test
+npm pack --dry-run
 ```
+
+Other repo scripts exist for release, security, continuity, soak, and operational workflows. Treat them as maintenance scripts, not all as required local contributor steps.
+
+## Current Verification Reality
+
+At the time this doc was updated:
+
+- `npm run check` passes
+- `npm test` is not fully green
+
+Contributors should avoid updating docs or release notes to imply full test/package health unless they have re-run the relevant commands and confirmed the result.
+
+## Project Layout
+
+```text
 src/
-  core/           # Core services (memory, behavior, briefing, intent, reflection, profile, analytics)
-  retrieval/      # Retrieval strategies (structured, keyword, hybrid, semantic)
-  embedding/      # Embedding providers (local, openai, none)
-  storage/        # SQLite repositories and migrations
-  hooks/          # Lifecycle hooks (sessionStart, messageReceived, sessionEnd)
-  openclaw/       # OpenClaw plugin adapter
-  tools/          # Tool implementations (16 tools)
-  types/          # TypeScript type definitions
-  runtime/        # Runtime context management
-  util/           # Utilities
-  config.ts       # Configuration loader
-  constants.ts    # Constants
-  errors.ts       # Error types
-  index.ts        # Public API entry point
-test/             # Test files
-scripts/          # Build, CI, and operations scripts
-docs/             # Documentation
+  core/         domain services, including Butler
+  retrieval/    retrieval pipeline and strategies
+  embedding/    embedding providers and manager
+  storage/      SQLite repositories and migrations
+  hooks/        lifecycle hook handlers
+  openclaw/     OpenClaw adapter and tool registration
+  tools/        SDK-level tool functions
+  types/        type definitions
+docs/
+  public docs
+  internal/     maintainer references and archive
+test/
+  unit, integration, and script coverage
+scripts/
+  build/release/ops utilities
 ```
 
-## Quality Gates
+## Documentation Rules
 
-Development:
-```bash
-npm run teams:dev          # ~17s dev gate (build + test + check)
-```
+- Keep [docs/INDEX.md](/root/evermemory/docs/INDEX.md) as the public doc entrypoint.
+- Keep README and GUIDE aligned with live repo status.
+- Treat `docs/internal/` as maintainer material, not as the default public surface.
+- Do not add new process/planning files to the repo root.
 
-Release:
-```bash
-npm run teams:release      # Full release gate
-npm run quality:gate:full  # Comprehensive validation with soak
-npm run stability:check    # Stability verification
-```
+## Pull Requests
 
-## Test Coverage
-- Target: 80%+ on critical paths
-- Storage, retrieval, and migration layers must have regression tests
-- Run npm run validate before submitting changes
+Before opening a PR:
 
-## Commit Conventions
-Format: `<type>: <description>`
-Types: feat, fix, refactor, docs, test, chore, perf, ci
-
-## Pull Request Process
-1. Create a feature branch
-2. Make changes with tests
-3. Run npm run validate
-4. Submit PR with description of changes and test plan
+1. run the smallest relevant verification commands
+2. update docs only when the code or observable repo state actually changed
+3. call out any tests you could not make pass
+4. be explicit about packaging or native dependency impact when relevant

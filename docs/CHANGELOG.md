@@ -3,6 +3,15 @@
 All notable changes to EverMemory are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Repository Status Note
+
+This changelog is historical release documentation, not a substitute for current repository verification.
+
+For the current repo snapshot:
+
+- use [README.md](/root/evermemory/README.md) and [docs/INDEX.md](/root/evermemory/docs/INDEX.md) as the maintained documentation entrypoints
+- confirm test and packaging status from live commands before repeating release-health claims
+
 ## [2.0.0] - 2026-03-24
 
 ### Added — Butler Agent (Phase 1–3)

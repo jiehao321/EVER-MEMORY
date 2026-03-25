@@ -1,809 +1,130 @@
 # EverMemory API Reference
 
-## Tools
+This file summarizes the maintained API surface visible in the current repository.
 
-EverMemory exports 19 SDK tool functions from `src/tools/index.ts`.
+Current SDK export count: 23
 
-- TypeScript SDK names use camelCase (e.g. `evermemoryStore`).
-- OpenClaw registered names use snake_case (e.g. `evermemory_store`).
-- `evermemorySmartness` is exported by the SDK but not currently registered in OpenClaw.
-- OpenClaw currently registers 18 tools; the remaining SDK capability is `evermemorySmartness`.
+## SDK Exports
 
-### evermemoryStore
-OpenClaw: `evermemory_store` (`memory_store`)
+Current SDK exports from [src/tools/index.ts](/root/evermemory/src/tools/index.ts):
 
-Store a memory item.
+### Core EverMemory SDK functions
 
-**Parameters**:
+- `evermemoryStore`
+- `evermemoryRecall`
+- `evermemoryEdit`
+- `evermemoryBrowse`
+- `evermemoryBriefing`
+- `evermemoryStatus`
+- `evermemorySmartness`
+- `evermemoryIntent`
+- `evermemoryReflect`
+- `evermemoryRules`
+- `evermemoryProfile`
+- `evermemoryOnboard`
+- `evermemoryConsolidate`
+- `evermemoryExplain`
+- `evermemoryExport`
+- `evermemoryImport`
+- `evermemoryReview`
+- `evermemoryRestore`
+- `evermemoryRelations`
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| content | string | Yes | Memory content. |
-| type | `MemoryType` | No | Memory type: `identity` `fact` `preference` `decision` `commitment` `relationship` `task` `project` `style` `summary` `constraint`. |
-| lifecycle | `MemoryLifecycle` | No | Lifecycle stage: `working` `episodic` `semantic` `archive`. |
-| scope | `MemoryScope` | No | Scope: `{ userId?, chatId?, project?, global? }`. |
-| source | `MemorySource` | No | Write source: `{ kind, actor?, sessionId?, messageId?, channel? }`. Defaults to `{ kind: "tool", actor: "system" }`. |
-| tags | string[] | No | Tags. |
-| relatedEntities | string[] | No | Related entity IDs. |
+### Butler SDK functions
 
-**Returns**: `EverMemoryStoreToolResult`
+- `butlerStatus`
+- `butlerBrief`
+- `butlerTune`
+- `butlerReview`
+
+## OpenClaw Tool Surface
+
+Tool registration is assembled in [src/openclaw/plugin.ts](/root/evermemory/src/openclaw/plugin.ts) from grouped registration modules.
+
+### Memory / retrieval / archive
+
+- `evermemory_store`
+- `evermemory_recall`
+- `evermemory_edit`
+- `evermemory_browse`
+- `evermemory_review`
+- `evermemory_restore`
+- `evermemory_relations`
+
+Legacy compatibility aliases also exist for a small subset, such as `memory_store`, `memory_recall`, `memory_export`, and `memory_import`.
+
+### Briefing / explain / status
+
+- `evermemory_status`
+- `evermemory_briefing`
+- `evermemory_explain`
+
+### Profile / intent / rules
+
+- `evermemory_profile`
+- `profile_onboard`
+- `evermemory_intent`
+- `evermemory_reflect`
+- `evermemory_rules`
+- `evermemory_consolidate`
+
+### Import / export
+
+- `evermemory_export`
+- `evermemory_import`
+
+### Butler
+
+- `butler_status`
+- `butler_brief`
+- `butler_tune`
+- `butler_review`
+
+## Common Call Patterns
+
+### Initialize the runtime
+
 ```ts
-{
-  accepted: boolean;
-  reason: string;
-  memory: MemoryItem | null;
-}
+import { initializeEverMemory } from 'evermemory';
+
+const em = initializeEverMemory({
+  databasePath: './memory.db',
+});
 ```
 
-**Example**:
-```json
-{
-  "content": "User prefers TypeScript",
-  "type": "preference",
-  "lifecycle": "semantic",
-  "tags": ["language", "engineering"]
-}
-```
+### Store
 
-### evermemoryRecall
-OpenClaw: `evermemory_recall` (`memory_recall`)
-
-Recall relevant memories.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| query | string | Yes | Query text. |
-| scope | `MemoryScope` | No | Recall scope. |
-| types | `MemoryType[]` | No | Filter by memory types. |
-| lifecycles | `MemoryLifecycle[]` | No | Filter by lifecycle stages. |
-| mode | `RetrievalMode` | No | Retrieval mode: `structured` `keyword` `hybrid`. |
-| limit | number | No | Maximum items to return. |
-
-**Returns**: `RecallResult`
 ```ts
-{
-  items: MemoryItem[];
-  total: number;
-  limit: number;
-}
+const result = em.evermemoryStore({
+  content: 'User prefers concise comments.',
+  source: { kind: 'tool', actor: 'system' },
+  scope: { userId: 'user-1' },
+});
 ```
 
-**Example**:
-```json
-{
-  "query": "code style preferences",
-  "mode": "hybrid",
-  "limit": 5
-}
-```
+### Recall
 
-### evermemoryBriefing
-OpenClaw: `evermemory_briefing`
-
-Generate a session startup briefing.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| sessionId | string | No | Target session ID. |
-| scope | `MemoryScope` | No | Briefing scope. |
-| tokenTarget | number | No | Target token budget. |
-
-**Returns**: `BootBriefing`
 ```ts
-{
-  id: string;
-  sessionId?: string;
-  userId?: string;
-  generatedAt: string;
-  sections: {
-    identity: string[];
-    constraints: string[];
-    recentContinuity: string[];
-    activeProjects: string[];
-  };
-  tokenTarget: number;
-  actualApproxTokens: number;
-  optimization?: {
-    duplicateBlocksRemoved: number;
-    tokenPrunedBlocks: number;
-    highValueBlocksKept: number;
-  };
-}
+const result = await em.evermemoryRecall({
+  query: 'comment preference',
+  mode: 'hybrid',
+  scope: { userId: 'user-1' },
+  limit: 5,
+});
 ```
 
-**Example**:
-```json
-{
-  "sessionId": "sess_123",
-  "tokenTarget": 900
-}
-```
+### Briefing
 
-### evermemoryStatus
-OpenClaw: `evermemory_status`
-
-Return system status summary.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| userId | string | No | Filter status by user. |
-| sessionId | string | No | Associated session ID. |
-
-**Returns**: `EverMemoryStatusToolResult`
 ```ts
-{
-  schemaVersion: number;
-  databasePath: string;
-  memoryCount: number;
-  activeMemoryCount?: number;
-  archivedMemoryCount?: number;
-  semanticIndexCount?: number;
-  profileCount?: number;
-  experienceCount?: number;
-  reflectionCount?: number;
-  activeRuleCount?: number;
-  countsByType: Partial<Record<MemoryType, number>>;
-  countsByLifecycle: Partial<Record<MemoryLifecycle, number>>;
-  latestBriefing?: { id: string; generatedAt: string; userId?: string; sessionId?: string; };
-  latestReflection?: { id: string; createdAt: string; triggerKind: ReflectionTriggerKind; confidence: number; };
-  latestRule?: { id: string; updatedAt: string; category: BehaviorRule["category"]; priority: number; confidence: number; };
-  latestProfile?: { userId: string; updatedAt: string; stableCanonicalFields?: object; derivedWeakHints?: object; };
-  latestWriteDecision?: { createdAt: string; entityId?: string; accepted?: boolean; reason?: string; merged?: number; archivedStale?: number; profileRecomputed?: boolean; };
-  latestRetrieval?: { createdAt: string; query?: string; requestedMode?: string; mode?: string; returned?: number; candidates?: number; };
-  latestProfileRecompute?: { createdAt: string; userId?: string; memoryCount?: number; stable?: ProjectedProfile["stable"]; derived?: ProjectedProfile["derived"]; };
-  recentDebugByKind?: Partial<Record<DebugEventKind, number>>;
-  latestDebugEvents?: Array<{ createdAt: string; kind: DebugEventKind; entityId?: string; }>;
-  continuityKpis?: {
-    sampleWindow: { sessionEndEvents: number; retrievalEvents: number; };
-    autoMemory: { generated: number; accepted: number; rejected: number; acceptRate?: number; generatedByKind?: Record<string, number>; acceptedByKind?: Record<string, number>; };
-    projectSummary: { generated: number; accepted: number; acceptRate?: number; };
-    retrievalPolicy: { suppressedTestCandidates: number; retainedTestCandidates: number; projectRoutedExecutions: number; projectRoutedHits: number; projectRouteHitRate?: number; };
-  };
-  runtimeSession?: RuntimeSessionContext;
-  recentDebugEvents: number;
-}
+const briefing = em.evermemoryBriefing({
+  scope: { userId: 'user-1' },
+  tokenTarget: 1200,
+});
 ```
 
-**Example**:
-```json
-{
-  "userId": "u_001"
-}
-```
-
-### evermemorySmartness
-OpenClaw: Not registered
-
-Generate a human-readable smartness report.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| userId | string | No | Target user ID. |
-
-**Returns**: `string`
-
-**Example**:
-```json
-{
-  "userId": "u_001"
-}
-```
-
-### evermemoryIntent
-OpenClaw: `evermemory_intent`
-
-Analyze message intent and persist the record.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| message | string | Yes | User message text. |
-| sessionId | string | No | Session ID. |
-| messageId | string | No | Message ID. |
-| scope | `MemoryScope` | No | Analysis scope. |
-
-**Returns**: `IntentRecord`
-```ts
-{
-  id: string;
-  sessionId?: string;
-  messageId?: string;
-  createdAt: string;
-  rawText: string;
-  intent: { type: IntentType; subtype?: string; confidence: number; };
-  signals: {
-    urgency: IntentUrgency;
-    emotionalTone: IntentEmotionalTone;
-    actionNeed: IntentActionNeed;
-    memoryNeed: IntentMemoryNeed;
-    preferenceRelevance: number;
-    correctionSignal: number;
-  };
-  entities: Array<{ type: string; value: string; confidence: number; }>;
-  retrievalHints: {
-    preferredTypes: MemoryType[];
-    preferredScopes: RetrievalScopeHint[];
-    preferredTimeBias: RetrievalTimeBias;
-  };
-}
-```
-
-**Example**:
-```json
-{
-  "message": "From now on, prefer TypeScript for code examples and keep them concise."
-}
-```
-
-### evermemoryReflect
-OpenClaw: `evermemory_reflect`
-
-Generate reflections and candidate rules from experience records.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| sessionId | string | No | Only process experiences from this session. |
-| mode | `"light" \| "full"` | No | Reflection depth. |
-
-**Returns**: `EverMemoryReflectToolResult`
-```ts
-{
-  reflections: ReflectionRecord[];
-  candidateRules: string[];
-  summary: {
-    processedExperiences: number;
-    createdReflections: number;
-  };
-}
-```
-
-**Example**:
-```json
-{
-  "sessionId": "sess_123",
-  "mode": "full"
-}
-```
-
-### evermemoryRules
-OpenClaw: `evermemory_rules`
-
-Query rules or execute governance actions on a specific rule.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| scope | `MemoryScope` | No | Rule scope. |
-| intentType | `IntentType` | No | Filter by intent type. |
-| channel | string | No | Filter by channel. |
-| contexts | string[] | No | Filter by context tags. |
-| limit | number | No | Maximum items to return. |
-| includeInactive | boolean | No | Include inactive rules. |
-| includeDeprecated | boolean | No | Include deprecated rules. |
-| includeFrozen | boolean | No | Include frozen rules. |
-| action | `"freeze" \| "deprecate" \| "rollback"` | No | Governance action; requires `ruleId`. |
-| ruleId | string | No | Target rule ID. |
-| reason | string | No | Action reason. |
-| reflectionId | string | No | Associated reflection ID. |
-| replacementRuleId | string | No | Replacement rule ID. |
-
-**Returns**: `EverMemoryRulesToolResult`
-```ts
-{
-  rules: BehaviorRule[];
-  total: number;
-  filters: {
-    userId?: string;
-    intentType?: IntentType;
-    channel?: string;
-    contexts?: string[];
-    limit: number;
-    includeInactive?: boolean;
-    includeDeprecated?: boolean;
-    includeFrozen?: boolean;
-  };
-  governance: {
-    levels: BehaviorRule["lifecycle"]["level"][];
-    maturities: BehaviorRule["lifecycle"]["maturity"][];
-    frozenCount: number;
-    staleCount: number;
-    maxDecayScore: number;
-  };
-  mutation?: {
-    action: BehaviorRuleMutationAction;
-    changed: boolean;
-    reason: string;
-    rule: BehaviorRule | null;
-  };
-}
-```
-
-**Example**:
-```json
-{
-  "intentType": "instruction",
-  "limit": 5
-}
-```
-
-### evermemoryProfile
-OpenClaw: `evermemory_profile`
-
-Read or recompute a user profile.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| userId | string | No | User ID; returns latest profile if empty. |
-| recompute | boolean | No | Force recomputation. |
-
-**Returns**: `EverMemoryProfileToolResult`
-```ts
-{
-  profile: ProjectedProfile | null;
-  source: "recomputed" | "stored" | "latest" | "none";
-  summary?: {
-    stableCanonicalFields: number;
-    derivedHintFields: number;
-    derivedGuardrail: "weak_hint_only";
-  };
-}
-```
-
-**Example**:
-```json
-{
-  "userId": "u_001",
-  "recompute": true
-}
-```
-
-### evermemoryOnboard
-OpenClaw: `profile_onboard`
-
-Execute first-run profile onboarding.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| userId | string | No | User ID; OpenClaw registration layer requires a resolvable user ID. |
-| responses | `OnboardingResponse[]` | No | Response list: `[{ questionId, answer }]`. |
-
-**Returns**: `EverMemoryOnboardingToolResult`
-```ts
-{
-  needsOnboarding: boolean;
-  questions: readonly OnboardingQuestion[];
-  welcomeMessage?: string;
-  completionMessage?: string;
-  result?: OnboardingResult;
-}
-```
-
-**Example**:
-```json
-{
-  "userId": "u_001",
-  "responses": [
-    { "questionId": "display_name", "answer": "Alice" },
-    { "questionId": "language", "answer": "English" }
-  ]
-}
-```
-
-### evermemoryConsolidate
-OpenClaw: `evermemory_consolidate`
-
-Execute memory consolidation and lifecycle maintenance.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| mode | `ConsolidationMode` | No | Mode: `light` `daily` `deep`. |
-| scope | `MemoryScope` | No | Only consolidate within this scope. |
-
-**Returns**: `EverMemoryConsolidateToolResult`
-```ts
-{
-  mode: ConsolidationMode;
-  processed: number;
-  merged: number;
-  archivedStale: number;
-}
-```
-
-**Example**:
-```json
-{
-  "mode": "daily"
-}
-```
-
-### evermemoryExplain
-OpenClaw: `evermemory_explain`
-
-Explain write, retrieval, rule, session, archive, or intent decisions.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| topic | `EverMemoryExplainTopic` | No | Topic: `write` `retrieval` `rule` `session` `archive` `intent`. Defaults to `write`. |
-| entityId | string | No | Filter to a specific entity. |
-| limit | number | No | Number of items to return (clamped to 1..20). |
-
-**Returns**: `EverMemoryExplainToolResult`
-```ts
-{
-  topic: EverMemoryExplainTopic;
-  total: number;
-  items: Array<{
-    createdAt: string;
-    kind: DebugEventKind;
-    entityId?: string;
-    question: string;
-    answer: string;
-    evidence: Record<string, unknown>;
-    meta?: {
-      outcome: "accepted" | "rejected" | "skipped" | "applied" | "reviewed";
-      affectedCount?: number;
-      reason?: string;
-      categories?: string[];
-    };
-  }>;
-}
-```
-
-**Example**:
-```json
-{
-  "topic": "retrieval",
-  "limit": 3
-}
-```
-
-### evermemoryExport
-OpenClaw: `evermemory_export` (`memory_export`)
-
-Export a memory snapshot. SDK returns a structured snapshot; OpenClaw registration layer additionally supports `format=json|markdown` text export.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| scope | `MemoryScope` | No | Export scope. |
-| includeArchived | boolean | No | Include archived items. |
-| limit | number | No | Export limit. |
-
-**OpenClaw Extended Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| format | `"json" \| "markdown"` | No | Return plain text export instead of snapshot object. |
-
-**Returns**: `EverMemoryExportToolResult`
-```ts
-{
-  snapshot: {
-    format: "evermemory.snapshot.v1";
-    generatedAt: string;
-    total: number;
-    items: MemoryItem[];
-  };
-  summary: {
-    exported: number;
-    includeArchived: boolean;
-    scope?: MemoryScope;
-  };
-}
-```
-
-**Example**:
-```json
-{
-  "scope": { "userId": "u_001" },
-  "includeArchived": true,
-  "limit": 100
-}
-```
-
-### evermemoryImport
-OpenClaw: `evermemory_import` (`memory_import`)
-
-Import a memory snapshot. SDK accepts a snapshot; OpenClaw registration layer additionally supports `content + format` for JSON/Markdown import.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| snapshot | `EverMemorySnapshotV1` | Yes | Snapshot to import. |
-| mode | `"review" \| "apply"` | No | Import mode. |
-| approved | boolean | No | Whether to approve the import. |
-| allowOverwrite | boolean | No | Allow overwriting items with the same ID. |
-| scopeOverride | `MemoryScope` | No | Force scope override during import. |
-
-**OpenClaw Extended Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| content | string | No | JSON or Markdown text. |
-| format | `"json" \| "markdown"` | No | Format of `content`. |
-
-**Returns**: `EverMemoryImportToolResult`
-```ts
-{
-  mode: "review" | "apply";
-  approved: boolean;
-  applied: boolean;
-  total: number;
-  toCreate: number;
-  toUpdate: number;
-  imported: number;
-  updated: number;
-  rejected: Array<{ id?: string; reason: string; detail?: string; hint?: string; }>;
-  summary: {
-    totalRequested: number;
-    accepted: number;
-    rejected: number;
-    acceptedByType: Record<string, number>;
-    rejectedByReason: Record<string, number>;
-  };
-}
-```
-
-**Example**:
-```json
-{
-  "snapshot": {
-    "format": "evermemory.snapshot.v1",
-    "generatedAt": "2026-03-15T10:00:00.000Z",
-    "total": 1,
-    "items": []
-  },
-  "mode": "review"
-}
-```
-
-### evermemoryReview
-OpenClaw: `evermemory_review`
-
-Review archived memories, optionally with rule provenance.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| scope | `MemoryScope` | No | Review scope. |
-| query | string | No | Keyword filter. |
-| limit | number | No | Maximum items to return. |
-| includeSuperseded | boolean | No | Include superseded items. |
-| ruleId | string | No | Also return the review result for this rule. |
-
-**Returns**: `EverMemoryReviewToolResult`
-```ts
-{
-  total: number;
-  candidates: Array<{
-    id: string;
-    content: string;
-    type: MemoryType;
-    lifecycle: MemoryLifecycle;
-    scope: MemoryScope;
-    updatedAt: string;
-    supersededBy?: string;
-    restoreEligible: boolean;
-    reason?: string;
-  }>;
-  ruleReview?: BehaviorRuleReviewRecord;
-}
-```
-
-**Example**:
-```json
-{
-  "query": "TypeScript",
-  "includeSuperseded": false,
-  "limit": 10
-}
-```
-
-### evermemoryRestore
-OpenClaw: `evermemory_restore`
-
-Restore archived memories.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| ids | string[] | Yes | Memory IDs to restore. |
-| mode | `"review" \| "apply"` | No | Restore mode. |
-| approved | boolean | No | Whether to approve execution. |
-| targetLifecycle | `"working" \| "episodic" \| "semantic"` | No | Lifecycle after restoration. |
-| allowSuperseded | boolean | No | Allow restoring superseded items. |
-
-**Returns**: `EverMemoryRestoreToolResult`
-```ts
-{
-  mode: "review" | "apply";
-  approved: boolean;
-  applied: boolean;
-  appliedAt?: string;
-  total: number;
-  restorable: number;
-  restored: number;
-  targetLifecycle: "working" | "episodic" | "semantic";
-  userImpact?: {
-    affectedUserIds: string[];
-    restoredByType: Record<string, number>;
-  };
-  rejected: Array<{ id?: string; reason: string; }>;
-}
-```
-
-**Example**:
-```json
-{
-  "ids": ["mem_001", "mem_002"],
-  "mode": "review",
-  "targetLifecycle": "episodic"
-}
-```
-
-### evermemoryEdit
-OpenClaw: `evermemory_edit`
-
-Edit, delete, correct, merge, pin, or unpin a memory item.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| memoryId | string | Yes | Target memory ID. |
-| action | `'update' \| 'delete' \| 'correct' \| 'merge' \| 'pin' \| 'unpin'` | Yes | Edit action to perform. |
-| newContent | string | No | New content (for update/correct). |
-| mergeWithId | string | No | ID to merge with (for merge action). |
-| reason | string | No | Reason for the edit. |
-
-**Returns**: `EverMemoryEditToolResult`
-```ts
-{
-  success: boolean;
-  error?: string;
-  previous: { id: string; content: string; type: MemoryType; lifecycle: MemoryLifecycle } | null;
-  current: { id: string; content: string; type: MemoryType; lifecycle: MemoryLifecycle } | null;
-}
-```
-
-**Example**:
-```json
-{
-  "memoryId": "mem_001",
-  "action": "correct",
-  "newContent": "User prefers dark mode in all IDEs",
-  "reason": "Updated preference"
-}
-```
-
-### evermemoryBrowse
-OpenClaw: `evermemory_browse`
-
-Browse and filter memories with sorting and at-risk flagging.
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| type | `MemoryType \| 'all'` | No | Filter by type. |
-| lifecycle | `MemoryLifecycle` | No | Filter by lifecycle. |
-| limit | number | No | Maximum items. |
-| sortBy | `'recent' \| 'importance' \| 'accessed' \| 'written'` | No | Sort order. |
-| sinceMinutesAgo | number | No | Only items updated within N minutes. |
-| scope | `MemoryScope` | No | Filter by scope. |
-| source | string | No | Filter by source kind. |
-
-**Returns**: `EverMemoryBrowseToolResult`
-```ts
-{
-  items: Array<{
-    id: string;
-    content: string;
-    type: MemoryType;
-    lifecycle: MemoryLifecycle;
-    confidence: number;
-    lastAccessedAt?: string;
-    ageInDays: number;
-    atRiskOfArchival: boolean;
-  }>;
-  total: number;
-  summary: string;
-}
-```
-
-**Example**:
-```json
-{
-  "type": "preference",
-  "sortBy": "recent",
-  "limit": 10
-}
-```
-
-### evermemoryRelations
-OpenClaw: `evermemory_relations`
-
-Manage memory relations (knowledge graph edges).
-
-**Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| action | `'list' \| 'add' \| 'remove' \| 'graph'` | Yes | Action to perform. |
-| memoryId | string | No | Source memory ID (required for list/add/graph). |
-| targetId | string | No | Target memory ID (required for add). |
-| relationType | `RelationType` | No | Relation type: `causes \| contradicts \| supports \| evolves_from \| supersedes \| depends_on \| related_to` (required for add). |
-| confidence | number | No | Confidence score (0-1). |
-| depth | number | No | Graph traversal depth (for graph action, default 2). |
-| limit | number | No | Max results. |
-| relationId | string | No | Relation ID (for remove action). |
-
-**Returns**: `EverMemoryRelationsToolResult`
-```ts
-{
-  action: RelationsAction;
-  relations?: MemoryRelation[];
-  graph?: GraphNode[];
-  added?: MemoryRelation;
-  removed?: boolean;
-  total: number;
-}
-```
-
-**Example**:
-```json
-{
-  "action": "graph",
-  "memoryId": "mem_001",
-  "depth": 2,
-  "limit": 20
-}
-```
-
-## OpenClaw Name Mapping
-
-| SDK Name | OpenClaw Name |
-|----------|---------------|
-| evermemoryStore | `evermemory_store`, `memory_store` |
-| evermemoryRecall | `evermemory_recall`, `memory_recall` |
-| evermemoryBriefing | `evermemory_briefing` |
-| evermemoryStatus | `evermemory_status` |
-| evermemorySmartness | Not registered |
-| evermemoryIntent | `evermemory_intent` |
-| evermemoryReflect | `evermemory_reflect` |
-| evermemoryRules | `evermemory_rules` |
-| evermemoryProfile | `evermemory_profile` |
-| evermemoryOnboard | `profile_onboard` |
-| evermemoryConsolidate | `evermemory_consolidate` |
-| evermemoryExplain | `evermemory_explain` |
-| evermemoryExport | `evermemory_export`, `memory_export` |
-| evermemoryImport | `evermemory_import`, `memory_import` |
-| evermemoryReview | `evermemory_review` |
-| evermemoryRestore | `evermemory_restore` |
-| evermemoryEdit | `evermemory_edit` |
-| evermemoryBrowse | `evermemory_browse` |
-| evermemoryRelations | `evermemory_relations` |
+## Surface Notes
+
+- SDK and plugin surfaces are related but not identical.
+- `evermemorySmartness` exists on the SDK side and is not documented here as an OpenClaw-registered tool.
+- Butler APIs are optional operational features, not the minimal memory plugin surface.
+- For exact argument shapes, use the TypeScript definitions in [src/types](/root/evermemory/src/types) and the tool registration schemas in [src/openclaw/tools](/root/evermemory/src/openclaw/tools).
