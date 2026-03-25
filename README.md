@@ -1,6 +1,10 @@
 # EverMemory
 
-EverMemory gives OpenClaw a long-term memory that feels useful instead of noisy.
+[中文](README.zh-CN.md) | English
+
+**Long-term memory for OpenClaw that stays useful at the moment it matters.**
+
+`OpenClaw plugin` `Local SQLite memory` `Governed write/recall` `Optional semantic recall`
 
 It helps an agent remember preferences, constraints, recurring facts, and session context, then bring the right pieces back when they matter. Instead of treating memory as a raw chat dump, EverMemory stores it locally, governs what gets written, and turns recall into briefings, profiles, and usable context.
 
