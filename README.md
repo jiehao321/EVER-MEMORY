@@ -1,12 +1,29 @@
 # EverMemory
 
-[中文](README.zh-CN.md) | English
+<p align="center"><strong>English</strong> · <a href="./README.zh-CN.md">中文</a></p>
 
-**Long-term memory for OpenClaw that stays useful at the moment it matters.**
+<p align="center"><strong>Useful long-term memory for OpenClaw.</strong></p>
 
-`OpenClaw plugin` `Local SQLite memory` `Governed write/recall` `Optional semantic recall`
+<p align="center">Local SQLite storage, governed write and recall behavior, optional semantic search, and session continuity that stays practical.</p>
 
-It helps an agent remember preferences, constraints, recurring facts, and session context, then bring the right pieces back when they matter. Instead of treating memory as a raw chat dump, EverMemory stores it locally, governs what gets written, and turns recall into briefings, profiles, and usable context.
+<p align="center">
+  <code>OpenClaw plugin</code>
+  <code>SQLite-backed</code>
+  <code>Governed write/recall</code>
+  <code>Optional semantic search</code>
+</p>
+
+EverMemory helps an agent remember preferences, constraints, recurring facts, and session context, then bring the right pieces back when they matter. Instead of treating memory as a raw chat dump, it stores memory locally, governs what gets written, and turns recall into briefings, profiles, and usable context.
+
+## At A Glance
+
+| What it does | Why it matters |
+| --- | --- |
+| Remembers preferences, identity facts, constraints, and working context | Your agent does not need to restart from zero every session |
+| Stores memory locally in SQLite | Memory stays durable and inspectable instead of living only in prompt history |
+| Uses governed write and recall behavior | You get more signal and less noisy memory accumulation |
+| Builds briefings, profiles, and rules overlays | Recalled memory comes back in forms an agent can actually use |
+| Supports optional semantic recall and optional Butler overlays | You can extend depth and strategy without making them mandatory |
 
 ## Why It Feels Different
 
@@ -44,6 +61,8 @@ openclaw gateway restart
 ```bash
 npm install evermemory
 ```
+
+If you are evaluating the project as a plugin first, start with the OpenClaw install path above and then read [docs/GUIDE.md](docs/GUIDE.md).
 
 ## What You Get
 

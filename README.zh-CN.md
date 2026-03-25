@@ -1,12 +1,29 @@
 # EverMemory
 
-[English](README.md) | 中文
+<p align="center"><a href="./README.md">English</a> · <strong>中文</strong></p>
 
-**给 OpenClaw 的长期记忆系统，在真正需要的时候把重要信息带回来。**
+<p align="center"><strong>给 OpenClaw 的长期记忆系统，在真正需要的时候把重要信息带回来。</strong></p>
 
-`OpenClaw 插件` `本地 SQLite 记忆` `受控写入/召回` `可选语义检索`
+<p align="center">本地 SQLite 存储、受控写入与召回、可选语义检索，以及真正服务于连续会话的记忆能力。</p>
+
+<p align="center">
+  <code>OpenClaw 插件</code>
+  <code>SQLite 持久化</code>
+  <code>受控写入/召回</code>
+  <code>可选语义检索</code>
+</p>
 
 它会帮助 agent 记住用户偏好、长期约束、反复出现的事实和会话上下文，并在合适的时候把这些信息重新带回来。它不是简单地把对话原文塞进数据库，而是用本地存储、受控写入和受控召回，把记忆变成 briefing、画像和真正可用的上下文。
+
+## 一眼看懂
+
+| 它做什么 | 为什么有用 |
+| --- | --- |
+| 记住偏好、身份事实、约束条件和工作上下文 | agent 不需要每次新会话都重新开始 |
+| 把记忆落到本地 SQLite | 记忆更稳定、可持续，也更容易检查 |
+| 用受控写入和受控召回来治理记忆 | 降低噪音堆积，让记忆更有信号 |
+| 把召回结果组织成 briefing、画像和规则上下文 | 找回来的内容是 agent 真正能消费的形式 |
+| 支持可选语义召回和可选 Butler 层 | 需要更深能力时可以扩展，但不是强制依赖 |
 
 ## 为什么它不一样
 
@@ -44,6 +61,8 @@ openclaw gateway restart
 ```bash
 npm install evermemory
 ```
+
+如果你主要把它当成 OpenClaw 插件来评估，建议先走上面的插件安装路径，再继续阅读 [docs/GUIDE.md](docs/GUIDE.md)。
 
 ## 你会得到什么
 
