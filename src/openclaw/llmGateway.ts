@@ -121,6 +121,7 @@ export class ProviderDirectLlmGateway implements LlmGateway {
 
   private _authFailed = false;
   private _authVerified = false;
+  private _lastAuthError: string | undefined;
 
   constructor(options: ProviderDirectLlmGatewayOptions) {
     this.options = options;
@@ -137,6 +138,10 @@ export class ProviderDirectLlmGateway implements LlmGateway {
 
   get authVerified(): boolean {
     return this._authVerified;
+  }
+
+  get lastAuthError(): string | undefined {
+    return this._lastAuthError;
   }
 
   get defaultProvider(): string {
@@ -159,11 +164,14 @@ export class ProviderDirectLlmGateway implements LlmGateway {
     } catch (err) {
       this.logger.warn(`ProviderDirectLlmGateway: resolveApiKey threw for ${provider}: ${err instanceof Error ? err.message : String(err)}`);
       this._authFailed = true;
+      this._lastAuthError = 'resolveApiKey threw: ' + (err instanceof Error ? err.message : String(err));
       return buildUnavailableResponse('resolveApiKey threw');
     }
 
     if (!auth.apiKey) {
       this._authFailed = true;
+      this._lastAuthError = `no api key for provider=${provider}, mode=${auth.mode ?? 'unknown'}, source=${auth.source ?? 'unknown'}`;
+      this.logger.warn(`ProviderDirectLlmGateway: no api key returned for provider=${provider}, mode=${auth.mode ?? 'unknown'}, source=${auth.source ?? 'unknown'}`);
       return buildUnavailableResponse('no api key');
     }
 
@@ -199,6 +207,8 @@ export class ProviderDirectLlmGateway implements LlmGateway {
       });
 
       this._authVerified = true;
+      this._authFailed = false;
+      this._lastAuthError = undefined;
 
       const text = result.content
         .filter((c): c is { type: string; text: string } => c.type === 'text' && typeof c.text === 'string')
@@ -231,6 +241,7 @@ export class ProviderDirectLlmGateway implements LlmGateway {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes('401') || errMsg.includes('authentication') || errMsg.includes('Unauthorized')) {
         this._authFailed = true;
+        this._lastAuthError = errMsg;
       }
 
       this.logger.error(`ProviderDirectLlmGateway: ${provider} request error — ${errMsg}`);

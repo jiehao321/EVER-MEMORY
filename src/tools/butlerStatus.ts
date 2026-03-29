@@ -11,6 +11,7 @@ export interface ButlerStatusResult {
   mode: ButlerMode;
   llmAvailable: boolean;
   llmReadiness: 'ready' | 'untested' | 'unavailable';
+  llmLastAuthError?: string;
   llmProvider?: string;
   modeReason?: string;
   cycleVersion: number;
@@ -91,6 +92,7 @@ export function butlerStatus(input: {
     mode,
     llmAvailable: mode !== 'reduced',
     llmReadiness,
+    llmLastAuthError: input.llmClient?.getLastAuthError() ?? undefined,
     llmProvider: input.llmClient?.getProvider(),
     modeReason: mode === 'reduced' ? 'LLM gateway not available or API key missing' : undefined,
     cycleVersion: state?.lastCycleVersion ?? 0,

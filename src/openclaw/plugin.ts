@@ -69,8 +69,7 @@ export default definePluginEntry({
 
           // Build LLM gateway using pi-ai complete() with auth from runtime.modelAuth
           const runtimeModelAuth = api.runtime?.modelAuth;
-          const runtimeAgentDefaults = api.runtime?.agent?.defaults;
-          const hasModelAuth = runtimeModelAuth !== undefined && runtimeAgentDefaults !== undefined;
+          const hasModelAuth = runtimeModelAuth !== undefined;
           const llmGateway: ProviderDirectLlmGateway | undefined = hasModelAuth
             ? buildPiAiGateway(api)
             : undefined;
@@ -170,13 +169,17 @@ export default definePluginEntry({
       return result;
     };
 
-    // Lazy LLM probe — runs once on first session_start, upgrades Butler to steward mode if successful
+    // Lazy LLM probe — upgrades Butler to steward mode after a successful probe, retries after cooldown on failure
     const llmProbe = butler
       ? (() => {
-          let probed = false;
+          let probeSucceeded = false;
+          let lastProbeAttempt = 0;
+          const PROBE_COOLDOWN_MS = 30_000;
           return async () => {
-            if (probed) return;
-            probed = true;
+            if (probeSucceeded) return;
+            const now = Date.now();
+            if (now - lastProbeAttempt < PROBE_COOLDOWN_MS) return;
+            lastProbeAttempt = now;
             try {
               const probeResult = await butler.llmClient.invoke({
                 purpose: 'auth-probe',
@@ -187,13 +190,14 @@ export default definePluginEntry({
                 privacy: { level: 'cloud_allowed' },
               });
               if (probeResult.provider !== 'unavailable' && probeResult.provider !== 'error') {
+                probeSucceeded = true;
                 butler.stateManager.setMode('steward');
                 api.logger.info(`[EverMemory] Butler upgraded to steward mode (provider: ${probeResult.provider})`);
               } else {
-                api.logger.info('[EverMemory] Butler staying in reduced mode (LLM not available)');
+                api.logger.info('[EverMemory] Butler staying in reduced mode (LLM not available), will retry in 30s');
               }
             } catch (probeError: unknown) {
-              api.logger.info(`[EverMemory] Butler staying in reduced mode (LLM probe failed: ${probeError instanceof Error ? probeError.message : String(probeError)})`);
+              api.logger.info(`[EverMemory] Butler LLM probe failed (will retry in 30s): ${probeError instanceof Error ? probeError.message : String(probeError)}`);
             }
           };
         })()
@@ -404,10 +408,17 @@ function buildPiAiGateway(api: OpenClawPluginApi): ProviderDirectLlmGateway {
         const a = auth as { apiKey?: string; mode?: string };
         if (!a.apiKey) return model;
         const headers = (m.headers ?? {}) as Record<string, string>;
-        if (a.mode === 'token' || (a.apiKey.startsWith('sk-ant-o'))) {
+        const provider = (m.provider ?? '') as string;
+        // OAuth tokens always use Bearer
+        if (a.mode === 'token' || a.apiKey.startsWith('sk-ant-o')) {
           return { ...m, headers: { ...headers, authorization: `Bearer ${a.apiKey}` } };
         }
-        return { ...m, headers: { ...headers, 'x-api-key': a.apiKey } };
+        // Anthropic API keys use x-api-key header
+        if (provider === 'anthropic') {
+          return { ...m, headers: { ...headers, 'x-api-key': a.apiKey } };
+        }
+        // All other providers (OpenAI, Google, Azure, etc.) use Bearer
+        return { ...m, headers: { ...headers, authorization: `Bearer ${a.apiKey}` } };
       };
     }
     piAiLoaded = {
@@ -440,8 +451,8 @@ function buildPiAiGateway(api: OpenClawPluginApi): ProviderDirectLlmGateway {
       const loaded = (await ensurePiAi())!;
       return loaded.complete(model, context, options) as Promise<import('./llmGateway.js').PiAiAssistantMessage>;
     },
-    defaultProvider: api.runtime.agent.defaults.provider,
-    defaultModel: api.runtime.agent.defaults.model,
+    defaultProvider: api.runtime?.agent?.defaults?.provider ?? 'anthropic',
+    defaultModel: api.runtime?.agent?.defaults?.model ?? 'claude-sonnet-4-6',
     modelTiers: resolveModelTiers(api.pluginConfig),
     logger: api.logger,
   });

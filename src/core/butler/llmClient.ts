@@ -66,6 +66,14 @@ export class ButlerLlmClient {
     return this.gateway ? 'unknown' : undefined;
   }
 
+  getLastAuthError(): string | undefined {
+    if (!this.available) return undefined;
+    if (this.gateway && 'lastAuthError' in this.gateway) {
+      return (this.gateway as ProviderDirectLlmGateway).lastAuthError;
+    }
+    return undefined;
+  }
+
   async invoke(request: LlmRequest): Promise<LlmResponse> {
     if (!this.transport) {
       return buildUnavailableResponse('unavailable');

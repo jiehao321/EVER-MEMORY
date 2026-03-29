@@ -287,3 +287,123 @@ test('authVerified: set to true after successful complete call', async () => {
   await gateway.invoke(createRequest());
   assert.equal(gateway.authVerified, true);
 });
+
+test('authFailed recovery: after 401 then successful call → authFailed=false, authVerified=true', async () => {
+  const { logger } = createLogger();
+  let callCount = 0;
+  const flippingComplete = async (model: PiAiModel): Promise<PiAiAssistantMessage> => {
+    callCount++;
+    if (callCount === 1) {
+      throw new Error('401 Unauthorized: expired token');
+    }
+    return { content: [{ type: 'text', text: 'ok' }], usage: { inputTokens: 1, outputTokens: 1 } };
+  };
+  const { options } = createGatewayDefaults({ complete: flippingComplete });
+
+  const gateway = new ProviderDirectLlmGateway({ ...options, logger });
+
+  await gateway.invoke(createRequest());
+  assert.equal(gateway.authFailed, true, 'authFailed should be true after 401');
+  assert.ok(gateway.lastAuthError?.includes('401'), 'lastAuthError should contain 401');
+
+  await gateway.invoke(createRequest());
+  assert.equal(gateway.authFailed, false, 'authFailed should reset to false after success');
+  assert.equal(gateway.authVerified, true, 'authVerified should be true after success');
+  assert.equal(gateway.lastAuthError, undefined, 'lastAuthError should be cleared after success');
+});
+
+test('lastAuthError: no api key → lastAuthError contains provider and mode info', async () => {
+  const { logger, logs } = createLogger();
+  const { options } = createGatewayDefaults({
+    resolveApiKey: async () => ({ mode: 'oauth', source: 'profile' }),
+  });
+
+  const gateway = new ProviderDirectLlmGateway({ ...options, logger });
+  await gateway.invoke(createRequest());
+
+  assert.equal(gateway.authFailed, true);
+  assert.ok(gateway.lastAuthError?.includes('provider=anthropic'), 'lastAuthError should contain provider');
+  assert.ok(gateway.lastAuthError?.includes('mode=oauth'), 'lastAuthError should contain mode');
+  assert.ok(gateway.lastAuthError?.includes('source=profile'), 'lastAuthError should contain source');
+
+  const warnLogs = logs.filter(l => l.level === 'warn' && l.message.includes('no api key'));
+  assert.ok(warnLogs.length > 0, 'warn log should be emitted for missing api key');
+});
+
+test('applyAuth fallback: anthropic provider uses x-api-key header', async () => {
+  const { logger } = createLogger();
+  let capturedModel: PiAiModel | undefined;
+  const capturingComplete = async (model: PiAiModel): Promise<PiAiAssistantMessage> => {
+    capturedModel = model;
+    return { content: [{ type: 'text', text: 'ok' }], usage: { inputTokens: 1, outputTokens: 1 } };
+  };
+  const { options } = createGatewayDefaults({
+    resolveApiKey: async () => ({ apiKey: 'sk-ant-api-test-key' }),
+    applyAuth: (model, auth) => {
+      const headers = (model.headers ?? {}) as Record<string, string>;
+      if (auth.apiKey?.startsWith('sk-ant-o')) {
+        return { ...model, headers: { ...headers, authorization: `Bearer ${auth.apiKey}` } };
+      }
+      if (model.provider === 'anthropic') {
+        return { ...model, headers: { ...headers, 'x-api-key': auth.apiKey! } };
+      }
+      return { ...model, headers: { ...headers, authorization: `Bearer ${auth.apiKey}` } };
+    },
+    complete: capturingComplete,
+  });
+
+  const gateway = new ProviderDirectLlmGateway({ ...options, logger });
+  await gateway.invoke(createRequest());
+
+  assert.ok(capturedModel);
+  assert.equal(capturedModel.headers?.['x-api-key'], 'sk-ant-api-test-key');
+  assert.equal(capturedModel.headers?.authorization, undefined);
+});
+
+test('applyAuth fallback: openai provider uses Bearer header', async () => {
+  const { logger } = createLogger();
+  let capturedModel: PiAiModel | undefined;
+  const capturingComplete = async (model: PiAiModel): Promise<PiAiAssistantMessage> => {
+    capturedModel = model;
+    return { content: [{ type: 'text', text: 'ok' }], usage: { inputTokens: 1, outputTokens: 1 } };
+  };
+  const { options } = createGatewayDefaults({
+    resolveApiKey: async () => ({ apiKey: 'sk-openai-test-key' }),
+    getModel: (_p, _id) => createMockModel('openai', 'gpt-4o'),
+    applyAuth: (model, auth) => {
+      const headers = (model.headers ?? {}) as Record<string, string>;
+      if (auth.apiKey?.startsWith('sk-ant-o')) {
+        return { ...model, headers: { ...headers, authorization: `Bearer ${auth.apiKey}` } };
+      }
+      if (model.provider === 'anthropic') {
+        return { ...model, headers: { ...headers, 'x-api-key': auth.apiKey! } };
+      }
+      return { ...model, headers: { ...headers, authorization: `Bearer ${auth.apiKey}` } };
+    },
+    complete: capturingComplete,
+    defaultProvider: 'openai',
+    defaultModel: 'gpt-4o',
+  });
+
+  const gateway = new ProviderDirectLlmGateway({ ...options, logger });
+  await gateway.invoke(createRequest());
+
+  assert.ok(capturedModel);
+  assert.equal(capturedModel.headers?.authorization, 'Bearer sk-openai-test-key');
+  assert.equal(capturedModel.headers?.['x-api-key'], undefined);
+});
+
+test('resolveApiKey throws: lastAuthError records the error message', async () => {
+  const { logger } = createLogger();
+  const { options } = createGatewayDefaults({
+    resolveApiKey: async () => { throw new Error('Network timeout connecting to auth service'); },
+  });
+
+  const gateway = new ProviderDirectLlmGateway({ ...options, logger });
+  const response = await gateway.invoke(createRequest());
+
+  assert.equal(response.provider, 'unavailable');
+  assert.equal(gateway.authFailed, true);
+  assert.ok(gateway.lastAuthError?.includes('resolveApiKey threw'));
+  assert.ok(gateway.lastAuthError?.includes('Network timeout'));
+});
