@@ -97,6 +97,12 @@ function mergeBehaviorRules(
   return merged;
 }
 
+function recallPriority(item: MemoryItem, briefingMemoryIds?: ReadonlySet<string>): number {
+  const warningPriority = item.metadata?.source === 'warning' || item.tags.includes('warning') ? 100 : 0;
+  const briefingPenalty = briefingMemoryIds?.has(item.id) ? 0 : 10;
+  return warningPriority + briefingPenalty;
+}
+
 export async function handleMessageReceived(
   input: MessageReceivedInput,
   ctx: MessageReceivedContext,
@@ -119,6 +125,7 @@ export async function handleMessageReceived(
     : undefined;
   const recallLimit = recall.limit;
   const sessionContext = getSessionContext(input.sessionId);
+  const briefingMemoryIds = sessionContext?.briefingMemoryIds;
   const contextRules = sessionContext?.activeBehaviorRules ?? [];
   let semanticHits: SemanticPreloadResult = { ids: [], hits: [], warnings: [], relevantRules: [] };
   if (ctx.semanticRepo && ctx.memoryRepo && recallLimit > 0 && !recall.degraded) {
@@ -167,6 +174,12 @@ export async function handleMessageReceived(
   }
   const mergedItems = [...warningItems, ...recall.items, ...semanticItems]
     .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index)
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      const priorityDelta = recallPriority(right.item, briefingMemoryIds) - recallPriority(left.item, briefingMemoryIds);
+      return priorityDelta !== 0 ? priorityDelta : left.index - right.index;
+    })
+    .map(({ item }) => item)
     .slice(0, recallLimit);
   const mergedRecall = {
     ...recall,

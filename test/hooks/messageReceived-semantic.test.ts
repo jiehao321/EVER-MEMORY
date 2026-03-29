@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleMessageReceived } from '../../src/hooks/messageReceived.js';
 import { embeddingManager } from '../../src/embedding/manager.js';
+import { clearSessionContext, setSessionContext } from '../../src/runtime/context.js';
 import type { EmbeddingVector } from '../../src/embedding/provider.js';
 import type { MemoryItem } from '../../src/types.js';
 
@@ -111,6 +112,53 @@ test('handleMessageReceived merges semantic preload items without mutating recal
   } finally {
     embeddingManager.isReady = originalIsReady;
     embeddingManager.embed = originalEmbed;
+  }
+});
+
+test('handleMessageReceived deprioritizes memories already surfaced in the boot briefing', async () => {
+  setSessionContext({
+    sessionId: 's-briefing-priority',
+    scope: { userId: 'u-1', project: 'evermemory' },
+    briefingMemoryIds: new Set(['m-briefing']),
+  });
+
+  try {
+    const briefingMemory = createMemory('m-briefing', 'briefing summary');
+    const freshMemory = createMemory('m-fresh', 'fresh recall');
+
+    const result = await handleMessageReceived(
+      {
+        sessionId: 's-briefing-priority',
+        messageId: 'msg-briefing-priority',
+        text: '继续推进发布',
+        scope: { userId: 'u-1', project: 'evermemory' },
+        recallLimit: 2,
+      },
+      {
+        intentService: {
+          analyze: () => ({
+            id: 'intent-1',
+            intent: { type: 'planning', confidence: 0.9 },
+            signals: { memoryNeed: 'deep' },
+            query: '继续推进发布',
+          }),
+        } as never,
+        behaviorService: {
+          getActiveRules: () => [],
+        } as never,
+        retrievalService: {
+          recallForIntent: async () => ({
+            items: [briefingMemory, freshMemory],
+            total: 2,
+            limit: 2,
+          }),
+        } as never,
+      },
+    );
+
+    assert.deepEqual(result.recall.items.map((item) => item.id), ['m-fresh', 'm-briefing']);
+  } finally {
+    clearSessionContext('s-briefing-priority');
   }
 });
 

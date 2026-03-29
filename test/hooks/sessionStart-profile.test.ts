@@ -15,6 +15,7 @@ function createBriefing() {
     },
     tokenTarget: 1200,
     actualApproxTokens: 0,
+    memoryIds: ['m-briefing-1', 'm-briefing-2'],
   };
 }
 
@@ -168,6 +169,23 @@ test('sessionStart forwards normalized communicationStyle and bootTokenBudget to
   });
 
   clearSessionContext('session-start-profile-4');
+});
+
+test('sessionStart stores briefingMemoryIds in runtime context as an immutable Set', () => {
+  handleSessionStart(
+    {
+      sessionId: 'session-start-profile-memory-ids',
+      userId: 'u-session-start-profile',
+    },
+    { build: () => createBriefing() } as never,
+    { getActiveRules: () => [] } as never,
+  );
+
+  const runtime = getSessionContext('session-start-profile-memory-ids');
+  assert.ok(runtime?.briefingMemoryIds instanceof Set);
+  assert.deepEqual([...runtime?.briefingMemoryIds ?? []], ['m-briefing-1', 'm-briefing-2']);
+
+  clearSessionContext('session-start-profile-memory-ids');
 });
 
 test('sessionStart builds predictive cache after briefing generation', () => {

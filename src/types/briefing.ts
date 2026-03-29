@@ -25,6 +25,7 @@ export interface BootBriefing {
   sessionId?: string;
   userId?: string;
   generatedAt: string;
+  memoryIds?: readonly string[];
   sections: BootBriefingSections;
   tokenTarget: number;
   actualApproxTokens: number;

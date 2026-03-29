@@ -85,6 +85,29 @@ function resolveHybridWeights(
   }, { ...DEFAULT_RETRIEVAL_HYBRID_WEIGHTS });
 }
 
+function buildRecallReason(entry: RankedStrategyResult['ranked'][number]): string | undefined {
+  const factors = [
+    ['keyword', entry.keywordScore],
+    ['semantic', entry.semanticScore],
+    ['base', entry.baseScore],
+    ['projectPriority', entry.projectPriority],
+    ['dataQuality', entry.dataQuality],
+  ] as const;
+
+  const topFactors = factors
+    .filter(([, value]) => value > 0)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3);
+
+  if (topFactors.length === 0) {
+    return undefined;
+  }
+
+  return topFactors
+    .map(([name, value]) => `${name}:${value.toFixed(2)}`)
+    .join(' + ');
+}
+
 export class RetrievalService {
   private readonly semanticEnabled: boolean;
   private readonly maxRecall: number;
@@ -138,7 +161,17 @@ export class RetrievalService {
       const limit = resolveRecallLimit(request.limit, this.maxRecall);
       const result = await this.rankByMode(mode, request, limit, executionMeta);
       const { top, selectionStats } = this.structuredStrategy.selectTopRanked(result.ranked, limit, executionMeta);
-      const items = top.map((entry) => entry.memory);
+      const topWithReasons = top.map((entry) => ({
+        ...entry,
+        recallReason: buildRecallReason(entry),
+      }));
+      const items = topWithReasons.map((entry) => ({
+        ...entry.memory,
+        metadata: {
+          ...(entry.memory.metadata ?? {}),
+          recallReason: entry.recallReason,
+        },
+      }));
 
       if (items.length > 0) {
         this.memoryRepo.incrementRetrieval(items.map((item) => item.id));
@@ -171,7 +204,7 @@ export class RetrievalService {
         candidates: result.candidates.length,
         candidatePolicy: result.candidatePolicy,
         recallOptimization: selectionStats,
-        topScores: top.slice(0, 3).map((entry) => ({
+        topScores: topWithReasons.slice(0, 3).map((entry) => ({
           id: entry.memory.id,
           score: Number(entry.score.toFixed(4)),
           keyword: Number(entry.keywordScore.toFixed(3)),
@@ -179,6 +212,7 @@ export class RetrievalService {
           base: Number(entry.baseScore.toFixed(3)),
           projectPriority: Number(entry.projectPriority.toFixed(3)),
           dataQuality: Number(entry.dataQuality.toFixed(3)),
+          recallReason: entry.recallReason,
           dataClass: entry.dataClass,
         })),
       });

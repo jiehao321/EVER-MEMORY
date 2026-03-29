@@ -26,6 +26,11 @@ const BRIEFING_STYLE_LIMITS = {
   structured: Number.POSITIVE_INFINITY,
 } as const;
 
+export interface BriefingSectionEntry {
+  readonly content: string;
+  readonly memoryIds: readonly string[];
+}
+
 export function clip(value: string, max = BRIEFING_CLIP_DEFAULT): string {
   const normalized = value.trim().replace(/\s+/g, ' ');
   if (normalized.length <= max) {
@@ -50,6 +55,22 @@ export function dedupe(values: string[]): string[] {
 
 function dedupeByContent(values: string[]): string[] {
   return dedupe(values);
+}
+
+function dedupeEntriesByContent(entries: readonly BriefingSectionEntry[]): BriefingSectionEntry[] {
+  const seen = new Set<string>();
+  const output: BriefingSectionEntry[] = [];
+
+  for (const entry of entries) {
+    const normalized = normalizeSectionValue(entry.content);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(entry);
+  }
+
+  return output;
 }
 
 function humanizeProfileValue(value: string): string {
@@ -102,11 +123,28 @@ function pickContent(memories: MemoryItem[], limit: number): string[] {
   return memories.slice(0, limit).map((memory) => clip(memory.content));
 }
 
+function pickEntries(memories: MemoryItem[], limit: number): BriefingSectionEntry[] {
+  return memories.slice(0, limit).map((memory) => ({
+    content: clip(memory.content),
+    memoryIds: [memory.id],
+  }));
+}
+
 function firstContent(memories: MemoryItem[], fallback = ''): string {
   if (memories.length === 0) {
     return fallback;
   }
   return clip(memories[0].content, BRIEFING_CLIP_SHORT);
+}
+
+function firstEntry(memories: MemoryItem[], fallback = ''): BriefingSectionEntry {
+  if (memories.length === 0) {
+    return { content: fallback, memoryIds: [] };
+  }
+  return {
+    content: clip(memories[0].content, BRIEFING_CLIP_SHORT),
+    memoryIds: [memories[0].id],
+  };
 }
 
 function stripKnownLabel(content: string): string {
@@ -117,6 +155,13 @@ function stripKnownLabel(content: string): string {
 
 function withPrefix(prefix: string, content: string): string {
   return content.startsWith(prefix) ? content : `${prefix}${content}`;
+}
+
+function withEntryPrefix(prefix: string, entry: BriefingSectionEntry): BriefingSectionEntry {
+  return {
+    content: withPrefix(prefix, stripKnownLabel(entry.content)),
+    memoryIds: entry.memoryIds,
+  };
 }
 
 interface ParsedProjectSummary {
@@ -192,6 +237,31 @@ function pickProjectStatus(projectMemories: MemoryItem[], summaryStatus: string)
   return stripKnownLabel(firstContent(projectMemories));
 }
 
+function pickProjectStatusEntry(
+  projectMemories: MemoryItem[],
+  summaryStatus: string,
+  summaryMemoryId?: string,
+): BriefingSectionEntry {
+  const explicitStatus = projectMemories.find((memory) => hasProjectStatusSignal(stripKnownLabel(memory.content)));
+  if (explicitStatus) {
+    return {
+      content: clip(stripKnownLabel(explicitStatus.content), BRIEFING_CLIP_SHORT),
+      memoryIds: [explicitStatus.id],
+    };
+  }
+  if (summaryStatus) {
+    return {
+      content: clip(summaryStatus, BRIEFING_CLIP_SHORT),
+      memoryIds: summaryMemoryId ? [summaryMemoryId] : [],
+    };
+  }
+  const fallback = firstEntry(projectMemories);
+  return {
+    content: stripKnownLabel(fallback.content),
+    memoryIds: fallback.memoryIds,
+  };
+}
+
 function composeProjectSummary(input: {
   projectName?: string;
   projectSummaries: MemoryItem[];
@@ -199,35 +269,76 @@ function composeProjectSummary(input: {
   constraints: MemoryItem[];
   decisions: MemoryItem[];
   commitments: MemoryItem[];
-}): string | null {
+}): BriefingSectionEntry | null {
   const parsedSummaries = input.projectSummaries
-    .map((memory) => parseProjectSummary(memory.content))
-    .filter((item): item is ParsedProjectSummary => Boolean(item));
+    .map((memory) => ({ memory, parsed: parseProjectSummary(memory.content) }))
+    .filter((item): item is { memory: MemoryItem; parsed: ParsedProjectSummary } => Boolean(item.parsed));
   const latestParsedSummary = parsedSummaries[0];
-  const status = pickProjectStatus(input.projectMemories, latestParsedSummary?.status ?? '');
-  const keyConstraint = stripKnownLabel(firstContent(input.constraints))
-    || latestParsedSummary?.keyConstraint
-    || '';
-  const recentDecision = stripKnownLabel(firstContent(input.decisions))
-    || latestParsedSummary?.recentDecision
-    || '';
-  const nextStep = stripKnownLabel(firstContent(input.commitments))
-    || latestParsedSummary?.nextStep
-    || '';
+  const status = pickProjectStatusEntry(
+    input.projectMemories,
+    latestParsedSummary?.parsed.status ?? '',
+    latestParsedSummary?.memory.id,
+  );
+  const firstConstraint = firstEntry(input.constraints);
+  const keyConstraint = stripKnownLabel(firstConstraint.content)
+    ? {
+        content: stripKnownLabel(firstConstraint.content),
+        memoryIds: firstConstraint.memoryIds,
+      }
+    : {
+        content: latestParsedSummary?.parsed.keyConstraint ?? '',
+        memoryIds: latestParsedSummary ? [latestParsedSummary.memory.id] : [],
+      };
+  const firstDecision = firstEntry(input.decisions);
+  const recentDecision = stripKnownLabel(firstDecision.content)
+    ? {
+        content: stripKnownLabel(firstDecision.content),
+        memoryIds: firstDecision.memoryIds,
+      }
+    : {
+        content: latestParsedSummary?.parsed.recentDecision ?? '',
+        memoryIds: latestParsedSummary ? [latestParsedSummary.memory.id] : [],
+      };
+  const firstCommitment = firstEntry(input.commitments);
+  const nextStep = stripKnownLabel(firstCommitment.content)
+    ? {
+        content: stripKnownLabel(firstCommitment.content),
+        memoryIds: firstCommitment.memoryIds,
+      }
+    : {
+        content: latestParsedSummary?.parsed.nextStep ?? '',
+        memoryIds: latestParsedSummary ? [latestParsedSummary.memory.id] : [],
+      };
   if (!status && !keyConstraint && !recentDecision && !nextStep) {
     return null;
   }
 
   // C1: Only include fields that have actual data — omit empty fields rather than using "待补充"
   const parts: string[] = [];
-  if (status) parts.push(`状态：${status}`);
-  if (keyConstraint) parts.push(`关键约束：${keyConstraint}`);
-  if (recentDecision) parts.push(`最近决策：${recentDecision}`);
-  if (nextStep) parts.push(`下一步：${nextStep}`);
-  return clip(
-    `项目连续性摘要（${input.projectName ?? 'current'}）：${parts.join('；')}`,
-    BRIEFING_CLIP_PROJECT_SUMMARY,
-  );
+  const memoryIds = new Set<string>();
+  if (status.content) {
+    parts.push(`状态：${status.content}`);
+    for (const id of status.memoryIds) memoryIds.add(id);
+  }
+  if (keyConstraint.content) {
+    parts.push(`关键约束：${keyConstraint.content}`);
+    for (const id of keyConstraint.memoryIds) memoryIds.add(id);
+  }
+  if (recentDecision.content) {
+    parts.push(`最近决策：${recentDecision.content}`);
+    for (const id of recentDecision.memoryIds) memoryIds.add(id);
+  }
+  if (nextStep.content) {
+    parts.push(`下一步：${nextStep.content}`);
+    for (const id of nextStep.memoryIds) memoryIds.add(id);
+  }
+  return {
+    content: clip(
+      `项目连续性摘要（${input.projectName ?? 'current'}）：${parts.join('；')}`,
+      BRIEFING_CLIP_PROJECT_SUMMARY,
+    ),
+    memoryIds: [...memoryIds],
+  };
 }
 
 export function composeActiveProjects(
@@ -238,11 +349,30 @@ export function composeActiveProjects(
   decisions: MemoryItem[],
   commitments: MemoryItem[],
 ): string[] {
+  return composeActiveProjectEntries(
+    scope,
+    projectSummaries,
+    projectMemories,
+    constraints,
+    decisions,
+    commitments,
+  ).map((entry) => entry.content);
+}
+
+export function composeActiveProjectEntries(
+  scope: MemoryScope,
+  projectSummaries: MemoryItem[],
+  projectMemories: MemoryItem[],
+  constraints: MemoryItem[],
+  decisions: MemoryItem[],
+  commitments: MemoryItem[],
+): BriefingSectionEntry[] {
   const entries: string[] = [];
+  const entryRecords: BriefingSectionEntry[] = [];
   const projectNames = gatherProjectNames(scope, projectSummaries, projectMemories, decisions, commitments);
 
   for (const projectName of projectNames) {
-    if (entries.length >= BRIEFING_MAX_ACTIVE_PROJECTS) {
+    if (entryRecords.length >= BRIEFING_MAX_ACTIVE_PROJECTS) {
       break;
     }
     const summary = composeProjectSummary({
@@ -253,12 +383,13 @@ export function composeActiveProjects(
       decisions: byProject(decisions, projectName),
       commitments: byProject(commitments, projectName),
     });
-    if (summary && !entries.includes(summary)) {
-      entries.push(summary);
+    if (summary && !entries.includes(summary.content)) {
+      entries.push(summary.content);
+      entryRecords.push(summary);
     }
   }
 
-  if (entries.length === 0) {
+  if (entryRecords.length === 0) {
     const globalFallback = composeProjectSummary({
       projectSummaries: byProject(projectSummaries),
       projectMemories: byProject(projectMemories),
@@ -267,16 +398,20 @@ export function composeActiveProjects(
       commitments: byProject(commitments),
     });
     if (globalFallback) {
-      entries.push(globalFallback);
+      entries.push(globalFallback.content);
+      entryRecords.push(globalFallback);
     }
   }
 
-  const unstructuredSummaryEntries = projectSummaries
+  const unstructuredSummaryEntries: BriefingSectionEntry[] = projectSummaries
     .filter((memory) => !parseProjectSummary(memory.content))
-    .map((memory) => memory.content);
+    .map((memory) => ({
+      content: memory.content,
+      memoryIds: [memory.id],
+    }));
 
-  return dedupe([
-    ...entries,
+  return dedupeEntriesByContent([
+    ...entryRecords,
     ...unstructuredSummaryEntries,
   ]).slice(0, BRIEFING_MAX_ACTIVE_PROJECTS);
 }
@@ -286,10 +421,19 @@ export function composeRecentContinuity(
   decisions: MemoryItem[],
   commitments: MemoryItem[],
 ): string[] {
-  return dedupe([
-    ...pickContent(decisions, BRIEFING_PICK_DECISIONS).map((content) => withPrefix('决策：', stripKnownLabel(content))),
-    ...pickContent(commitments, BRIEFING_PICK_COMMITMENTS).map((content) => withPrefix('下一步：', stripKnownLabel(content))),
-    ...pickContent(recentContinuity, BRIEFING_PICK_CONTINUITY),
+  return composeRecentContinuityEntries(recentContinuity, decisions, commitments)
+    .map((entry) => entry.content);
+}
+
+export function composeRecentContinuityEntries(
+  recentContinuity: MemoryItem[],
+  decisions: MemoryItem[],
+  commitments: MemoryItem[],
+): BriefingSectionEntry[] {
+  return dedupeEntriesByContent([
+    ...pickEntries(decisions, BRIEFING_PICK_DECISIONS).map((entry) => withEntryPrefix('决策：', entry)),
+    ...pickEntries(commitments, BRIEFING_PICK_COMMITMENTS).map((entry) => withEntryPrefix('下一步：', entry)),
+    ...pickEntries(recentContinuity, BRIEFING_PICK_CONTINUITY),
   ]).slice(0, BRIEFING_PICK_CONTINUITY_OUTPUT);
 }
 
@@ -425,6 +569,114 @@ export function adaptSectionsByStyle(
         ? sections.activeProjects.map((entry) => toConciseProjectSummary(entry))
         : sections.activeProjects,
     ).slice(0, limit),
+  };
+}
+
+type BriefingEntrySections = Record<BriefingSectionKey, BriefingSectionEntry[]>;
+
+export function optimizeSectionEntries(
+  sections: BriefingEntrySections,
+  tokenTarget: number,
+): { sections: BootBriefing['sections']; entrySections: BriefingEntrySections; stats: BriefingOptimizationStats } {
+  const order: BriefingSectionKey[] = ['activeProjects', 'constraints', 'recentContinuity', 'identity'];
+  const deduped: BriefingEntrySections = {
+    identity: [],
+    constraints: [],
+    recentContinuity: [],
+    activeProjects: [],
+  };
+  const seen = new Set<string>();
+  let duplicateBlocksRemoved = 0;
+
+  for (const key of order) {
+    for (const entry of sections[key]) {
+      const normalized = normalizeSectionValue(entry.content);
+      if (!normalized) {
+        continue;
+      }
+      if (seen.has(normalized)) {
+        duplicateBlocksRemoved += 1;
+        continue;
+      }
+      seen.add(normalized);
+      deduped[key].push(entry);
+    }
+  }
+
+  const minKeep: Record<BriefingSectionKey, number> = {
+    activeProjects: deduped.activeProjects.length > 0 ? 1 : 0,
+    constraints: deduped.constraints.length > 0 ? 1 : 0,
+    recentContinuity: 0,
+    identity: 0,
+  };
+  const pruneOrder: BriefingSectionKey[] = ['identity', 'recentContinuity', 'constraints', 'activeProjects'];
+  let tokenPrunedBlocks = 0;
+
+  while (approxTokens(sectionEntriesToSections(deduped)) > tokenTarget) {
+    let pruned = false;
+    for (const key of pruneOrder) {
+      if (deduped[key].length > minKeep[key]) {
+        deduped[key].pop();
+        tokenPrunedBlocks += 1;
+        pruned = true;
+        break;
+      }
+    }
+    if (!pruned) {
+      break;
+    }
+  }
+
+  return {
+    sections: sectionEntriesToSections(deduped),
+    entrySections: deduped,
+    stats: {
+      duplicateBlocksRemoved,
+      tokenPrunedBlocks,
+      highValueBlocksKept: deduped.activeProjects.length + deduped.constraints.length,
+    },
+  };
+}
+
+function sectionEntriesToSections(sections: BriefingEntrySections): BootBriefing['sections'] {
+  return {
+    identity: sections.identity.map((entry) => entry.content),
+    constraints: sections.constraints.map((entry) => entry.content),
+    recentContinuity: sections.recentContinuity.map((entry) => entry.content),
+    activeProjects: sections.activeProjects.map((entry) => entry.content),
+  };
+}
+
+export function adaptSectionEntriesByStyle(
+  sections: BriefingEntrySections,
+  communicationStyle: 'concise' | 'detailed' | 'structured',
+): { sections: BootBriefing['sections']; entrySections: BriefingEntrySections } {
+  if (communicationStyle === 'structured') {
+    return {
+      sections: sectionEntriesToSections(sections),
+      entrySections: sections,
+    };
+  }
+
+  const limit = BRIEFING_STYLE_LIMITS[communicationStyle];
+  const activeProjects = dedupeEntriesByContent(
+    communicationStyle === 'concise'
+      ? sections.activeProjects.map((entry) => ({
+          content: toConciseProjectSummary(entry.content),
+          memoryIds: entry.memoryIds,
+        }))
+      : sections.activeProjects,
+  ).slice(0, limit);
+  const entrySections: BriefingEntrySections = {
+    identity: dedupeEntriesByContent(sections.identity).slice(0, limit),
+    constraints: dedupeEntriesByContent(sections.constraints).slice(0, limit),
+    recentContinuity: dedupeEntriesByContent(sections.recentContinuity).slice(0, limit),
+    activeProjects,
+  };
+
+  return {
+    sections: sectionEntriesToSections(entrySections),
+    entrySections,
   };
 }
 

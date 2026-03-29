@@ -62,6 +62,7 @@ export interface ScoredRecallItem {
   baseScore: number;
   projectPriority: number;
   dataQuality: number;
+  recallReason?: string;
   dataClass: MemoryDataClass;
 }
 

@@ -83,6 +83,7 @@ export function handleSessionStart(
     sessionId: input.sessionId,
     scope,
     bootBriefing: briefing,
+    briefingMemoryIds: briefing.memoryIds ? new Set(briefing.memoryIds) : undefined,
     userProfile: runtimeUserProfile,
     activeBehaviorRules: behaviorRules,
   });

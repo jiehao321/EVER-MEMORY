@@ -19,15 +19,16 @@ import {
 } from '../../tuning.js';
 import { BriefingError } from '../../errors.js';
 import {
-  adaptSectionsByStyle,
   appendPreferenceSummary,
   clip,
-  composeActiveProjects,
-  composeRecentContinuity,
+  composeActiveProjectEntries,
+  composeRecentContinuityEntries,
   dedupe,
   includesProjectSummaryTag,
   normalizeCommunicationStyle,
-  optimizeSections,
+  adaptSectionEntriesByStyle,
+  optimizeSectionEntries,
+  type BriefingSectionEntry,
   resolveTokenTarget,
 } from './builder.js';
 
@@ -37,6 +38,20 @@ function nowIso(): string {
 
 function pickContent(memories: MemoryItem[], limit: number): string[] {
   return memories.slice(0, limit).map((memory) => clip(memory.content));
+}
+
+function pickEntries(memories: MemoryItem[], limit: number): BriefingSectionEntry[] {
+  return memories.slice(0, limit).map((memory) => ({
+    content: clip(memory.content),
+    memoryIds: [memory.id],
+  }));
+}
+
+function alignEntries(
+  contents: readonly string[],
+  sourceEntries: readonly BriefingSectionEntry[],
+): BriefingSectionEntry[] {
+  return contents.map((content) => sourceEntries.find((entry) => entry.content === content) ?? { content, memoryIds: [] });
 }
 
 export interface BriefingBuildOptions {
@@ -129,19 +144,25 @@ export class BriefingService {
         : [];
 
       const tokenTarget = resolveTokenTarget(options?.tokenTarget);
-      const rawSections: BootBriefing['sections'] = {
-        identity: appendPreferenceSummary(
-          pickContent(identity, BRIEFING_PICK_IDENTITY),
-          scope,
-          this.preferenceGraphService,
-          this.profileRepo,
+      const identityEntries = pickEntries(identity, BRIEFING_PICK_IDENTITY);
+      const identityWithProfile = appendPreferenceSummary(
+        identityEntries.map((entry) => entry.content),
+        scope,
+        this.preferenceGraphService,
+        this.profileRepo,
+      );
+      const constraintEntries = [
+        ...pickEntries(constraints, BRIEFING_PICK_CONSTRAINTS),
+        ...inheritedGlobalConstraints.map((content) => ({ content, memoryIds: [] })),
+      ] as const;
+      const rawEntrySections = {
+        identity: alignEntries(identityWithProfile, identityEntries),
+        constraints: alignEntries(
+          dedupe(constraintEntries.map((entry) => entry.content)),
+          constraintEntries,
         ),
-        constraints: dedupe([
-          ...pickContent(constraints, BRIEFING_PICK_CONSTRAINTS),
-          ...inheritedGlobalConstraints,
-        ]),
-        recentContinuity: composeRecentContinuity(recentContinuity, decisions, commitments),
-        activeProjects: composeActiveProjects(
+        recentContinuity: composeRecentContinuityEntries(recentContinuity, decisions, commitments),
+        activeProjects: composeActiveProjectEntries(
           scope,
           projectSummaries,
           activeProjects,
@@ -150,18 +171,23 @@ export class BriefingService {
           commitments,
         ),
       };
-      const optimized = optimizeSections(rawSections, tokenTarget);
-      const styledSections = adaptSectionsByStyle(optimized.sections, communicationStyle);
+      const optimized = optimizeSectionEntries(rawEntrySections, tokenTarget);
+      const styled = adaptSectionEntriesByStyle(optimized.entrySections, communicationStyle);
+      const memoryIds = [...new Set(
+        Object.values(styled.entrySections)
+          .flatMap((entries) => entries.flatMap((entry) => entry.memoryIds)),
+      )];
 
       const briefing: BootBriefing = {
         id: randomUUID(),
         sessionId: options?.sessionId,
         userId: scope.userId,
         generatedAt: nowIso(),
-        sections: styledSections,
+        sections: styled.sections,
         tokenTarget,
         actualApproxTokens: 0,
         optimization: optimized.stats,
+        memoryIds,
       };
 
       briefing.actualApproxTokens = approxTokens(briefing.sections);

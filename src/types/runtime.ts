@@ -34,6 +34,7 @@ export interface RuntimeSessionContext {
   sessionId: string;
   scope: MemoryScope;
   bootBriefing?: BootBriefing;
+  briefingMemoryIds?: ReadonlySet<string>;
   userProfile?: RuntimeUserProfile;
   activeBehaviorRules?: BehaviorRule[];
   interaction?: InteractionRuntimeContext;
