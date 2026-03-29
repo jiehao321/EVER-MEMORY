@@ -8,6 +8,7 @@ import type { DebugRepository } from '../storage/debugRepo.js';
 import type { MemoryRepository } from '../storage/memoryRepo.js';
 import type { RelationRepository } from '../storage/relationRepo.js';
 import type { SemanticRepository } from '../storage/semanticRepo.js';
+import type { RetrievalFactor } from '../types/feedback.js';
 import type {
   RecallForIntentRequest,
   RecallRequest,
@@ -57,6 +58,25 @@ function normalizeWeights<T extends Record<string, number>>(weights: T, fallback
   ) as T;
 }
 
+function buildTopFactors(entry: RankedStrategyResult['ranked'][number]): RetrievalFactor[] {
+  const factors = [
+    ['keyword', entry.keywordScore],
+    ['semantic', entry.semanticScore],
+    ['base', entry.baseScore],
+    ['projectPriority', entry.projectPriority],
+    ['dataQuality', entry.dataQuality],
+  ] as const;
+
+  return factors
+    .filter(([, value]) => value > 0)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3)
+    .map(([name, value]) => ({
+      name,
+      value: Number(value.toFixed(4)),
+    }));
+}
+
 function resolveKeywordWeights(
   weights: Partial<RetrievalKeywordWeights> | undefined,
 ): RetrievalKeywordWeights {
@@ -86,25 +106,13 @@ function resolveHybridWeights(
 }
 
 function buildRecallReason(entry: RankedStrategyResult['ranked'][number]): string | undefined {
-  const factors = [
-    ['keyword', entry.keywordScore],
-    ['semantic', entry.semanticScore],
-    ['base', entry.baseScore],
-    ['projectPriority', entry.projectPriority],
-    ['dataQuality', entry.dataQuality],
-  ] as const;
-
-  const topFactors = factors
-    .filter(([, value]) => value > 0)
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 3);
-
+  const topFactors = buildTopFactors(entry);
   if (topFactors.length === 0) {
     return undefined;
   }
 
   return topFactors
-    .map(([name, value]) => `${name}:${value.toFixed(2)}`)
+    .map((factor) => `${factor.name}:${factor.value.toFixed(2)}`)
     .join(' + ');
 }
 
@@ -155,6 +163,7 @@ export class RetrievalService {
 
   async recall(request: RecallRequest, meta?: RecallExecutionMeta): Promise<RecallResult> {
     try {
+      const startTime = Date.now();
       const executionMeta = meta ?? this.structuredStrategy.deriveExecutionMeta(request);
       const requestedMode = request.mode;
       const mode = this.structuredStrategy.resolveMode(request.mode);
@@ -163,6 +172,7 @@ export class RetrievalService {
       const { top, selectionStats } = this.structuredStrategy.selectTopRanked(result.ranked, limit, executionMeta);
       const topWithReasons = top.map((entry) => ({
         ...entry,
+        topFactors: buildTopFactors(entry),
         recallReason: buildRecallReason(entry),
       }));
       const items = topWithReasons.map((entry) => ({
@@ -170,6 +180,7 @@ export class RetrievalService {
         metadata: {
           ...(entry.memory.metadata ?? {}),
           recallReason: entry.recallReason,
+          topFactors: entry.topFactors,
         },
       }));
 
@@ -204,6 +215,13 @@ export class RetrievalService {
         candidates: result.candidates.length,
         candidatePolicy: result.candidatePolicy,
         recallOptimization: selectionStats,
+        perfTrace: {
+          durationMs: Date.now() - startTime,
+          candidateCount: result.candidates.length,
+          returnedCount: items.length,
+          strategy: mode,
+          topScore: topWithReasons[0]?.score ?? 0,
+        },
         topScores: topWithReasons.slice(0, 3).map((entry) => ({
           id: entry.memory.id,
           score: Number(entry.score.toFixed(4)),
@@ -213,6 +231,7 @@ export class RetrievalService {
           projectPriority: Number(entry.projectPriority.toFixed(3)),
           dataQuality: Number(entry.dataQuality.toFixed(3)),
           recallReason: entry.recallReason,
+          topFactors: entry.topFactors,
           dataClass: entry.dataClass,
         })),
       });

@@ -18,6 +18,7 @@ function buildFeedback(overrides: Partial<RetrievalFeedback> & { id: string }): 
     signal: overrides.signal ?? 'unknown',
     signalSource: overrides.signalSource ?? 'explicit',
     createdAt: overrides.createdAt ?? nowIso(),
+    topFactors: overrides.topFactors ?? [],
   };
 }
 

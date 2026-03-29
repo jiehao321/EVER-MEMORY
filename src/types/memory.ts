@@ -1,3 +1,4 @@
+import type { RetrievalFactor } from './feedback.js';
 import type { MemoryLifecycle, MemoryType, RetrievalMode } from './primitives.js';
 
 export type SourceGrade = 'primary' | 'derived' | 'inferred';
@@ -77,6 +78,8 @@ export interface MemoryItem {
   metadata?: {
     source?: string;
     semanticScore?: number;
+    recallReason?: string;
+    topFactors?: RetrievalFactor[];
   };
 }
 

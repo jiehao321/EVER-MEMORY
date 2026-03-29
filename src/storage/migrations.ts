@@ -27,7 +27,8 @@ export const PHASE20_BUTLER_INSIGHTS_SCHEMA_VERSION = 22;
 export const PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION = 23;
 export const PHASE22_BUTLER_FEEDBACK_SCHEMA_VERSION = 24;
 export const PHASE23_BUTLER_GOALS_SCHEMA_VERSION = 25;
-export const CURRENT_SCHEMA_VERSION = PHASE23_BUTLER_GOALS_SCHEMA_VERSION;
+export const PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION = 26;
+export const CURRENT_SCHEMA_VERSION = PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION;
 
 const CREATE_PHASE1_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS schema_version (\n    version INTEGER NOT NULL\n  )`,
@@ -198,7 +199,8 @@ const CREATE_PHASE13_RETRIEVAL_FEEDBACK_SQL = [
     score REAL NOT NULL,
     signal TEXT NOT NULL,
     signal_source TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    top_factors TEXT NOT NULL DEFAULT '[]'
   )`,
   'CREATE INDEX IF NOT EXISTS idx_feedback_session ON retrieval_feedback(session_id)',
   'CREATE INDEX IF NOT EXISTS idx_feedback_memory ON retrieval_feedback(memory_id)',
@@ -352,6 +354,10 @@ const CREATE_PHASE23_BUTLER_GOALS_SQL = [
   )`,
   'CREATE INDEX IF NOT EXISTS idx_butler_goals_status ON butler_goals(status)',
   'CREATE INDEX IF NOT EXISTS idx_butler_goals_priority ON butler_goals(priority)',
+] as const;
+
+const CREATE_PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SQL = [
+  "ALTER TABLE retrieval_feedback ADD COLUMN top_factors TEXT NOT NULL DEFAULT '[]'",
 ] as const;
 
 function ensureSchemaVersionTable(db: Database.Database): void {
@@ -568,6 +574,10 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
       }
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE23_BUTLER_GOALS_SCHEMA_VERSION);
     });
+    const phase24RetrievalFeedbackFactorsTx = db.transaction(() => {
+      runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SQL);
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -682,6 +692,11 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
     if (currentVersion < PHASE23_BUTLER_GOALS_SCHEMA_VERSION) {
       phase23ButlerGoalsTx();
       currentVersion = PHASE23_BUTLER_GOALS_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION) {
+      phase24RetrievalFeedbackFactorsTx();
+      currentVersion = PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION;
     }
 
     return currentVersion;

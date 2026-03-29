@@ -73,6 +73,55 @@ test('summary mode returns EverMemoryStatusSummary fields and detail/debug retur
   }
 });
 
+test('diagnostics mode summarizes retrieval perf traces and preserves null duration for legacy events', () => {
+  const { app, cleanup } = createTestApp('status-levels-diagnostics');
+
+  try {
+    app.debugRepo.log('retrieval_executed', undefined, {
+      query: 'legacy event',
+      returned: 2,
+      candidates: 5,
+    });
+    app.debugRepo.log('retrieval_executed', undefined, {
+      query: 'first traced event',
+      perfTrace: {
+        durationMs: 10,
+        candidateCount: 4,
+        returnedCount: 2,
+        strategy: 'keyword',
+        topScore: 0.9,
+      },
+    });
+    app.debugRepo.log('retrieval_executed', undefined, {
+      query: 'second traced event',
+      perfTrace: {
+        durationMs: 30,
+        candidateCount: 8,
+        returnedCount: 3,
+        strategy: 'hybrid',
+        topScore: 0.7,
+      },
+    });
+
+    const input = buildStatusInput(app);
+    const diagnostics = evermemoryStatusLayered({ ...input, output: 'diagnostics' });
+
+    assert.equal(diagnostics.totalRecalls, 3);
+    assert.equal(diagnostics.avgDurationMs, 20);
+    assert.equal(diagnostics.p95DurationMs, 30);
+    assert.equal(diagnostics.avgReturnedCount, 7 / 3);
+    assert.equal(diagnostics.avgCandidateCount, 17 / 3);
+    assert.equal(diagnostics.recentRecalls.length, 3);
+    assert.equal(diagnostics.recentRecalls.some((event) => event.durationMs === null), true);
+    assert.deepEqual(
+      diagnostics.recentRecalls.map((event) => event.strategy).sort((a, b) => String(a).localeCompare(String(b))),
+      [null, 'hybrid', 'keyword'].sort((a, b) => String(a).localeCompare(String(b))),
+    );
+  } finally {
+    cleanup();
+  }
+});
+
 test('summary health is critical when memoryCount is zero', () => {
   const { app, cleanup } = createTestApp('status-levels-critical-empty');
 

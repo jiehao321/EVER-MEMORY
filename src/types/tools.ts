@@ -331,6 +331,22 @@ export interface EverMemoryStatusSummary {
   }>;
 }
 
+export interface EverMemoryStatusDiagnostics {
+  totalRecalls: number;
+  avgDurationMs: number | null;
+  p95DurationMs: number | null;
+  avgReturnedCount: number;
+  avgCandidateCount: number;
+  recentRecalls: Array<{
+    createdAt: string;
+    durationMs: number | null;
+    candidateCount: number;
+    returnedCount: number;
+    strategy: string | null;
+    topScore: number | null;
+  }>;
+}
+
 export interface EverMemoryStatusToolResult {
   schemaVersion: number;
   databasePath: string;

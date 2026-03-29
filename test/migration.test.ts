@@ -48,6 +48,9 @@ test('migrations are idempotent and preserve schema version', () => {
   const llmInvocationsTableRow = db.connection.prepare(`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'llm_invocations'
   `).get() as { name: string } | undefined;
+  const retrievalFeedbackColumns = db.connection.prepare(`
+    SELECT name FROM pragma_table_info('retrieval_feedback')
+  `).all() as Array<{ name: string }>;
 
   assert.equal(first, CURRENT_SCHEMA_VERSION);
   assert.equal(second, CURRENT_SCHEMA_VERSION);
@@ -64,6 +67,7 @@ test('migrations are idempotent and preserve schema version', () => {
   assert.equal(narrativeThreadsTableRow?.name, 'narrative_threads');
   assert.equal(butlerInsightsTableRow?.name, 'butler_insights');
   assert.equal(llmInvocationsTableRow?.name, 'llm_invocations');
+  assert.ok(retrievalFeedbackColumns.some((column) => column.name === 'top_factors'));
 
   closeDatabase(db);
   rmSync(databasePath, { force: true });

@@ -104,6 +104,66 @@ test('retrieval increments retrievalCount and lastAccessedAt for recalled memori
   rmSync(databasePath, { force: true });
 });
 
+test('retrieval debug events include perf trace diagnostics', async () => {
+  const databasePath = createTempDbPath('retrieval-perf-trace');
+  const app = initializeEverMemory({ databasePath, semantic: { enabled: false } });
+
+  app.evermemoryStore({
+    content: '发布前先执行质量门禁检查。',
+    type: 'decision',
+    scope: { userId: 'u-perf-trace', project: 'evermemory' },
+  });
+
+  const recall = await app.evermemoryRecall({
+    query: '质量门禁',
+    scope: { userId: 'u-perf-trace', project: 'evermemory' },
+    mode: 'keyword',
+    limit: 3,
+  });
+  assert.equal(recall.total, 1);
+
+  const event = app.debugRepo.listRecent('retrieval_executed', 1)[0];
+  assert.equal(typeof event?.payload.perfTrace, 'object');
+  assert.equal(typeof (event?.payload.perfTrace as { durationMs?: unknown } | undefined)?.durationMs, 'number');
+  assert.equal((event?.payload.perfTrace as { candidateCount?: unknown } | undefined)?.candidateCount, event?.payload.candidates);
+  assert.equal((event?.payload.perfTrace as { returnedCount?: unknown } | undefined)?.returnedCount, event?.payload.returned);
+  assert.equal((event?.payload.perfTrace as { strategy?: unknown } | undefined)?.strategy, event?.payload.mode);
+  assert.equal(typeof (event?.payload.perfTrace as { topScore?: unknown } | undefined)?.topScore, 'number');
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
+test('retrieval surfaces top factors in item metadata', async () => {
+  const databasePath = createTempDbPath('retrieval-top-factors');
+  const app = initializeEverMemory({ databasePath });
+
+  app.evermemoryStore({
+    content: '发布策略：关键词覆盖和基础质量分都要看。',
+    type: 'project',
+    scope: { userId: 'u-top-factors', project: 'evermemory' },
+  });
+
+  const recall = await app.evermemoryRecall({
+    query: '发布策略 关键词覆盖',
+    scope: { userId: 'u-top-factors', project: 'evermemory' },
+    mode: 'keyword',
+    limit: 5,
+  });
+
+  assert.equal(recall.total, 1);
+  const topFactors = recall.items[0]?.metadata?.topFactors ?? [];
+  assert.ok(topFactors.length > 0);
+  assert.ok(topFactors.length <= 3);
+  assert.ok(topFactors.every((factor) => (
+    ['keyword', 'semantic', 'base', 'projectPriority', 'dataQuality'].includes(factor.name)
+      && factor.value > 0
+  )));
+
+  app.database.connection.close();
+  rmSync(databasePath, { force: true });
+});
+
 test('retrieval scope isolation keeps project/user/global records separated', async () => {
   const databasePath = createTempDbPath('retrieval-scope-isolation');
   const app = initializeEverMemory({ databasePath });

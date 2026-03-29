@@ -19,6 +19,7 @@ function buildFeedback(overrides: Partial<RetrievalFeedback> = {}): RetrievalFee
     signal: overrides.signal ?? 'unknown',
     signalSource: overrides.signalSource ?? 'explicit',
     createdAt: overrides.createdAt ?? '2026-03-21T00:00:00.000Z',
+    topFactors: overrides.topFactors ?? [],
   };
 }
 

@@ -10,7 +10,12 @@ import type { SemanticRepository } from '../storage/semanticRepo.js';
 import type { SmartnessMetricsService, SmartnessSummary } from '../core/analytics/smartnessMetrics.js';
 import { getSchemaVersion } from '../storage/migrations.js';
 import { embeddingManager } from '../embedding/manager.js';
-import type { EverMemoryStatusSummary, EverMemoryStatusToolResult, RuntimeSessionContext } from '../types.js';
+import type {
+  EverMemoryStatusDiagnostics,
+  EverMemoryStatusSummary,
+  EverMemoryStatusToolResult,
+  RuntimeSessionContext,
+} from '../types.js';
 
 function resolveStatusHealth(status: EverMemoryStatusToolResult): EverMemoryStatusSummary['health'] {
   if (status.memoryCount === 0 || status.semanticStatus === 'disabled') {
@@ -51,6 +56,73 @@ function buildStatusSummary(status: EverMemoryStatusToolResult): EverMemoryStatu
   };
 }
 
+function toNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined;
+}
+
+function toString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function toBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function calculateAverage(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function calculateP95(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.max(0, Math.ceil(sorted.length * 0.95) - 1);
+  return sorted[index] ?? null;
+}
+
+function buildStatusDiagnostics(input: { debugRepo: DebugRepository }): EverMemoryStatusDiagnostics {
+  const recentEvents = input.debugRepo.listRecent('retrieval_executed', 20);
+  const recentRecalls = recentEvents.map((event) => {
+    const perfTrace = toRecord(event.payload.perfTrace);
+    return {
+      createdAt: event.createdAt,
+      durationMs: toNumber(perfTrace?.durationMs) ?? null,
+      candidateCount: toNumber(perfTrace?.candidateCount) ?? toNumber(event.payload.candidates) ?? 0,
+      returnedCount: toNumber(perfTrace?.returnedCount) ?? toNumber(event.payload.returned) ?? 0,
+      strategy: toString(perfTrace?.strategy) ?? toString(event.payload.mode) ?? null,
+      topScore: toNumber(perfTrace?.topScore) ?? null,
+    };
+  });
+  const durationValues = recentRecalls
+    .map((event) => event.durationMs)
+    .filter((value): value is number => value !== null);
+  const totalRecalls = recentRecalls.length;
+
+  return {
+    totalRecalls,
+    avgDurationMs: calculateAverage(durationValues),
+    p95DurationMs: calculateP95(durationValues),
+    avgReturnedCount: totalRecalls > 0
+      ? recentRecalls.reduce((sum, event) => sum + event.returnedCount, 0) / totalRecalls
+      : 0,
+    avgCandidateCount: totalRecalls > 0
+      ? recentRecalls.reduce((sum, event) => sum + event.candidateCount, 0) / totalRecalls
+      : 0,
+    recentRecalls,
+  };
+}
+
 export function evermemoryStatus(input: {
   database: DatabaseHandle;
   memoryRepo: MemoryRepository;
@@ -66,25 +138,6 @@ export function evermemoryStatus(input: {
   sessionId?: string;
 }): EverMemoryStatusToolResult {
   const AUTO_CAPTURE_PREVIEW_LENGTH = 120;
-
-  function toNumber(value: unknown): number | undefined {
-    return typeof value === 'number' ? value : undefined;
-  }
-
-  function toString(value: unknown): string | undefined {
-    return typeof value === 'string' ? value : undefined;
-  }
-
-  function toBoolean(value: unknown): boolean | undefined {
-    return typeof value === 'boolean' ? value : undefined;
-  }
-
-  function toRecord(value: unknown): Record<string, unknown> | undefined {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return undefined;
-    }
-    return value as Record<string, unknown>;
-  }
 
   const scopeResolvedFrom: EverMemoryStatusToolResult['scopeResolvedFrom'] = input.userId
     ? 'user'
@@ -467,11 +520,19 @@ export function evermemoryStatusLayered(
 export function evermemoryStatusLayered(
   input: EverMemoryStatusToolBaseInput & { output: 'detail' | 'debug' },
 ): EverMemoryStatusToolResult;
+export function evermemoryStatusLayered(
+  input: EverMemoryStatusToolBaseInput & { output: 'diagnostics' },
+): EverMemoryStatusDiagnostics;
 export function evermemoryStatusLayered(input: EverMemoryStatusToolBaseInput & {
-  output?: 'summary' | 'detail' | 'debug';
-}): EverMemoryStatusSummary | EverMemoryStatusToolResult {
+  output?: 'summary' | 'detail' | 'debug' | 'diagnostics';
+}): EverMemoryStatusSummary | EverMemoryStatusToolResult | EverMemoryStatusDiagnostics {
+  const output = input.output ?? 'summary';
+  if (output === 'diagnostics') {
+    return buildStatusDiagnostics(input);
+  }
+
   const status = evermemoryStatus(input);
-  if ((input.output ?? 'summary') === 'summary') {
+  if (output === 'summary') {
     return status.summary ?? buildStatusSummary(status);
   }
   return status;

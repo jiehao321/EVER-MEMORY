@@ -3,6 +3,8 @@ import type {
   FeedbackAggregation,
   FeedbackSignal,
   FeedbackSignalSource,
+  RetrievalFactor,
+  RetrievalFactorAggregation,
   RetrievalFeedback,
 } from '../types/feedback.js';
 
@@ -17,6 +19,7 @@ interface RetrievalFeedbackRow {
   signal: FeedbackSignal;
   signal_source: FeedbackSignalSource;
   created_at: string;
+  top_factors: string;
 }
 
 interface FeedbackAggregationRow {
@@ -24,6 +27,41 @@ interface FeedbackAggregationRow {
   total_used: number;
   total_ignored: number;
   total_unknown: number;
+}
+
+interface FactorAccumulator {
+  usedTotal: number;
+  usedCount: number;
+  ignoredTotal: number;
+  ignoredCount: number;
+}
+
+function isRetrievalFactor(value: unknown): value is RetrievalFactor {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<RetrievalFactor>;
+  return typeof candidate.name === 'string'
+    && candidate.name.length > 0
+    && typeof candidate.value === 'number'
+    && Number.isFinite(candidate.value);
+}
+
+function parseTopFactors(raw: string | null | undefined): RetrievalFactor[] {
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(isRetrievalFactor);
+  } catch {
+    return [];
+  }
 }
 
 function toFeedback(row: RetrievalFeedbackRow): RetrievalFeedback {
@@ -38,6 +76,7 @@ function toFeedback(row: RetrievalFeedbackRow): RetrievalFeedback {
     signal: row.signal,
     signalSource: row.signal_source,
     createdAt: row.created_at,
+    topFactors: parseTopFactors(row.top_factors),
   };
 }
 
@@ -48,9 +87,9 @@ export class FeedbackRepository {
   insert(feedback: RetrievalFeedback): void {
     const stmt = this.db.prepare(`
       INSERT INTO retrieval_feedback (
-        id, session_id, memory_id, query, strategy, recall_rank, score, signal, signal_source, created_at
+        id, session_id, memory_id, query, strategy, recall_rank, score, signal, signal_source, created_at, top_factors
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -64,6 +103,7 @@ export class FeedbackRepository {
       feedback.signal,
       feedback.signalSource,
       feedback.createdAt,
+      JSON.stringify(feedback.topFactors),
     );
   }
 
@@ -127,6 +167,55 @@ export class FeedbackRepository {
         ? row.total_used / (row.total_used + row.total_ignored)
         : Number.NaN,
     }));
+  }
+
+  /** Aggregate average factor values by factor name over the last N days. */
+  aggregateFactorEffectiveness(days = 30): RetrievalFactorAggregation[] {
+    const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+    const rows = this.db.prepare(`
+      SELECT signal, top_factors
+      FROM retrieval_feedback
+      WHERE created_at >= ?
+        AND signal IN ('used', 'ignored')
+    `).all(cutoff) as Array<Pick<RetrievalFeedbackRow, 'signal' | 'top_factors'>>;
+
+    const accumulators = new Map<string, FactorAccumulator>();
+
+    for (const row of rows) {
+      const factors = parseTopFactors(row.top_factors);
+      for (const factor of factors) {
+        const accumulator = accumulators.get(factor.name) ?? {
+          usedTotal: 0,
+          usedCount: 0,
+          ignoredTotal: 0,
+          ignoredCount: 0,
+        };
+
+        if (row.signal === 'used') {
+          accumulator.usedTotal += factor.value;
+          accumulator.usedCount += 1;
+        } else if (row.signal === 'ignored') {
+          accumulator.ignoredTotal += factor.value;
+          accumulator.ignoredCount += 1;
+        }
+
+        accumulators.set(factor.name, accumulator);
+      }
+    }
+
+    return [...accumulators.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([factor, accumulator]) => ({
+        factor,
+        usedAverage: accumulator.usedCount > 0
+          ? accumulator.usedTotal / accumulator.usedCount
+          : Number.NaN,
+        ignoredAverage: accumulator.ignoredCount > 0
+          ? accumulator.ignoredTotal / accumulator.ignoredCount
+          : Number.NaN,
+        usedCount: accumulator.usedCount,
+        ignoredCount: accumulator.ignoredCount,
+      }));
   }
 
   /** Count total feedback records */

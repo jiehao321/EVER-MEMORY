@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { FeedbackRepository } from '../../storage/feedbackRepo.js';
-import type { RetrievalFeedback } from '../../types/feedback.js';
+import type { RetrievalFactor, RetrievalFeedback } from '../../types/feedback.js';
 import type { RecallResult } from '../../types/memory.js';
 
 interface RecallHistoryEntry {
@@ -11,6 +11,7 @@ interface RecallHistoryEntry {
   score: number;
   markedUsed: boolean;
   content: string;
+  topFactors: RetrievalFactor[];
 }
 
 function extractKeywords(text: string): Set<string> {
@@ -63,6 +64,7 @@ export class MicroReflectionService {
         existingEntry.rank = index + 1;
         existingEntry.score = item.metadata?.semanticScore ?? 0;
         existingEntry.content = item.content;
+        existingEntry.topFactors = item.metadata?.topFactors ?? [];
         return;
       }
 
@@ -74,6 +76,7 @@ export class MicroReflectionService {
         score: item.metadata?.semanticScore ?? 0,
         markedUsed: false,
         content: item.content,
+        topFactors: item.metadata?.topFactors ?? [],
       };
 
       existingEntries.push(entry);
@@ -91,6 +94,7 @@ export class MicroReflectionService {
         // The current schema requires a source even before a real signal is known.
         signalSource: 'explicit',
         createdAt: nowIso(),
+        topFactors: entry.topFactors,
       };
       this.feedbackRepo.insert(feedback);
     });
