@@ -19,6 +19,19 @@ import type {
 } from '../types.js';
 import { semanticPreload, type SemanticPreloadResult } from './beforeAgentStart.js';
 
+export interface MessageReceivedContext {
+  intentService: IntentService;
+  behaviorService: BehaviorService;
+  retrievalService: RetrievalService;
+  debugRepo?: DebugRepository;
+  semanticRepo?: SemanticRepository;
+  memoryRepo?: MemoryRepository;
+  proactiveRecallService?: ProactiveRecallService;
+  contradictionMonitor?: ContradictionMonitor;
+  userProfile?: RuntimeUserProfile;
+  progressiveConsolidationService?: ProgressiveConsolidationService;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -86,25 +99,16 @@ function mergeBehaviorRules(
 
 export async function handleMessageReceived(
   input: MessageReceivedInput,
-  intentService: IntentService,
-  behaviorService: BehaviorService,
-  retrievalService: RetrievalService,
-  debugRepo?: DebugRepository,
-  semanticRepo?: SemanticRepository,
-  memoryRepo?: MemoryRepository,
-  proactiveRecallService?: ProactiveRecallService,
-  contradictionMonitor?: ContradictionMonitor,
-  userProfile?: RuntimeUserProfile,
-  progressiveConsolidationService?: ProgressiveConsolidationService,
+  ctx: MessageReceivedContext,
 ): Promise<MessageReceivedResult> {
-  const intent = intentService.analyze({
+  const intent = ctx.intentService.analyze({
     text: input.text,
     sessionId: input.sessionId,
     messageId: input.messageId,
     scope: input.scope,
   });
 
-  const recall = await retrievalService.recallForIntent({
+  const recall = await ctx.retrievalService.recallForIntent({
     intent,
     scope: input.scope,
     query: input.text,
@@ -117,21 +121,21 @@ export async function handleMessageReceived(
   const sessionContext = getSessionContext(input.sessionId);
   const contextRules = sessionContext?.activeBehaviorRules ?? [];
   let semanticHits: SemanticPreloadResult = { ids: [], hits: [], warnings: [], relevantRules: [] };
-  if (semanticRepo && memoryRepo && recallLimit > 0 && !recall.degraded) {
+  if (ctx.semanticRepo && ctx.memoryRepo && recallLimit > 0 && !recall.degraded) {
     try {
       semanticHits = await semanticPreload(
         input.text,
         input.scope ?? {},
-        semanticRepo,
-        memoryRepo,
+        ctx.semanticRepo,
+        ctx.memoryRepo,
         recallLimit,
         undefined,
         contextRules,
-        debugRepo,
+        ctx.debugRepo,
       );
     } catch (error) {
       semanticHits = { ids: [], hits: [], warnings: [], relevantRules: [] };
-      debugRepo?.log('semantic_preload_failed', input.sessionId ?? 'unknown', {
+      ctx.debugRepo?.log('semantic_preload_failed', input.sessionId ?? 'unknown', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -148,7 +152,7 @@ export async function handleMessageReceived(
     if (recallIds.has(hit.memoryId)) {
       continue;
     }
-    const memory = memoryRepo?.findById(hit.memoryId);
+    const memory = ctx.memoryRepo?.findById(hit.memoryId);
     if (!memory) {
       continue;
     }
@@ -169,7 +173,7 @@ export async function handleMessageReceived(
     items: mergedItems,
     total: mergedItems.length,
   };
-  const behaviorRules = behaviorService.getActiveRules({
+  const behaviorRules = ctx.behaviorService.getActiveRules({
     scope: input.scope,
     intentType: intent.intent.type,
     channel: input.channel,
@@ -190,7 +194,7 @@ export async function handleMessageReceived(
   };
 
   setInteractionContext(interaction);
-  debugRepo?.log('rules_loaded', input.messageId, {
+  ctx.debugRepo?.log('rules_loaded', input.messageId, {
     sessionId: input.sessionId,
     messageId: input.messageId,
     source: 'messageReceived',
@@ -198,7 +202,7 @@ export async function handleMessageReceived(
     intentType: intent.intent.type,
   });
 
-  debugRepo?.log('interaction_processed', input.messageId, {
+  ctx.debugRepo?.log('interaction_processed', input.messageId, {
     sessionId: input.sessionId,
     messageId: input.messageId,
     memoryNeed: intent.signals.memoryNeed,
@@ -207,11 +211,11 @@ export async function handleMessageReceived(
   });
 
   let proactiveItems: MessageReceivedResult['proactiveItems'];
-  if (proactiveRecallService && mergedRecall.items.length > 0) {
+  if (ctx.proactiveRecallService && mergedRecall.items.length > 0) {
     try {
-      const proactive = proactiveRecallService.findProactiveItems(
+      const proactive = ctx.proactiveRecallService.findProactiveItems(
         mergedRecall.items,
-        userProfile,
+        ctx.userProfile,
         input.scope ? { userId: input.scope.userId, project: input.scope.project } : undefined,
       );
       if (proactive.items.length > 0) {
@@ -222,11 +226,11 @@ export async function handleMessageReceived(
     }
   }
 
-  const alerts = contradictionMonitor?.drainAlerts(input.sessionId);
+  const alerts = ctx.contradictionMonitor?.drainAlerts(input.sessionId);
 
-  if (progressiveConsolidationService) {
+  if (ctx.progressiveConsolidationService) {
     try {
-      progressiveConsolidationService.onMessage(input.sessionId);
+      ctx.progressiveConsolidationService.onMessage(input.sessionId);
     } catch {
       // Best-effort progressive consolidation must not affect regular flow
     }

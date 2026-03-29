@@ -475,8 +475,7 @@ export function initializeEverMemory(
       const userProfile = input.scope?.userId
         ? toRuntimeUserProfile(profileService.getByUserId(input.scope.userId))
         : undefined;
-      return handleMessageReceived(
-        input,
+      return handleMessageReceived(input, {
         intentService,
         behaviorService,
         retrievalService,
@@ -487,7 +486,7 @@ export function initializeEverMemory(
         contradictionMonitor,
         userProfile,
         progressiveConsolidationService,
-      );
+      });
     },
     async sessionEnd(input: SessionEndInput): Promise<SessionEndResult> {
       if (!config.enabled) {
@@ -508,8 +507,7 @@ export function initializeEverMemory(
           },
         };
       }
-      return handleSessionEnd(
-        input,
+      return handleSessionEnd(input, {
         experienceService,
         reflectionService,
         behaviorService,
@@ -517,7 +515,7 @@ export function initializeEverMemory(
         debugRepo,
         semanticRepo,
         memoryRepo,
-        profileService,
+        profileProjection: profileService,
         housekeepingService,
         profileRepo,
         selfTuningDecayService,
@@ -525,7 +523,7 @@ export function initializeEverMemory(
         progressiveConsolidationService,
         predictiveContextService,
         contradictionMonitor,
-      );
+      });
     },
     async housekeeping(scope: { userId?: string; chatId?: string; project?: string; global?: boolean }) {
       return housekeepingService.run(scope);

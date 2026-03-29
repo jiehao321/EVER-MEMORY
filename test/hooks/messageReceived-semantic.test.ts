@@ -68,37 +68,38 @@ test('handleMessageReceived merges semantic preload items without mutating recal
         recallLimit: 3,
       },
       {
-        analyze: () => ({
-          id: 'intent-1',
-          intent: { type: 'planning', confidence: 0.9 },
-          signals: { memoryNeed: 'deep' },
-          query: '继续推进发布',
-        }),
-      } as never,
-      {
-        getActiveRules: () => [],
-      } as never,
-      {
-        recallForIntent: async () => initialRecall,
-      } as never,
-      undefined,
-      {
-        searchByCosine: async () => [
-          { memoryId: 'm-1', score: 0.95 },
-          { memoryId: 'm-2', score: 0.87 },
-        ],
-      } as never,
-      {
-        findById: (id: string) => {
-          if (id === 'm-1') {
-            return recalled;
-          }
-          if (id === 'm-2') {
-            return semanticOnly;
-          }
-          return null;
-        },
-      } as never,
+        intentService: {
+          analyze: () => ({
+            id: 'intent-1',
+            intent: { type: 'planning', confidence: 0.9 },
+            signals: { memoryNeed: 'deep' },
+            query: '继续推进发布',
+          }),
+        } as never,
+        behaviorService: {
+          getActiveRules: () => [],
+        } as never,
+        retrievalService: {
+          recallForIntent: async () => initialRecall,
+        } as never,
+        semanticRepo: {
+          searchByCosine: async () => [
+            { memoryId: 'm-1', score: 0.95 },
+            { memoryId: 'm-2', score: 0.87 },
+          ],
+        } as never,
+        memoryRepo: {
+          findById: (id: string) => {
+            if (id === 'm-1') {
+              return recalled;
+            }
+            if (id === 'm-2') {
+              return semanticOnly;
+            }
+            return null;
+          },
+        } as never,
+      },
     );
 
     assert.equal(initialRecall.items.length, 1);
@@ -125,34 +126,35 @@ test('handleMessageReceived skips semantic enrichment when preload throws', asyn
       recallLimit: 3,
     },
     {
-      analyze: () => ({
-        id: 'intent-1',
-        intent: { type: 'planning', confidence: 0.9 },
-        signals: { memoryNeed: 'deep' },
-        query: '继续推进发布',
-      }),
-    } as never,
-    {
-      getActiveRules: () => [],
-    } as never,
-    {
-      recallForIntent: async () => ({
-        items: [recalled],
-        total: 1,
-        limit: 3,
-      }),
-    } as never,
-    undefined,
-    {
-      searchByCosine: async () => {
-        throw new Error('semantic search failed');
-      },
-    } as never,
-    {
-      findById: () => {
-        throw new Error('findById should not be called when semantic search fails');
-      },
-    } as never,
+      intentService: {
+        analyze: () => ({
+          id: 'intent-1',
+          intent: { type: 'planning', confidence: 0.9 },
+          signals: { memoryNeed: 'deep' },
+          query: '继续推进发布',
+        }),
+      } as never,
+      behaviorService: {
+        getActiveRules: () => [],
+      } as never,
+      retrievalService: {
+        recallForIntent: async () => ({
+          items: [recalled],
+          total: 1,
+          limit: 3,
+        }),
+      } as never,
+      semanticRepo: {
+        searchByCosine: async () => {
+          throw new Error('semantic search failed');
+        },
+      } as never,
+      memoryRepo: {
+        findById: () => {
+          throw new Error('findById should not be called when semantic search fails');
+        },
+      } as never,
+    },
   );
 
   assert.deepEqual(result.recall.items.map((item) => item.id), ['m-1']);
@@ -171,35 +173,36 @@ test('handleMessageReceived adds a degraded note and skips semantic preload when
       recallLimit: 3,
     },
     {
-      analyze: () => ({
-        id: 'intent-1',
-        intent: { type: 'planning', confidence: 0.9 },
-        signals: { memoryNeed: 'deep' },
-        query: '继续推进发布',
-      }),
-    } as never,
-    {
-      getActiveRules: () => [],
-    } as never,
-    {
-      recallForIntent: async () => ({
-        items: [recalled],
-        total: 1,
-        limit: 3,
-        degraded: true,
-      }),
-    } as never,
-    undefined,
-    {
-      searchByCosine: async () => {
-        throw new Error('semantic preload should be skipped when recall is degraded');
-      },
-    } as never,
-    {
-      findById: () => {
-        throw new Error('findById should not be called when recall is degraded');
-      },
-    } as never,
+      intentService: {
+        analyze: () => ({
+          id: 'intent-1',
+          intent: { type: 'planning', confidence: 0.9 },
+          signals: { memoryNeed: 'deep' },
+          query: '继续推进发布',
+        }),
+      } as never,
+      behaviorService: {
+        getActiveRules: () => [],
+      } as never,
+      retrievalService: {
+        recallForIntent: async () => ({
+          items: [recalled],
+          total: 1,
+          limit: 3,
+          degraded: true,
+        }),
+      } as never,
+      semanticRepo: {
+        searchByCosine: async () => {
+          throw new Error('semantic preload should be skipped when recall is degraded');
+        },
+      } as never,
+      memoryRepo: {
+        findById: () => {
+          throw new Error('findById should not be called when recall is degraded');
+        },
+      } as never,
+    },
   );
 
   assert.equal(result.note, 'Semantic search was unavailable for this recall; results may be incomplete.');
@@ -219,35 +222,31 @@ test('handleMessageReceived triggers progressive consolidation as a best-effort 
       recallLimit: 3,
     },
     {
-      analyze: () => ({
-        id: 'intent-1',
-        intent: { type: 'planning', confidence: 0.9 },
-        signals: { memoryNeed: 'deep' },
-        query: '继续推进发布',
-      }),
-    } as never,
-    {
-      getActiveRules: () => [],
-    } as never,
-    {
-      recallForIntent: async () => ({
-        items: [],
-        total: 0,
-        limit: 3,
-      }),
-    } as never,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    {
-      onMessage: (sessionId: string) => {
-        calls.push(sessionId);
-        return { triggered: false };
-      },
-    } as never,
+      intentService: {
+        analyze: () => ({
+          id: 'intent-1',
+          intent: { type: 'planning', confidence: 0.9 },
+          signals: { memoryNeed: 'deep' },
+          query: '继续推进发布',
+        }),
+      } as never,
+      behaviorService: {
+        getActiveRules: () => [],
+      } as never,
+      retrievalService: {
+        recallForIntent: async () => ({
+          items: [],
+          total: 0,
+          limit: 3,
+        }),
+      } as never,
+      progressiveConsolidationService: {
+        onMessage: (sessionId: string) => {
+          calls.push(sessionId);
+          return { triggered: false };
+        },
+      } as never,
+    },
   );
 
   assert.equal(result.sessionId, 's-progressive');
@@ -264,34 +263,30 @@ test('handleMessageReceived swallows progressive consolidation errors', async ()
       recallLimit: 3,
     },
     {
-      analyze: () => ({
-        id: 'intent-1',
-        intent: { type: 'planning', confidence: 0.9 },
-        signals: { memoryNeed: 'deep' },
-        query: '继续推进发布',
-      }),
-    } as never,
-    {
-      getActiveRules: () => [],
-    } as never,
-    {
-      recallForIntent: async () => ({
-        items: [],
-        total: 0,
-        limit: 3,
-      }),
-    } as never,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    {
-      onMessage: () => {
-        throw new Error('progressive consolidation failed');
-      },
-    } as never,
+      intentService: {
+        analyze: () => ({
+          id: 'intent-1',
+          intent: { type: 'planning', confidence: 0.9 },
+          signals: { memoryNeed: 'deep' },
+          query: '继续推进发布',
+        }),
+      } as never,
+      behaviorService: {
+        getActiveRules: () => [],
+      } as never,
+      retrievalService: {
+        recallForIntent: async () => ({
+          items: [],
+          total: 0,
+          limit: 3,
+        }),
+      } as never,
+      progressiveConsolidationService: {
+        onMessage: () => {
+          throw new Error('progressive consolidation failed');
+        },
+      } as never,
+    },
   );
 
   assert.equal(result.sessionId, 's-progressive-error');

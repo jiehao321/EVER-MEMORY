@@ -46,21 +46,20 @@ test('sessionEnd triggers profile recompute after auto capture when userId exist
       sessionId: 'session-end-profile-1',
       scope: { userId: 'u-session-end-profile' },
     },
-    { log: () => createExperience() } as never,
-    {} as never,
     {
-      promoteFromReflection: () => undefined,
-      freezeRulesByDuration: () => [],
-      demoteStaleEmergingRules: () => 0,
-    } as never,
-    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
-    undefined,
-    undefined,
-    undefined,
-    { recomputeForUser: (userId: string) => {
-      calls.push(userId);
-      return null;
-    } } as never,
+      experienceService: { log: () => createExperience() } as never,
+      reflectionService: {} as never,
+      behaviorService: {
+        promoteFromReflection: () => undefined,
+        freezeRulesByDuration: () => [],
+        demoteStaleEmergingRules: () => 0,
+      } as never,
+      memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+      profileProjection: { recomputeForUser: (userId: string) => {
+        calls.push(userId);
+        return null;
+      } } as never,
+    },
   );
 
   assert.deepEqual(calls, ['u-session-end-profile']);
@@ -73,20 +72,20 @@ test('sessionEnd swallows profile recompute failures and keeps the main flow suc
       sessionId: 'session-end-profile-2',
       scope: { userId: 'u-session-end-profile' },
     },
-    { log: () => createExperience() } as never,
-    {} as never,
     {
-      promoteFromReflection: () => undefined,
-      freezeRulesByDuration: () => [],
-      demoteStaleEmergingRules: () => 0,
-    } as never,
-    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
-    { log: () => undefined } as never,
-    undefined,
-    undefined,
-    { recomputeForUser: () => {
-      throw new Error('projection failed');
-    } } as never,
+      experienceService: { log: () => createExperience() } as never,
+      reflectionService: {} as never,
+      behaviorService: {
+        promoteFromReflection: () => undefined,
+        freezeRulesByDuration: () => [],
+        demoteStaleEmergingRules: () => 0,
+      } as never,
+      memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+      debugRepo: { log: () => undefined } as never,
+      profileProjection: { recomputeForUser: () => {
+        throw new Error('projection failed');
+      } } as never,
+    },
   );
 
   assert.equal(result.experience.id, 'exp-1');
@@ -101,21 +100,20 @@ test('sessionEnd does not trigger profile recompute when userId is missing', asy
       sessionId: 'session-end-profile-3',
       scope: { project: 'evermemory' },
     },
-    { log: () => createExperience() } as never,
-    {} as never,
     {
-      promoteFromReflection: () => undefined,
-      freezeRulesByDuration: () => [],
-      demoteStaleEmergingRules: () => 0,
-    } as never,
-    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
-    undefined,
-    undefined,
-    undefined,
-    { recomputeForUser: () => {
-      calls += 1;
-      return null;
-    } } as never,
+      experienceService: { log: () => createExperience() } as never,
+      reflectionService: {} as never,
+      behaviorService: {
+        promoteFromReflection: () => undefined,
+        freezeRulesByDuration: () => [],
+        demoteStaleEmergingRules: () => 0,
+      } as never,
+      memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+      profileProjection: { recomputeForUser: () => {
+        calls += 1;
+        return null;
+      } } as never,
+    },
   );
 
   assert.equal(calls, 0);
@@ -142,28 +140,28 @@ test('sessionEnd logs housekeeping timeout as debug telemetry and keeps teardown
         sessionId: 'session-end-profile-4',
         scope: { userId: 'u-session-end-profile', project: 'evermemory' },
       },
-      { log: () => createExperience() } as never,
-      {} as never,
       {
-        promoteFromReflection: () => undefined,
-        freezeRulesByDuration: () => [],
-        demoteStaleEmergingRules: () => 0,
-      } as never,
-      { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
-      {
-        log: (kind: string, entityId: string | undefined, payload: Record<string, unknown>) => {
-          debugEvents.push({ kind, entityId, payload });
-        },
-      } as never,
-      undefined,
-      {
-        count: () => 51,
-        search: () => [{ timestamps: { updatedAt: '2026-03-15T00:00:00.000Z' } }],
-      } as never,
-      undefined,
-      {
-        runIfNeeded: () => new Promise(() => undefined),
-      } as never,
+        experienceService: { log: () => createExperience() } as never,
+        reflectionService: {} as never,
+        behaviorService: {
+          promoteFromReflection: () => undefined,
+          freezeRulesByDuration: () => [],
+          demoteStaleEmergingRules: () => 0,
+        } as never,
+        memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+        debugRepo: {
+          log: (kind: string, entityId: string | undefined, payload: Record<string, unknown>) => {
+            debugEvents.push({ kind, entityId, payload });
+          },
+        } as never,
+        memoryRepo: {
+          count: () => 51,
+          search: () => [{ timestamps: { updatedAt: '2026-03-15T00:00:00.000Z' } }],
+        } as never,
+        housekeepingService: {
+          runIfNeeded: () => new Promise(() => undefined),
+        } as never,
+      },
     );
 
     assert.equal(result.sessionId, 'session-end-profile-4');
@@ -189,27 +187,24 @@ test('sessionEnd runs drift detection after a successful profile recompute', asy
       sessionId: 'session-end-profile-5',
       scope: { userId: 'u-session-end-profile' },
     },
-    { log: () => createExperience() } as never,
-    {} as never,
     {
-      promoteFromReflection: () => undefined,
-      freezeRulesByDuration: () => [],
-      demoteStaleEmergingRules: () => 0,
-    } as never,
-    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
-    undefined,
-    undefined,
-    undefined,
-    { recomputeForUser: () => nextProfile } as never,
-    undefined,
-    { getByUserId: () => previousProfile } as never,
-    undefined,
-    {
-      detectDrift: (previous: ProjectedProfile | null, next: ProjectedProfile, userId: string) => {
-        driftCalls.push({ previous, next, userId });
-        return { drifts: [], totalChanges: 0, reversals: 0 };
-      },
-    } as never,
+      experienceService: { log: () => createExperience() } as never,
+      reflectionService: {} as never,
+      behaviorService: {
+        promoteFromReflection: () => undefined,
+        freezeRulesByDuration: () => [],
+        demoteStaleEmergingRules: () => 0,
+      } as never,
+      memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+      profileProjection: { recomputeForUser: () => nextProfile } as never,
+      profileRepo: { getByUserId: () => previousProfile } as never,
+      driftDetectionService: {
+        detectDrift: (previous: ProjectedProfile | null, next: ProjectedProfile, userId: string) => {
+          driftCalls.push({ previous, next, userId });
+          return { drifts: [], totalChanges: 0, reversals: 0 };
+        },
+      } as never,
+    },
   );
 
   assert.equal(result.profileUpdated, true);
@@ -228,45 +223,41 @@ test('sessionEnd performs end-of-session maintenance hooks as best effort', asyn
       sessionId: 'session-end-profile-6',
       scope: { userId: 'u-session-end-profile', project: 'evermemory' },
     },
-    { log: () => createExperience() } as never,
-    {} as never,
     {
-      promoteFromReflection: () => undefined,
-      freezeRulesByDuration: () => [],
-      demoteStaleEmergingRules: () => 0,
-    } as never,
-    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
-    undefined,
-    undefined,
-    {
-      count: () => 0,
-    } as never,
-    undefined,
-    undefined,
-    undefined,
-    {
-      shouldRecompute: () => true,
-      recompute: () => {
-        calls.push('recompute');
-        return { overrides: [], totalSamples: 0, adjustmentsApplied: 0 };
-      },
-    } as never,
-    undefined,
-    {
-      resetSession: (sessionId: string) => {
-        calls.push(`reset:${sessionId}`);
-      },
-    } as never,
-    {
-      clearCache: (sessionId: string) => {
-        calls.push(`clear:${sessionId}`);
-      },
-    } as never,
-    {
-      clearSession: (sessionId: string) => {
-        calls.push(`contradictions:${sessionId}`);
-      },
-    } as never,
+      experienceService: { log: () => createExperience() } as never,
+      reflectionService: {} as never,
+      behaviorService: {
+        promoteFromReflection: () => undefined,
+        freezeRulesByDuration: () => [],
+        demoteStaleEmergingRules: () => 0,
+      } as never,
+      memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+      memoryRepo: {
+        count: () => 0,
+      } as never,
+      selfTuningDecayService: {
+        shouldRecompute: () => true,
+        recompute: () => {
+          calls.push('recompute');
+          return { overrides: [], totalSamples: 0, adjustmentsApplied: 0 };
+        },
+      } as never,
+      progressiveConsolidationService: {
+        resetSession: (sessionId: string) => {
+          calls.push(`reset:${sessionId}`);
+        },
+      } as never,
+      predictiveContextService: {
+        clearCache: (sessionId: string) => {
+          calls.push(`clear:${sessionId}`);
+        },
+      } as never,
+      contradictionMonitor: {
+        clearSession: (sessionId: string) => {
+          calls.push(`contradictions:${sessionId}`);
+        },
+      } as never,
+    },
   );
 
   assert.equal(result.sessionId, 'session-end-profile-6');
@@ -284,48 +275,47 @@ test('sessionEnd swallows maintenance hook failures', async () => {
       sessionId: 'session-end-profile-7',
       scope: { userId: 'u-session-end-profile' },
     },
-    { log: () => createExperience() } as never,
-    {} as never,
     {
-      promoteFromReflection: () => undefined,
-      freezeRulesByDuration: () => [],
-      demoteStaleEmergingRules: () => 0,
-    } as never,
-    { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
-    undefined,
-    undefined,
-    {
-      count: () => 0,
-    } as never,
-    { recomputeForUser: () => createProjectedProfile('verbose') } as never,
-    undefined,
-    { getByUserId: () => createProjectedProfile('concise') } as never,
-    {
-      shouldRecompute: () => true,
-      recompute: () => {
-        throw new Error('recompute failed');
-      },
-    } as never,
-    {
-      detectDrift: () => {
-        throw new Error('drift failed');
-      },
-    } as never,
-    {
-      resetSession: () => {
-        throw new Error('reset failed');
-      },
-    } as never,
-    {
-      clearCache: () => {
-        throw new Error('clear cache failed');
-      },
-    } as never,
-    {
-      clearSession: () => {
-        throw new Error('clear contradictions failed');
-      },
-    } as never,
+      experienceService: { log: () => createExperience() } as never,
+      reflectionService: {} as never,
+      behaviorService: {
+        promoteFromReflection: () => undefined,
+        freezeRulesByDuration: () => [],
+        demoteStaleEmergingRules: () => 0,
+      } as never,
+      memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+      memoryRepo: {
+        count: () => 0,
+      } as never,
+      profileProjection: { recomputeForUser: () => createProjectedProfile('verbose') } as never,
+      profileRepo: { getByUserId: () => createProjectedProfile('concise') } as never,
+      selfTuningDecayService: {
+        shouldRecompute: () => true,
+        recompute: () => {
+          throw new Error('recompute failed');
+        },
+      } as never,
+      driftDetectionService: {
+        detectDrift: () => {
+          throw new Error('drift failed');
+        },
+      } as never,
+      progressiveConsolidationService: {
+        resetSession: () => {
+          throw new Error('reset failed');
+        },
+      } as never,
+      predictiveContextService: {
+        clearCache: () => {
+          throw new Error('clear cache failed');
+        },
+      } as never,
+      contradictionMonitor: {
+        clearSession: () => {
+          throw new Error('clear contradictions failed');
+        },
+      } as never,
+    },
   );
 
   assert.equal(result.sessionId, 'session-end-profile-7');

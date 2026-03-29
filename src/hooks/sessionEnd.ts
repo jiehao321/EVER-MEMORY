@@ -22,6 +22,24 @@ import { clearSessionContext, getInteractionContext } from '../runtime/context.j
 import { withTimeout } from '../util/timeout.js';
 import type { ProfileRepository } from '../storage/profileRepo.js';
 
+export interface SessionEndContext {
+  experienceService: ExperienceService;
+  reflectionService: ReflectionService;
+  behaviorService: BehaviorService;
+  memoryService: MemoryService;
+  debugRepo?: DebugRepository;
+  semanticRepo?: SemanticRepository;
+  memoryRepo?: MemoryRepository;
+  profileProjection?: ProfileProjectionService;
+  housekeepingService?: MemoryHousekeepingService;
+  profileRepo?: ProfileRepository;
+  selfTuningDecayService?: SelfTuningDecayService;
+  driftDetectionService?: DriftDetectionService;
+  progressiveConsolidationService?: ProgressiveConsolidationService;
+  predictiveContextService?: PredictiveContextService;
+  contradictionMonitor?: ContradictionMonitor;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -57,21 +75,7 @@ function isTimeoutError(error: unknown): boolean {
 
 export async function handleSessionEnd(
   input: SessionEndInput,
-  experienceService: ExperienceService,
-  reflectionService: ReflectionService,
-  behaviorService: BehaviorService,
-  memoryService: MemoryService,
-  debugRepo?: DebugRepository,
-  semanticRepo?: SemanticRepository,
-  memoryRepo?: MemoryRepository,
-  profileProjection?: ProfileProjectionService,
-  housekeepingService?: MemoryHousekeepingService,
-  profileRepo?: ProfileRepository,
-  selfTuningDecayService?: SelfTuningDecayService,
-  driftDetectionService?: DriftDetectionService,
-  progressiveConsolidationService?: ProgressiveConsolidationService,
-  predictiveContextService?: PredictiveContextService,
-  contradictionMonitor?: ContradictionMonitor,
+  ctx: SessionEndContext,
 ): Promise<SessionEndResult> {
   const sanitizedInput: SessionEndInput = {
     ...input,
@@ -80,7 +84,7 @@ export async function handleSessionEnd(
     outcomeSummary: sanitizeOptionalText(input.outcomeSummary),
   };
   const interaction = getInteractionContext(input.sessionId);
-  const experience = experienceService.log({
+  const experience = ctx.experienceService.log({
     sessionId: sanitizedInput.sessionId,
     messageId: sanitizedInput.messageId,
     inputText: sanitizedInput.inputText,
@@ -97,7 +101,7 @@ export async function handleSessionEnd(
   );
 
   const reflection = triggerKind
-    ? reflectionService.reflect({
+    ? ctx.reflectionService.reflect({
         triggerKind,
         sessionId: input.sessionId,
         experienceIds: [experience.id],
@@ -105,7 +109,7 @@ export async function handleSessionEnd(
       }).reflection ?? undefined
     : undefined;
   const promotionResult = reflection
-    ? behaviorService.promoteFromReflection({
+    ? ctx.behaviorService.promoteFromReflection({
         reflectionId: reflection.id,
         appliesTo: {
           userId: input.scope?.userId,
@@ -124,11 +128,11 @@ export async function handleSessionEnd(
       }
     : undefined;
   const autoPromotionResult = await withTimeout(
-    autoPromoteRules(behaviorService),
+    autoPromoteRules(ctx.behaviorService),
     5_000,
     'autoPromoteRules',
   ).catch((error: unknown) => {
-    debugRepo?.log('session_end_processed', input.sessionId, {
+    ctx.debugRepo?.log('session_end_processed', input.sessionId, {
       sessionId: input.sessionId,
       autoPromotionFailed: true,
       error: error instanceof Error ? error.message : String(error),
@@ -136,9 +140,9 @@ export async function handleSessionEnd(
     return { promoted: 0 };
   });
   // RC4: Demote stale emerging rules (applyCount=0 after EMERGING_AUTO_DEMOTE_DAYS days)
-  const staleDemoted = behaviorService.demoteStaleEmergingRules();
+  const staleDemoted = ctx.behaviorService.demoteStaleEmergingRules();
 
-  const expiredEphemeralRules = behaviorService.freezeRulesByDuration({
+  const expiredEphemeralRules = ctx.behaviorService.freezeRulesByDuration({
     duration: 'ephemeral',
     reason: 'session_expired',
     userId: input.scope?.userId,
@@ -153,15 +157,15 @@ export async function handleSessionEnd(
         experience,
         reflection: reviewedReflection,
       },
-      memoryService,
-      profileProjection,
-      semanticRepo,
-      memoryRepo,
+      ctx.memoryService,
+      ctx.profileProjection,
+      ctx.semanticRepo,
+      ctx.memoryRepo,
     ),
     10_000,
     'processAutoCapture',
   ).catch((error: unknown) => {
-    debugRepo?.log('session_end_processed', input.sessionId, {
+    ctx.debugRepo?.log('session_end_processed', input.sessionId, {
       sessionId: input.sessionId,
       autoCaptureFailed: true,
       error: error instanceof Error ? error.message : String(error),
@@ -180,13 +184,13 @@ export async function handleSessionEnd(
     storeInsights(
       extractedInsights,
       sanitizedInput.scope ?? {},
-      memoryService,
-      semanticRepo,
+      ctx.memoryService,
+      ctx.semanticRepo,
     ),
     5_000,
     'storeInsights',
   ).catch((error: unknown) => {
-    debugRepo?.log('session_end_processed', input.sessionId, {
+    ctx.debugRepo?.log('session_end_processed', input.sessionId, {
       sessionId: input.sessionId,
       storeInsightsFailed: true,
       error: error instanceof Error ? error.message : String(error),
@@ -194,34 +198,34 @@ export async function handleSessionEnd(
     return { storedCount: 0 };
   });
   let profileUpdated = false;
-  let previousProfile = input.scope?.userId && profileRepo
-    ? profileRepo.getByUserId(input.scope.userId)
+  let previousProfile = input.scope?.userId && ctx.profileRepo
+    ? ctx.profileRepo.getByUserId(input.scope.userId)
     : null;
-  if (input.scope?.userId && profileProjection) {
+  if (input.scope?.userId && ctx.profileProjection) {
     try {
       const nextProfile = await withTimeout(
-        Promise.resolve(profileProjection.recomputeForUser(input.scope.userId)),
+        Promise.resolve(ctx.profileProjection.recomputeForUser(input.scope.userId)),
         3_000,
         'recomputeForUser',
       );
       profileUpdated = true;
-      if (driftDetectionService && nextProfile) {
+      if (ctx.driftDetectionService && nextProfile) {
         try {
-          driftDetectionService.detectDrift(previousProfile, nextProfile, input.scope.userId);
+          ctx.driftDetectionService.detectDrift(previousProfile, nextProfile, input.scope.userId);
         } catch {
           // Best-effort drift detection must not block session teardown
         }
       }
     } catch (error) {
       // Profile refresh is best-effort and must never block session teardown.
-      debugRepo?.log('profile_recompute_failed', input.sessionId ?? 'unknown', {
+      ctx.debugRepo?.log('profile_recompute_failed', input.sessionId ?? 'unknown', {
         userId: input.scope?.userId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
-  debugRepo?.log('session_end_processed', input.sessionId, {
+  ctx.debugRepo?.log('session_end_processed', input.sessionId, {
     sessionId: input.sessionId,
     scopeUserId: input.scope?.userId,
     scopeChatId: input.scope?.chatId,
@@ -247,19 +251,19 @@ export async function handleSessionEnd(
     profileUpdated,
   });
 
-  if (housekeepingService && memoryRepo && input.scope && memoryRepo.count({ scope: input.scope }) > 50) {
-    const lastRunAt = memoryRepo.search({
+  if (ctx.housekeepingService && ctx.memoryRepo && input.scope && ctx.memoryRepo.count({ scope: input.scope }) > 50) {
+    const lastRunAt = ctx.memoryRepo.search({
       scope: input.scope,
       limit: 1,
     })[0]?.timestamps.updatedAt;
     try {
       await withTimeout(
-        housekeepingService.runIfNeeded(input.scope, lastRunAt),
+        ctx.housekeepingService.runIfNeeded(input.scope, lastRunAt),
         8_000,
         'housekeeping',
       );
     } catch (error) {
-      debugRepo?.log('housekeeping_error', input.sessionId, {
+      ctx.debugRepo?.log('housekeeping_error', input.sessionId, {
         sessionId: input.sessionId,
         reason: isTimeoutError(error) ? 'timeout' : 'failed',
         error: getErrorMessage(error),
@@ -267,33 +271,33 @@ export async function handleSessionEnd(
     }
   }
 
-  if (selfTuningDecayService?.shouldRecompute()) {
+  if (ctx.selfTuningDecayService?.shouldRecompute()) {
     try {
-      selfTuningDecayService.recompute();
+      ctx.selfTuningDecayService.recompute();
     } catch {
       // Best-effort tuning must not block session teardown
     }
   }
 
-  if (progressiveConsolidationService) {
+  if (ctx.progressiveConsolidationService) {
     try {
-      progressiveConsolidationService.resetSession(input.sessionId);
+      ctx.progressiveConsolidationService.resetSession(input.sessionId);
     } catch {
       // Best-effort cleanup must not block session teardown
     }
   }
 
-  if (predictiveContextService) {
+  if (ctx.predictiveContextService) {
     try {
-      predictiveContextService.clearCache(input.sessionId);
+      ctx.predictiveContextService.clearCache(input.sessionId);
     } catch {
       // Best-effort cleanup must not block session teardown
     }
   }
 
-  if (contradictionMonitor) {
+  if (ctx.contradictionMonitor) {
     try {
-      contradictionMonitor.clearSession(input.sessionId);
+      ctx.contradictionMonitor.clearSession(input.sessionId);
     } catch {
       // Best-effort cleanup must not block session teardown
     }
