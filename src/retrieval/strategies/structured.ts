@@ -17,6 +17,7 @@ import {
   RECALL_TARGETED_MAX,
   RECALL_TARGETED_MIN,
 } from '../../tuning.js';
+import { INTENT_WEIGHT_PROFILES } from '../../tuning/retrieval.js';
 import {
   NEXT_STEP_PATTERNS,
   PROJECT_PROGRESS_ROUTE_PATTERNS,
@@ -188,6 +189,7 @@ export class StructuredRetrievalStrategy {
         routeProjectSignal: route.projectSignal,
         hasProjectScope: Boolean(request.scope?.project),
         intentProjectOriented,
+        weightOverrides: INTENT_WEIGHT_PROFILES[request.intent.intent.type],
       },
     };
   }
@@ -226,9 +228,12 @@ export class StructuredRetrievalStrategy {
   ): RankedStrategyResult {
     const loaded = this.support.loadCandidates(request, limit, false, meta);
     const candidateResult = this.support.applyCandidatePolicy(loaded, limit, meta);
+    const effectiveWeights = meta.weightOverrides
+      ? { ...this.keywordWeights, ...meta.weightOverrides }
+      : this.keywordWeights;
     return {
       ranked: rankKeywordRecall(candidateResult.candidates, { ...request, query: '' }, {
-        weights: this.keywordWeights,
+        weights: effectiveWeights,
       }).map((entry) => toStrategyItem(entry.memory, entry.score, this.support, meta)),
       candidates: candidateResult.candidates,
       semanticHitCount: 0,

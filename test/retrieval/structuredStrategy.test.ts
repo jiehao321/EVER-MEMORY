@@ -191,4 +191,41 @@ describe('StructuredRetrievalStrategy', () => {
     assert.deepEqual(selected.top.map((entry) => entry.memory.id), ['dup-1']);
     assert.equal(selected.selectionStats.duplicateItemsRemoved, 1);
   });
+
+  it('adds intent weight overrides to prepared recall meta', () => {
+    fixture = createRetrievalFixture();
+    const strategy = createStrategy();
+
+    const prepared = strategy.prepareIntentRecall({
+      query: '我更偏好先记录明确要求',
+      scope: { userId: 'user-1' },
+      intent: {
+        rawText: '我更偏好先记录明确要求',
+        intent: { type: 'preference', confidence: 0.95 },
+        signals: {
+          urgency: 'low',
+          emotionalTone: 'neutral',
+          actionNeed: 'answer',
+          memoryNeed: 'targeted',
+          preferenceRelevance: 0.95,
+          correctionSignal: 0.05,
+        },
+        retrievalHints: {
+          preferredTypes: [],
+          preferredScopes: [],
+          preferredTimeBias: 'balanced',
+        },
+        entities: [],
+        createdAt: '2026-03-29T00:00:00.000Z',
+        id: 'intent-preference-1',
+      },
+      limit: 5,
+    });
+
+    assert.deepEqual(prepared.meta.weightOverrides, {
+      keyword: 0.2,
+      typePriority: 0.3,
+      explicitness: 0.2,
+    });
+  });
 });

@@ -1,3 +1,4 @@
+import type { RetrievalKeywordWeights } from '../../types/config.js';
 import type {
   MemoryDataClass,
   MemoryItem,
@@ -30,6 +31,7 @@ export interface RecallExecutionMeta {
   routeProjectSignal: boolean;
   hasProjectScope: boolean;
   intentProjectOriented: boolean;
+  weightOverrides?: Partial<RetrievalKeywordWeights>;
 }
 
 export interface CandidatePolicyStats {
@@ -39,6 +41,8 @@ export interface CandidatePolicyStats {
   retainedTestCandidates: number;
   suppressedLowValueCandidates: number;
   retainedLowValueCandidates: number;
+  suppressedContradictionCandidates: number;
+  demotedLowTrustCandidates: number;
   filterMode: 'default' | 'project_strict';
   dataClassCounts: Record<MemoryDataClass, number>;
 }

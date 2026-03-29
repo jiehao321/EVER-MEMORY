@@ -107,11 +107,14 @@ export class RetrievalStrategySupport {
     const primaryCandidates: MemoryItem[] = [];
     const tests: MemoryItem[] = [];
     const lowValue: MemoryItem[] = [];
+    const contradicted: MemoryItem[] = [];
 
     for (const candidate of candidates) {
       const dataClass = this.classifyMemoryData(candidate);
       classCounts[dataClass] += 1;
-      if (dataClass === 'test') {
+      if (candidate.tags.includes('contradiction_pending')) {
+        contradicted.push(candidate);
+      } else if (dataClass === 'test') {
         tests.push(candidate);
       } else if (this.isLowValueNoise(candidate)) {
         lowValue.push(candidate);
@@ -120,6 +123,7 @@ export class RetrievalStrategySupport {
       }
     }
 
+    const lowTrustCount = this.demoteLowTrust(primaryCandidates, limit);
     const strictProjectMode = meta.projectOriented || meta.routeApplied;
     const maxLowValueCandidates = strictProjectMode
       ? (primaryCandidates.length >= Math.max(2, limit - 1) ? 0 : 1)
@@ -142,10 +146,40 @@ export class RetrievalStrategySupport {
         retainedTestCandidates: retainedTests.length,
         suppressedLowValueCandidates: lowValue.length - retainedLowValue.length,
         retainedLowValueCandidates: retainedLowValue.length,
+        suppressedContradictionCandidates: contradicted.length,
+        demotedLowTrustCandidates: lowTrustCount,
         filterMode: strictProjectMode ? 'project_strict' : 'default',
         dataClassCounts: classCounts,
       },
     };
+  }
+
+  /**
+   * Move low-trust candidates to the end so they lose priority when the
+   * candidate pool already exceeds the caller's target limit.
+   */
+  private demoteLowTrust(primaryCandidates: MemoryItem[], limit: number): number {
+    if (primaryCandidates.length <= limit) {
+      return 0;
+    }
+
+    const lowTrust: MemoryItem[] = [];
+    const highTrust: MemoryItem[] = [];
+    for (const candidate of primaryCandidates) {
+      if (candidate.sourceGrade === 'inferred' && (candidate.scores?.confidence ?? 1) < 0.5) {
+        lowTrust.push(candidate);
+      } else {
+        highTrust.push(candidate);
+      }
+    }
+
+    if (lowTrust.length === 0) {
+      return 0;
+    }
+
+    primaryCandidates.length = 0;
+    primaryCandidates.push(...highTrust, ...lowTrust);
+    return lowTrust.length;
   }
 
   loadCandidates(

@@ -2,6 +2,8 @@
  * Retrieval, briefing, intent, and transfer tuning constants.
  */
 
+import type { RetrievalKeywordWeights } from '../types/config.js';
+
 /** Default recall limit when not specified by request */
 export const DEFAULT_RECALL_LIMIT = 8;
 
@@ -186,3 +188,14 @@ export const DEEP_QUERY_PRIORITY_TERMS: readonly string[] = [
   '项目', '计划', '里程碑', '阶段', '任务', '约束', '决策', '风险', '质量', '回滚',
   'project', 'plan', 'milestone', 'phase', 'task', 'constraint', 'decision', 'risk', 'quality', 'rollback',
 ];
+
+/** Intent-specific keyword weight overrides — merged with defaults at recall time */
+export const INTENT_WEIGHT_PROFILES: Record<string, Partial<RetrievalKeywordWeights>> = {
+  question: { keyword: 0.45, recency: 0.08 },
+  correction: { keyword: 0.3, recency: 0.25 },
+  preference: { keyword: 0.2, typePriority: 0.3, explicitness: 0.2 },
+  status_update: { recency: 0.35, typePriority: 0.2 },
+  planning: { typePriority: 0.25, importance: 0.2, keyword: 0.25 },
+  instruction: { keyword: 0.4, confidence: 0.2 },
+  other: {},
+};

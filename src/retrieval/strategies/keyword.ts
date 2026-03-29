@@ -251,9 +251,12 @@ export class KeywordRetrievalStrategy {
   ): RankedStrategyResult {
     const loaded = this.support.loadCandidates(request, limit, true, meta);
     const candidateResult = this.support.applyCandidatePolicy(loaded, limit, meta);
+    const effectiveWeights = meta.weightOverrides
+      ? { ...this.keywordWeights, ...meta.weightOverrides }
+      : this.keywordWeights;
     return {
       ranked: rankKeywordRecall(candidateResult.candidates, request, {
-        weights: this.keywordWeights,
+        weights: effectiveWeights,
       }).map((entry) => toStrategyItem(entry, this.support, meta)),
       candidates: candidateResult.candidates,
       semanticHitCount: 0,

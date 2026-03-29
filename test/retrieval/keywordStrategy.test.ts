@@ -115,4 +115,36 @@ describe('KeywordRetrievalStrategy', () => {
     const result = strategy.rank({ query: '发布 质量门禁', scope: { userId: 'user-1' } }, 5, createExecutionMeta());
     assert.deepEqual(result.ranked.map((entry) => entry.memory.id), ['keyword-tag-hit', 'keyword-tag-miss']);
   });
+
+  it('merges execution weight overrides without changing default strategy weights', async () => {
+    fixture = createRetrievalFixture();
+    const strategy = new KeywordRetrievalStrategy(fixture.support, { ...DEFAULT_RETRIEVAL_KEYWORD_WEIGHTS });
+
+    await insertMemory(fixture, createRetrievalMemory({
+      id: 'keyword-override-exact-old',
+      content: '发布 质量 门禁',
+      timestamps: {
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    }));
+    await insertMemory(fixture, createRetrievalMemory({
+      id: 'keyword-override-recent-partial',
+      content: '发布',
+      timestamps: {
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+      },
+    }));
+
+    const baseline = strategy.rank({ query: '发布 质量 门禁', scope: { userId: 'user-1' } }, 5, createExecutionMeta());
+    assert.equal(baseline.ranked[0]?.memory.id, 'keyword-override-exact-old');
+
+    const overridden = strategy.rank(
+      { query: '发布 质量 门禁', scope: { userId: 'user-1' } },
+      5,
+      createExecutionMeta({ weightOverrides: { keyword: 0.1, recency: 1 } }),
+    );
+    assert.equal(overridden.ranked[0]?.memory.id, 'keyword-override-recent-partial');
+  });
 });

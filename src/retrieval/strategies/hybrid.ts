@@ -61,8 +61,11 @@ export class HybridRetrievalStrategy {
     const candidateResult = this.support.applyCandidatePolicy(loaded, limit, meta);
     const candidates = candidateResult.candidates;
     const candidateMap = new Map(candidates.map((item) => [item.id, item]));
-    const keywordRanked = rankKeywordRecall(candidates, request, { weights: this.keywordWeights });
-    const baseRanked = rankKeywordRecall(candidates, { ...request, query: '' }, { weights: this.keywordWeights });
+    const effectiveWeights = meta.weightOverrides
+      ? { ...this.keywordWeights, ...meta.weightOverrides }
+      : this.keywordWeights;
+    const keywordRanked = rankKeywordRecall(candidates, request, { weights: effectiveWeights });
+    const baseRanked = rankKeywordRecall(candidates, { ...request, query: '' }, { weights: effectiveWeights });
     const keywordScoreById = new Map(keywordRanked.map((entry) => [entry.memory.id, entry.score]));
     const baseScoreById = new Map(baseRanked.map((entry) => [entry.memory.id, entry.score]));
     const maxKeywordScore = keywordRanked[0]?.score && keywordRanked[0].score > 0 ? keywordRanked[0].score : 1;
