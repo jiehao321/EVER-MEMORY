@@ -1,7 +1,7 @@
 # EverMemory Guide (CLAUDE)
 
 ## Project Overview
-- EverMemory: deterministic memory plugin for OpenClaw, current version v2.1.0.
+- EverMemory: deterministic memory plugin for OpenClaw, current version v2.2.0.
 - Goal: reliable, explainable, rollback-capable workflows for knowledge storage, recall, rule governance, and user profiling.
 - Stack: Node.js 22.x, TypeScript strict ESM, SQLite WAL, better-sqlite3, TypeBox.
 - Principles: determinism first, operator first, progressive hardening.
@@ -43,15 +43,55 @@ npm run release:preflight  # Cross-platform install & version consistency check
 - Run `npm run validate` before commits; `teams:release` before publishing.
 
 ## Current Status
-- Version: v2.1.0 (2026-03-25)
+- Version: v2.2.0 (2026-03-30)
 - OpenClaw SDK: 2026.3.22 (fully migrated, no backward compat)
-- Tests: 523/525 pass (2 skip), stability check 全绿.
+- Tests: 567/571 pass (2 skip, 2 env-only npm pack failures), stability check 全绿.
 - KPI: recall accuracy=1.0, unit pass=1.0, continuity=true, autoCaptureAcceptRate=0.75.
-- 23 tools (19 evermemory + 4 butler), 25 schema migrations, built-in semantic search.
-- Knowledge graph with 7 relation types, proactive recall, contradiction monitoring, adaptive retrieval weights.
+- 23 tools (19 evermemory + 4 butler), 27 schema migrations, built-in semantic search.
+- Intent-aware retrieval with 7 intent types × 8 keyword weight profiles, error-prevention filtering.
+- Factor-level retrieval feedback, adaptive keyword + hybrid weights, recall diagnostics.
+- Category-aware behavior lifecycle, auto-suspend on repeated overrides, offline relation discovery.
+- Knowledge graph with 7 relation types, proactive recall, contradiction monitoring.
 - Memory compression, predictive context, preference drift detection, self-tuning decay.
-- Butler agent: persistent episodic OODA loop, attention service, goal tracking, narrative threads (reduced mode).
-- Track A/B/C/D 质量冲刺全部完成，Phase 1-3 进化全部完成，Butler Phase 1-3 完成，OpenClaw SDK 全面迁移完成。
+- Butler agent: persistent episodic OODA loop, attention service, goal tracking, narrative threads, context-aware overlay.
+- Track A/B/C/D 质量冲刺全部完成，Evolution Phase 1-3 完成，Butler Phase 1-3 完成，v3 Roadmap Phase -1~3 全部完成。
+
+## v2.2.0 Changes (2026-03-30 — Recall Precision & Intelligence)
+
+### Phase -1 — LLM Calling Chain Fixes (Blocker)
+- `_authFailed` recoverable after successful invocation + `_lastAuthError` diagnostic field
+- LLM probe retry with 30s debounce (no longer one-shot)
+- `applyAuth` fallback correctly dispatches Bearer header for non-Anthropic providers
+- `hasModelAuth` relaxed — no longer requires `agent.defaults`
+- Auth failure logging with provider/mode/source context
+
+### Phase 0 — Structural Slimming
+- `handleMessageReceived` / `handleSessionEnd` refactored to context object pattern (≤3 params)
+- `import` + `export` tools merged into `evermemory_transfer`
+
+### Phase 1 — Recall Precision (Core Value)
+- **Schema v26**: `retrieval_feedback.top_factors` column
+- `INTENT_WEIGHT_PROFILES` — 7 intent types × 8 keyword weight overrides
+- `prepareIntentRecall()` passes `weightOverrides` through ranking pipeline
+- `applyCandidatePolicy()` filters `contradiction_pending` memories, demotes low-trust inferred
+- `buildRecallReason()` generates top-3 factor explanation per recalled item
+- `BriefingSectionEntry` pipeline tracks memoryIds through briefing construction
+- `messageReceived` deprioritizes briefing-seen memories on recall merge
+
+### Phase 2 — Feedback Loop Hardening
+- Factor-level feedback: `RetrievalFactor` (name + value) stored per recalled item
+- `AdaptiveWeightsService` — independent keyword 8-weight adaptation with 1hr cache
+- `perf_trace` recording in debug_events (duration/count/strategy/score)
+- `evermemory_status` diagnostics mode with recent recall performance summary
+
+### Phase 3 — Intelligence Enhancement
+- **Schema v27**: `behavior_rules` override lifecycle columns (override_count, auto_suspended, etc.)
+- Category-aware maturity thresholds (safety=2 .. style=7) replace global constant
+- Auto-suspend after 3 consecutive overrides with freeze reason tracking
+- Butler overlay receives `recentRuleChanges` + `currentIntent` for precision
+- Compiler renders `<next-step>` and `[rule:action]` alert nodes
+- Session-end offline relation discovery scans 50 recent memories (2s timeout)
+- Migration robustness: `runStatementsIgnoreDuplicateColumns` tolerates missing tables
 
 ## Recent Changes (2026-03-16 Quality Sprint)
 

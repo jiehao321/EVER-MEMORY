@@ -29,7 +29,7 @@ Local semantic search depends on native/runtime pieces beyond plain TypeScript. 
 ## Install as an OpenClaw Plugin
 
 ```bash
-openclaw plugins install evermemory@2.1.0
+openclaw plugins install evermemory@2.2.0
 openclaw plugins enable evermemory
 openclaw config set plugins.slots.memory evermemory
 openclaw gateway restart

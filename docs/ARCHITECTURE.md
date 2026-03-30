@@ -2,7 +2,7 @@
 
 This document describes the current code structure, not the original product pitch.
 
-**Version:** 2.1.0
+**Version:** 2.2.0
 
 ## Runtime Shape
 
