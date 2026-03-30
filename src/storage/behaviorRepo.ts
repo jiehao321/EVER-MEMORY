@@ -23,12 +23,16 @@ interface BehaviorRuleRow {
   maturity: string | null;
   apply_count: number | null;
   contradiction_count: number | null;
+  override_count: number | null;
   last_applied_at: string | null;
   last_contradicted_at: string | null;
+  last_overridden_at: string | null;
   last_reviewed_at: string | null;
   stale: number | null;
   staleness: string | null;
   decay_score: number | null;
+  auto_suspended: number | null;
+  auto_suspended_at: string | null;
   frozen_at: string | null;
   freeze_reason: string | null;
   expires_at: string | null;
@@ -86,12 +90,16 @@ function toBehaviorRule(row: BehaviorRuleRow): BehaviorRule {
       maturity: (row.maturity as BehaviorRule['lifecycle']['maturity'] | null) ?? 'emerging',
       applyCount: row.apply_count ?? 0,
       contradictionCount: row.contradiction_count ?? 0,
+      overrideCount: row.override_count ?? 0,
       lastAppliedAt: row.last_applied_at ?? undefined,
       lastContradictedAt: row.last_contradicted_at ?? undefined,
+      lastOverriddenAt: row.last_overridden_at ?? undefined,
       lastReviewedAt: row.last_reviewed_at ?? undefined,
       stale: row.stale === 1,
       staleness: (row.staleness as BehaviorRule['lifecycle']['staleness'] | null) ?? 'fresh',
       decayScore: row.decay_score ?? 0,
+      autoSuspended: row.auto_suspended === 1,
+      autoSuspendedAt: row.auto_suspended_at ?? undefined,
       frozenAt: row.frozen_at ?? undefined,
       freezeReason: (row.freeze_reason as BehaviorRule['lifecycle']['freezeReason'] | null) ?? undefined,
       expiresAt: row.expires_at ?? undefined,
@@ -138,14 +146,14 @@ export class BehaviorRepository {
         category, priority,
         reflection_ids_json, memory_ids_json, evidence_confidence, recurrence_count,
         duration, level, maturity, apply_count, contradiction_count,
-        last_applied_at, last_contradicted_at, last_reviewed_at,
-        stale, staleness, decay_score, frozen_at, freeze_reason, expires_at,
+        override_count, last_applied_at, last_contradicted_at, last_overridden_at, last_reviewed_at,
+        stale, staleness, decay_score, auto_suspended, auto_suspended_at, frozen_at, freeze_reason, expires_at,
         active, deprecated, superseded_by,
         frozen, status_reason, status_source_reflection_id, status_changed_at,
         promoted_from_reflection_id, promoted_reason, promoted_at, review_source_refs_json,
         promotion_evidence_summary, deactivated_by_rule_id, deactivated_by_reflection_id,
         deactivated_reason, deactivated_at, tags_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         statement = excluded.statement,
         created_at = excluded.created_at,
@@ -165,12 +173,16 @@ export class BehaviorRepository {
         maturity = excluded.maturity,
         apply_count = excluded.apply_count,
         contradiction_count = excluded.contradiction_count,
+        override_count = excluded.override_count,
         last_applied_at = excluded.last_applied_at,
         last_contradicted_at = excluded.last_contradicted_at,
+        last_overridden_at = excluded.last_overridden_at,
         last_reviewed_at = excluded.last_reviewed_at,
         stale = excluded.stale,
         staleness = excluded.staleness,
         decay_score = excluded.decay_score,
+        auto_suspended = excluded.auto_suspended,
+        auto_suspended_at = excluded.auto_suspended_at,
         frozen_at = excluded.frozen_at,
         freeze_reason = excluded.freeze_reason,
         expires_at = excluded.expires_at,
@@ -211,12 +223,16 @@ export class BehaviorRepository {
       rule.lifecycle.maturity,
       rule.lifecycle.applyCount,
       rule.lifecycle.contradictionCount,
+      rule.lifecycle.overrideCount ?? 0,
       rule.lifecycle.lastAppliedAt ?? null,
       rule.lifecycle.lastContradictedAt ?? null,
+      rule.lifecycle.lastOverriddenAt ?? null,
       rule.lifecycle.lastReviewedAt ?? null,
       rule.lifecycle.stale ? 1 : 0,
       rule.lifecycle.staleness,
       rule.lifecycle.decayScore,
+      rule.lifecycle.autoSuspended ? 1 : 0,
+      rule.lifecycle.autoSuspendedAt ?? null,
       rule.lifecycle.frozenAt ?? null,
       rule.lifecycle.freezeReason ?? null,
       rule.lifecycle.expiresAt ?? null,

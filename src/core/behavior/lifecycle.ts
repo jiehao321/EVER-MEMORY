@@ -1,5 +1,6 @@
 import type {
   BehaviorRule,
+  BehaviorRuleCategory,
   BehaviorRuleFreezeReason,
   BehaviorRuleLevel,
   BehaviorRuleLifecycle,
@@ -9,6 +10,7 @@ import type {
 import {
   BEHAVIOR_AGING_AFTER_DAYS,
   BEHAVIOR_APPLY_DECAY_RECOVERY,
+  BEHAVIOR_AUTO_SUSPEND_OVERRIDE_COUNT,
   BEHAVIOR_DECAY_FROM_AGING,
   BEHAVIOR_DECAY_FROM_EXPIRED,
   BEHAVIOR_DECAY_FROM_STALE,
@@ -23,6 +25,8 @@ import {
   BEHAVIOR_PRIORITY_DECAY_STEP,
   BEHAVIOR_STALE_AFTER_DAYS,
   BEHAVIOR_STALE_VALIDATED_THRESHOLD,
+  CATEGORY_STALE_DAYS,
+  CATEGORY_VALIDATION_THRESHOLD,
   LEVEL_BASELINE_CONFIDENCE_THRESHOLD,
   LEVEL_BASELINE_PRIORITY_THRESHOLD,
   LEVEL_CRITICAL_CONFIDENCE_THRESHOLD,
@@ -51,14 +55,25 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function deduceMaturity(applyCount: number, contradictionCount: number): BehaviorRuleMaturity {
+function deduceMaturity(
+  applyCount: number,
+  contradictionCount: number,
+  category?: BehaviorRuleCategory,
+): BehaviorRuleMaturity {
   if (contradictionCount > 0) {
     return 'frozen';
   }
-  if (applyCount >= BEHAVIOR_MATURITY_INSTITUTIONALIZED_THRESHOLD) {
+  const validatedThreshold = category
+    ? CATEGORY_VALIDATION_THRESHOLD[category]
+    : BEHAVIOR_MATURITY_VALIDATED_THRESHOLD;
+  const institutionalizedThreshold = Math.max(
+    BEHAVIOR_MATURITY_INSTITUTIONALIZED_THRESHOLD,
+    validatedThreshold + 1,
+  );
+  if (applyCount >= institutionalizedThreshold) {
     return 'institutionalized';
   }
-  if (applyCount >= BEHAVIOR_MATURITY_VALIDATED_THRESHOLD) {
+  if (applyCount >= validatedThreshold) {
     return 'validated';
   }
   return 'emerging';
@@ -84,12 +99,16 @@ export function createInitialBehaviorLifecycle(input: {
     maturity: deduceMaturity(0, 0),
     applyCount: 0,
     contradictionCount: 0,
+    overrideCount: 0,
     lastAppliedAt: undefined,
     lastContradictedAt: undefined,
+    lastOverriddenAt: undefined,
     lastReviewedAt: input.now,
     stale: false,
     staleness: 'fresh',
     decayScore: 0,
+    autoSuspended: false,
+    autoSuspendedAt: undefined,
     frozenAt: undefined,
     freezeReason: undefined,
     expiresAt: undefined,
@@ -113,12 +132,15 @@ export function evaluateBehaviorLifecycle(rule: BehaviorRule, now = new Date()):
   let maturity = rule.lifecycle.maturity;
   let level = rule.lifecycle.level;
   let priority = rule.priority;
+  const staleDays = rule.category
+    ? CATEGORY_STALE_DAYS[rule.category]
+    : BEHAVIOR_STALE_AFTER_DAYS;
 
   if (inactivityDays >= BEHAVIOR_EXPIRED_AFTER_DAYS) {
     staleness = 'expired';
     stale = true;
     decayScore += BEHAVIOR_DECAY_FROM_EXPIRED;
-  } else if (inactivityDays >= BEHAVIOR_STALE_AFTER_DAYS) {
+  } else if (inactivityDays >= staleDays) {
     staleness = 'stale';
     stale = true;
     decayScore += BEHAVIOR_DECAY_FROM_STALE;
@@ -137,6 +159,16 @@ export function evaluateBehaviorLifecycle(rule: BehaviorRule, now = new Date()):
     deprecated = true;
     frozenAt = frozenAt ?? (rule.lifecycle.lastContradictedAt ?? nowIso);
     freezeReason = freezeReason ?? 'contradiction_threshold';
+    maturity = 'frozen';
+    level = 'candidate';
+  } else if (
+    (rule.lifecycle.overrideCount ?? 0) >= BEHAVIOR_AUTO_SUSPEND_OVERRIDE_COUNT
+    && !rule.lifecycle.autoSuspended
+  ) {
+    active = false;
+    deprecated = true;
+    frozenAt = frozenAt ?? (rule.lifecycle.lastOverriddenAt ?? nowIso);
+    freezeReason = 'auto_suspended';
     maturity = 'frozen';
     level = 'candidate';
   } else if (rule.lifecycle.freezeReason === 'conflict') {
@@ -168,7 +200,9 @@ export function evaluateBehaviorLifecycle(rule: BehaviorRule, now = new Date()):
         : 'emerging';
     level = priority >= LEVEL_BASELINE_PRIORITY_THRESHOLD ? 'baseline' : 'candidate';
   } else {
-    maturity = rule.lifecycle.freezeReason ? 'frozen' : deduceMaturity(rule.lifecycle.applyCount, rule.lifecycle.contradictionCount);
+    maturity = rule.lifecycle.freezeReason
+      ? 'frozen'
+      : deduceMaturity(rule.lifecycle.applyCount, rule.lifecycle.contradictionCount, rule.category);
     level = deduceLevel(priority, rule.evidence.confidence);
   }
 
@@ -183,6 +217,17 @@ export function evaluateBehaviorLifecycle(rule: BehaviorRule, now = new Date()):
       stale,
       staleness,
       decayScore: clamp01(decayScore),
+      autoSuspended: rule.lifecycle.autoSuspended
+        || (
+          (rule.lifecycle.overrideCount ?? 0) >= BEHAVIOR_AUTO_SUSPEND_OVERRIDE_COUNT
+          && freezeReason === 'auto_suspended'
+        ),
+      autoSuspendedAt: rule.lifecycle.autoSuspendedAt
+        ?? (
+          freezeReason === 'auto_suspended'
+            ? (rule.lifecycle.lastOverriddenAt ?? nowIso)
+            : undefined
+        ),
       frozenAt,
       freezeReason,
       expiresAt,
@@ -211,11 +256,43 @@ export function markBehaviorRuleApplied(rule: BehaviorRule, now = new Date()): B
         staleness: 'fresh',
         decayScore: Math.max(0, rule.lifecycle.decayScore - BEHAVIOR_APPLY_DECAY_RECOVERY),
         lastReviewedAt: nowIso,
-        maturity: deduceMaturity(applyCount, rule.lifecycle.contradictionCount),
+        maturity: deduceMaturity(applyCount, rule.lifecycle.contradictionCount, rule.category),
       },
     },
     now,
   );
+}
+
+export function markBehaviorRuleOverridden(rule: BehaviorRule, now = new Date()): BehaviorRule {
+  const nowIso = now.toISOString();
+  const overrideCount = (rule.lifecycle.overrideCount ?? 0) + 1;
+
+  if (overrideCount >= BEHAVIOR_AUTO_SUSPEND_OVERRIDE_COUNT) {
+    return freezeBehaviorRule(
+      {
+        ...rule,
+        lifecycle: {
+          ...rule.lifecycle,
+          overrideCount,
+          lastOverriddenAt: nowIso,
+          autoSuspended: true,
+          autoSuspendedAt: nowIso,
+        },
+      },
+      'auto_suspended',
+      now,
+    );
+  }
+
+  return {
+    ...rule,
+    updatedAt: nowIso,
+    lifecycle: {
+      ...rule.lifecycle,
+      overrideCount,
+      lastOverriddenAt: nowIso,
+    },
+  };
 }
 
 export function markBehaviorRuleContradicted(

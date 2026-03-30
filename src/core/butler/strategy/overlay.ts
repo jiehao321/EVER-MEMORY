@@ -102,7 +102,20 @@ export class StrategicOverlayGenerator {
 
   async generateOverlay(
     state: ButlerPersistentState,
-    context?: { recentMessages?: string[]; scope?: Record<string, unknown> },
+    context?: {
+      recentMessages?: string[];
+      scope?: Record<string, unknown>;
+      recentRuleChanges?: Array<{
+        ruleId: string;
+        action: string;
+        category: string;
+        statement: string;
+      }>;
+      currentIntent?: {
+        type: string;
+        confidence: number;
+      };
+    },
   ): Promise<StrategicOverlay> {
     const fallback = toFallbackOverlay(state);
     const evidence = this.buildEvidencePayload(state, context);
@@ -128,7 +141,20 @@ export class StrategicOverlayGenerator {
 
   buildEvidencePayload(
     state: ButlerPersistentState,
-    context?: { recentMessages?: string[]; scope?: Record<string, unknown> },
+    context?: {
+      recentMessages?: string[];
+      scope?: Record<string, unknown>;
+      recentRuleChanges?: Array<{
+        ruleId: string;
+        action: string;
+        category: string;
+        statement: string;
+      }>;
+      currentIntent?: {
+        type: string;
+        confidence: number;
+      };
+    },
   ): Record<string, unknown> {
     const now = Date.now();
     const workingMemory = state.workingMemory
@@ -150,6 +176,8 @@ export class StrategicOverlayGenerator {
       recentMessages: context?.recentMessages ?? [],
       scope: context?.scope ?? {},
       recentInsights,
+      recentRuleChanges: context?.recentRuleChanges ?? [],
+      currentIntent: context?.currentIntent,
     };
   }
 }

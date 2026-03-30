@@ -523,6 +523,7 @@ export function initializeEverMemory(
         progressiveConsolidationService,
         predictiveContextService,
         contradictionMonitor,
+        relationDetectionService,
       });
     },
     async housekeeping(scope: { userId?: string; chatId?: string; project?: string; global?: boolean }) {

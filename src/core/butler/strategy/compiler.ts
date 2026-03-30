@@ -18,6 +18,7 @@ export function renderStrategy(overlay: StrategicOverlay): string {
   const nextStep = overlay.suggestedNextStep?.trim() || 'none';
   const lines = [
     `<strategy mode="${escapeXml(overlay.currentMode)}" posture="${escapeXml(overlay.recommendedPosture)}" confidence="${overlay.confidence.toFixed(2)}">`,
+    `  <next-step>${escapeXml(nextStep)}</next-step>`,
     `  目标: ${escapeXml(goal)}`,
     `  ${escapeXml(renderList('优先级: ', overlay.topPriorities, 'none'))}`,
     `  ${escapeXml(renderList('约束: ', overlay.constraints, 'none'))}`,
@@ -27,10 +28,15 @@ export function renderStrategy(overlay: StrategicOverlay): string {
   return lines.join('\n');
 }
 
-export function renderWatchlist(overlay: StrategicOverlay, insights: ButlerInsight[] = []): string {
+export function renderWatchlist(
+  overlay: StrategicOverlay,
+  insights: ButlerInsight[] = [],
+  ruleAlerts: Array<{ statement: string; action: string }> = [],
+): string {
   const items = [
     ...overlay.watchouts,
     ...insights.map((insight) => `${insight.title}: ${insight.summary}`),
+    ...ruleAlerts.map((alert) => `[rule:${alert.action}] ${alert.statement}`),
   ];
   const lines = [`<watchlist count="${items.length}">`];
   lines.push(...(items.length > 0 ? items : ['none']).map((item) => `  - ${escapeXml(item)}`));
@@ -62,11 +68,15 @@ export function compileSessionWatchlist(
   return lines.join('\n');
 }
 
-export function compileOverlay(overlay: StrategicOverlay, insights: ButlerInsight[] = []): string {
+export function compileOverlay(
+  overlay: StrategicOverlay,
+  insights: ButlerInsight[] = [],
+  ruleAlerts: Array<{ statement: string; action: string }> = [],
+): string {
   return [
     '<evermemory-butler>',
     renderStrategy(overlay),
-    renderWatchlist(overlay, insights),
+    renderWatchlist(overlay, insights, ruleAlerts),
     '</evermemory-butler>',
   ].join('\n');
 }

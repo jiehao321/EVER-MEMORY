@@ -79,6 +79,7 @@ export const DEBUG_EVENT_KINDS = [
   'memory_restore_reviewed',
   'memory_restore_applied',
   'housekeeping_error',
+  'offline_relation_discovery',
   'embedding_init_status',
   'empty_query_diagnostic',
   'rule_stale_demoted',

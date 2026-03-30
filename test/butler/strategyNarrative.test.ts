@@ -165,6 +165,18 @@ test('OverlayGenerator generates full overlay when LLM is available', async () =
   const overlay = await generator.generateOverlay(state, {
     recentMessages: ['Need Step 4 shipped today'],
     scope: { project: 'evermemory' },
+    recentRuleChanges: [
+      {
+        ruleId: 'rule-1',
+        action: 'promoted',
+        category: 'intent',
+        statement: 'Prioritize direct implementation when confidence is high.',
+      },
+    ],
+    currentIntent: {
+      type: 'implementation',
+      confidence: 0.92,
+    },
   });
 
   assert.equal(overlay.currentMode, 'debugging');
@@ -183,6 +195,17 @@ test('OverlayGenerator generates full overlay when LLM is available', async () =
   assert.equal(
     ((capturedTask?.evidence as { workingMemory?: Array<{ key: string }> }).workingMemory ?? []).length,
     1,
+  );
+  assert.deepEqual(
+    (capturedTask?.evidence as {
+      recentRuleChanges?: Array<{ ruleId: string; action: string }>;
+      currentIntent?: { type: string; confidence: number };
+    }).recentRuleChanges,
+    [{ ruleId: 'rule-1', action: 'promoted', category: 'intent', statement: 'Prioritize direct implementation when confidence is high.' }],
+  );
+  assert.deepEqual(
+    (capturedTask?.evidence as { currentIntent?: { type: string; confidence: number } }).currentIntent,
+    { type: 'implementation', confidence: 0.92 },
   );
 });
 
@@ -223,6 +246,20 @@ test('OverlayCompiler compiles overlay to XML', () => {
   assert.match(xml, /目标: Ship Butler Step 4/);
   assert.match(xml, /<watchlist count="2">/);
   assert.match(xml, /Fresh risk: Validate XML output\./);
+});
+
+test('OverlayCompiler renders next step prominently and includes rule alerts', () => {
+  const xml = compileOverlay(
+    createOverlay({
+      suggestedNextStep: 'Apply the latest implementation-weighted rule before replying',
+    }),
+    [],
+    [{ statement: 'Favor implementation over explanation for this intent.', action: 'promoted' }],
+  );
+
+  assert.match(xml, /<next-step>Apply the latest implementation-weighted rule before replying<\/next-step>/);
+  assert.match(xml, /<watchlist count="2">/);
+  assert.match(xml, /\[rule:promoted\] Favor implementation over explanation for this intent\./);
 });
 
 test('OverlayCompiler handles empty fields gracefully', () => {

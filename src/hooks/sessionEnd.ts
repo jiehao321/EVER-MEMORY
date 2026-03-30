@@ -10,6 +10,7 @@ import type { PredictiveContextService } from '../core/memory/predictiveContext.
 import type { ProgressiveConsolidationService } from '../core/memory/progressiveConsolidation.js';
 import type { ContradictionMonitor } from '../core/memory/contradictionMonitor.js';
 import type { MemoryService } from '../core/memory/service.js';
+import type { RelationDetectionService } from '../core/memory/relationDetection.js';
 import type { SelfTuningDecayService } from '../core/memory/selfTuningDecay.js';
 import type { DriftDetectionService } from '../core/profile/driftDetection.js';
 import { processAutoCapture } from '../core/memory/autoCapture.js';
@@ -38,6 +39,7 @@ export interface SessionEndContext {
   progressiveConsolidationService?: ProgressiveConsolidationService;
   predictiveContextService?: PredictiveContextService;
   contradictionMonitor?: ContradictionMonitor;
+  relationDetectionService?: RelationDetectionService;
 }
 
 function nowIso(): string {
@@ -301,6 +303,38 @@ export async function handleSessionEnd(
     } catch {
       // Best-effort cleanup must not block session teardown
     }
+  }
+
+  if (ctx.relationDetectionService && ctx.memoryRepo) {
+    let memoriesScanned = 0;
+    let relationsDiscovered = 0;
+    let timedOut = false;
+
+    try {
+      await withTimeout((async () => {
+        const recentMemories = ctx.memoryRepo!.search({
+          scope: input.scope,
+          activeOnly: true,
+          archived: false,
+          limit: 50,
+        });
+
+        memoriesScanned = recentMemories.length;
+        for (const memory of recentMemories) {
+          const result = await ctx.relationDetectionService!.detectRelations(memory);
+          relationsDiscovered += result.detected + result.inferred;
+        }
+      })(), 2_000, 'offlineRelationDiscovery');
+    } catch {
+      timedOut = true;
+    }
+
+    ctx.debugRepo?.log('offline_relation_discovery', input.sessionId, {
+      sessionId: input.sessionId,
+      memoriesScanned,
+      relationsDiscovered,
+      timedOut,
+    });
   }
 
   // Clear session context to prevent memory leak

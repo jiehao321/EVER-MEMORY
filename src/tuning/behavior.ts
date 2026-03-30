@@ -1,3 +1,5 @@
+import type { BehaviorRuleCategory } from '../types/primitives.js';
+
 /**
  * Behavior-rule tuning constants.
  */
@@ -10,6 +12,16 @@ export const BEHAVIOR_EPHEMERAL_MAX_HOURS = 4;
 
 /** Days of inactivity before a behavior rule enters "stale" staleness */
 export const BEHAVIOR_STALE_AFTER_DAYS = 30;
+
+/** Per-category staleness threshold in days — how many days of inactivity before "stale" */
+export const CATEGORY_STALE_DAYS: Record<BehaviorRuleCategory, number> = {
+  safety: 14,
+  confirmation: 10,
+  memory: 7,
+  planning: 5,
+  execution: 7,
+  style: 10,
+};
 
 /** Days of inactivity before a behavior rule enters "expired" staleness */
 export const BEHAVIOR_EXPIRED_AFTER_DAYS = 60;
@@ -32,6 +44,9 @@ export const BEHAVIOR_DECAY_PER_CONTRADICTION = 0.18;
 /** Number of contradictions that trigger automatic rule disabling */
 export const BEHAVIOR_MAX_CONTRADICTIONS_BEFORE_DISABLE = 2;
 
+/** Number of consecutive overrides before auto-suspend */
+export const BEHAVIOR_AUTO_SUSPEND_OVERRIDE_COUNT = 3;
+
 /** Minimum priority floor for behavior rules */
 export const BEHAVIOR_MIN_PRIORITY = 10;
 
@@ -49,6 +64,16 @@ export const BEHAVIOR_MATURITY_INSTITUTIONALIZED_THRESHOLD = 6;
 
 /** Apply count threshold for 'validated' maturity */
 export const BEHAVIOR_MATURITY_VALIDATED_THRESHOLD = 2;
+
+/** Per-category maturity thresholds — how many applies before rule reaches "validated" */
+export const CATEGORY_VALIDATION_THRESHOLD: Record<BehaviorRuleCategory, number> = {
+  safety: 2,
+  confirmation: 3,
+  memory: 4,
+  planning: 4,
+  execution: 5,
+  style: 7,
+};
 
 /** Apply count threshold for 'validated' in stale staleness */
 export const BEHAVIOR_STALE_VALIDATED_THRESHOLD = 4;

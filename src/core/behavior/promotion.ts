@@ -4,6 +4,7 @@ import {
 } from './lifecycle.js';
 import type { BehaviorRule, BehaviorRuleCategory, BehaviorRulePromotionDecision, ReflectionRecord } from '../../types.js';
 import {
+  CATEGORY_VALIDATION_THRESHOLD,
   CATEGORY_DEFAULT_PRIORITY,
   LEVEL_BASELINE_CONFIDENCE_THRESHOLD,
   LEVEL_BASELINE_PRIORITY_THRESHOLD,
@@ -97,8 +98,12 @@ function inferLevel(priority: number, confidence: number): NonNullable<BehaviorR
   return 'candidate';
 }
 
-function inferMaturity(recurrenceCount: number): NonNullable<BehaviorRulePromotionDecision['maturity']> {
-  if (recurrenceCount >= PROMOTION_VALIDATED_RECURRENCE_THRESHOLD) {
+function inferMaturity(
+  recurrenceCount: number,
+  category: BehaviorRuleCategory,
+): NonNullable<BehaviorRulePromotionDecision['maturity']> {
+  const validatedThreshold = CATEGORY_VALIDATION_THRESHOLD[category] ?? PROMOTION_VALIDATED_RECURRENCE_THRESHOLD;
+  if (recurrenceCount >= validatedThreshold) {
     return 'validated';
   }
   return 'emerging';
@@ -144,6 +149,7 @@ export function freezeConflictingRules(statement: string, existingRules: Behavio
 }
 
 export function buildPromotedRuleGovernance(input: {
+  category: BehaviorRuleCategory;
   priority: number;
   confidence: number;
   recurrenceCount: number;
@@ -158,7 +164,7 @@ export function buildPromotedRuleGovernance(input: {
   return {
     ...lifecycle,
     level: inferLevel(input.priority, input.confidence),
-    maturity: inferMaturity(input.recurrenceCount),
+    maturity: inferMaturity(input.recurrenceCount, input.category),
   };
 }
 
@@ -248,6 +254,6 @@ export function evaluatePromotionCandidate(input: {
     category,
     priority,
     level: inferLevel(priority, input.reflection.evidence.confidence),
-    maturity: inferMaturity(input.reflection.evidence.recurrenceCount),
+    maturity: inferMaturity(input.reflection.evidence.recurrenceCount, category),
   };
 }

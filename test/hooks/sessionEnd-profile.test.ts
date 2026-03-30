@@ -321,3 +321,70 @@ test('sessionEnd swallows maintenance hook failures', async () => {
   assert.equal(result.sessionId, 'session-end-profile-7');
   assert.equal(result.profileUpdated, true);
 });
+
+test('sessionEnd scans recent active memories for offline relation discovery', async () => {
+  const debugEvents: Array<{ kind: string; entityId?: string; payload: Record<string, unknown> }> = [];
+  const detectCalls: string[] = [];
+  const recentMemories = [
+    {
+      id: 'm-3',
+      content: 'third memory',
+      timestamps: { updatedAt: '2026-03-20T00:00:00.000Z' },
+      state: { active: true, archived: false },
+    },
+    {
+      id: 'm-2',
+      content: 'second memory',
+      timestamps: { updatedAt: '2026-03-19T00:00:00.000Z' },
+      state: { active: true, archived: false },
+    },
+    {
+      id: 'm-1',
+      content: 'first memory',
+      timestamps: { updatedAt: '2026-03-18T00:00:00.000Z' },
+      state: { active: true, archived: false },
+    },
+  ];
+
+  await handleSessionEnd(
+    {
+      sessionId: 'session-end-profile-8',
+      scope: { userId: 'u-session-end-profile', project: 'evermemory' },
+    },
+    {
+      experienceService: { log: () => createExperience() } as never,
+      reflectionService: {} as never,
+      behaviorService: {
+        promoteFromReflection: () => undefined,
+        freezeRulesByDuration: () => [],
+        demoteStaleEmergingRules: () => 0,
+      } as never,
+      memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+      debugRepo: {
+        log: (kind: string, entityId: string | undefined, payload: Record<string, unknown>) => {
+          debugEvents.push({ kind, entityId, payload });
+        },
+      } as never,
+      memoryRepo: {
+        count: () => 3,
+        search: () => recentMemories,
+      } as never,
+      relationDetectionService: {
+        detectRelations: async (memory: { id: string }) => {
+          detectCalls.push(memory.id);
+          return { detected: 1, inferred: 0, skipped: false };
+        },
+      } as never,
+    },
+  );
+
+  assert.deepEqual(detectCalls, ['m-3', 'm-2', 'm-1']);
+  assert.ok(
+    debugEvents.some((event) =>
+      event.kind === 'offline_relation_discovery'
+      && event.entityId === 'session-end-profile-8'
+      && event.payload.memoriesScanned === 3
+      && event.payload.relationsDiscovered === 3
+    ),
+  );
+});

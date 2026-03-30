@@ -142,6 +142,7 @@ export class BehaviorService {
         const timestamp = batchTimestamp;
         const lifecycle = {
           ...buildPromotedRuleGovernance({
+            category: decision.category,
             priority: decision.priority,
             confidence: reflection.evidence.confidence,
             recurrenceCount: reflection.evidence.recurrenceCount,

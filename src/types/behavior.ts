@@ -8,6 +8,7 @@ export type BehaviorRuleFreezeReason =
   | 'manual'
   | 'correction'
   | 'conflict'
+  | 'auto_suspended'
   | 'contradiction_threshold'
   | 'expired'
   | 'deprecated'
@@ -28,12 +29,16 @@ export interface BehaviorRuleLifecycle {
   duration?: BehaviorRuleDuration;
   applyCount: number;
   contradictionCount: number;
+  overrideCount?: number;
   lastAppliedAt?: string;
   lastContradictedAt?: string;
+  lastOverriddenAt?: string;
   lastReviewedAt?: string;
   stale: boolean;
   staleness: BehaviorRuleStaleness;
   decayScore: number;
+  autoSuspended?: boolean;
+  autoSuspendedAt?: string;
   frozenAt?: string;
   freezeReason?: BehaviorRuleFreezeReason;
   expiresAt?: string;

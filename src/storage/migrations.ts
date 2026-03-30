@@ -28,7 +28,8 @@ export const PHASE21_LLM_INVOCATIONS_SCHEMA_VERSION = 23;
 export const PHASE22_BUTLER_FEEDBACK_SCHEMA_VERSION = 24;
 export const PHASE23_BUTLER_GOALS_SCHEMA_VERSION = 25;
 export const PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION = 26;
-export const CURRENT_SCHEMA_VERSION = PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION;
+export const PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION = 27;
+export const CURRENT_SCHEMA_VERSION = PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION;
 
 const CREATE_PHASE1_SCHEMA_SQL = [
   `CREATE TABLE IF NOT EXISTS schema_version (\n    version INTEGER NOT NULL\n  )`,
@@ -360,6 +361,13 @@ const CREATE_PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SQL = [
   "ALTER TABLE retrieval_feedback ADD COLUMN top_factors TEXT NOT NULL DEFAULT '[]'",
 ] as const;
 
+const CREATE_PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SQL = [
+  'ALTER TABLE behavior_rules ADD COLUMN override_count INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE behavior_rules ADD COLUMN last_overridden_at TEXT',
+  'ALTER TABLE behavior_rules ADD COLUMN auto_suspended INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE behavior_rules ADD COLUMN auto_suspended_at TEXT',
+] as const;
+
 function ensureSchemaVersionTable(db: Database.Database): void {
   db.prepare(CREATE_PHASE1_SCHEMA_SQL[0]).run();
 
@@ -375,7 +383,7 @@ function runStatementsIgnoreDuplicateColumns(db: Database.Database, statements: 
       db.prepare(sql).run();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/duplicate column name/i.test(message)) {
+      if (/duplicate column name/i.test(message) || /no such table/i.test(message)) {
         continue;
       }
       throw new StorageError('Failed to apply migration statement.', {
@@ -578,6 +586,10 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
       runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SQL);
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION);
     });
+    const phase25BehaviorOverrideLifecycleTx = db.transaction(() => {
+      runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SQL);
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -697,6 +709,11 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
     if (currentVersion < PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION) {
       phase24RetrievalFeedbackFactorsTx();
       currentVersion = PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION) {
+      phase25BehaviorOverrideLifecycleTx();
+      currentVersion = PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION;
     }
 
     return currentVersion;
