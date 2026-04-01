@@ -70,6 +70,15 @@ test('OpenAIEmbeddingProvider returns embedding vectors from the HTTP API', asyn
   assert.ok(Math.abs(values[2]! - 0.3) < 1e-6);
 });
 
+test('OpenAIEmbeddingProvider surfaces API key recovery hints when not configured', async () => {
+  const provider = new OpenAIEmbeddingProvider({ apiKey: '' });
+
+  await assert.rejects(
+    async () => provider.embed(['alpha']),
+    /OpenAI API key is not configured.*Check your OPENAI_API_KEY or EverMemory LLM\/embedding config/,
+  );
+});
+
 test('OpenAIEmbeddingProvider throws on non-OK HTTP responses', async () => {
   const provider = createProvider();
 

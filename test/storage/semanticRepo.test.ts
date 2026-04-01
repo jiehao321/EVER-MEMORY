@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import { MemoryRepository } from '../../src/storage/memoryRepo.js';
 import { SemanticRepository } from '../../src/storage/semanticRepo.js';
 import { buildSemanticProfile } from '../../src/retrieval/semantic.js';
+import { StorageError } from '../../src/errors.js';
 import { createInMemoryDb, buildMemory } from './helpers.js';
 
 describe('SemanticRepository', () => {
@@ -75,5 +76,28 @@ describe('SemanticRepository', () => {
     });
     assert.deepEqual(await repo.searchByCosine(new Float32Array([]), 5), []);
     assert.equal(await repo.getEmbedding('missing'), null);
+  });
+
+  it('adds recovery hints to semantic search failures', () => {
+    db = createInMemoryDb();
+    const repo = new SemanticRepository(db);
+    const prepare = db.prepare.bind(db);
+    db.prepare = ((sql: string) => {
+      if (sql.includes('SELECT * FROM semantic_index')) {
+        throw new Error('db unavailable');
+      }
+      return prepare(sql);
+    }) as typeof db.prepare;
+
+    assert.throws(
+      () => repo.search('project planning'),
+      (error: unknown) => {
+        assert.ok(error instanceof StorageError);
+        assert.match(error.message, /Failed to search semantic index/);
+        assert.match(error.message, /Check embedding provider status/);
+        assert.match(error.message, /database is accessible/);
+        return true;
+      },
+    );
   });
 });

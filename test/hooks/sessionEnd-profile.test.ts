@@ -120,6 +120,142 @@ test('sessionEnd does not trigger profile recompute when userId is missing', asy
   assert.equal(result.profileUpdated, false);
 });
 
+test('sessionEnd times out forceReflect reflection and logs fallback telemetry', async () => {
+  const debugEvents: Array<{ kind: string; entityId?: string; payload: Record<string, unknown> }> = [];
+  const timeouts: number[] = [];
+  const originalSetTimeout = global.setTimeout;
+
+  global.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+    timeouts.push(Number(timeout));
+    return originalSetTimeout(() => {
+      if (typeof handler === 'function') {
+        handler(...args);
+      }
+    }, 0);
+  }) as unknown as typeof setTimeout;
+
+  try {
+    const result = await handleSessionEnd(
+      {
+        sessionId: 'session-end-profile-reflection-timeout',
+        forceReflect: true,
+        scope: { userId: 'u-session-end-profile' },
+      },
+      {
+        experienceService: { log: () => createExperience() } as never,
+        reflectionService: {
+          reflect: () => new Promise(() => undefined),
+        } as never,
+        behaviorService: {
+          listPendingReflections: () => [],
+          promoteFromReflection: () => undefined,
+          freezeRulesByDuration: () => [],
+          demoteStaleEmergingRules: () => 0,
+        } as never,
+        memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+        debugRepo: {
+          log: (kind: string, entityId: string | undefined, payload: Record<string, unknown>) => {
+            debugEvents.push({ kind, entityId, payload });
+          },
+        } as never,
+      },
+    );
+
+    assert.equal(result.reflection, undefined);
+    assert.ok(timeouts.includes(10_000));
+    assert.ok(
+      debugEvents.some((event) =>
+        event.kind === 'reflection_timeout'
+        && event.entityId === 'session-end-profile-reflection-timeout'
+        && String(event.payload.error).includes('reflection timed out')
+      ),
+    );
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+});
+
+test('sessionEnd skips non-critical work when total budget is exhausted', async () => {
+  const debugEvents: Array<{ kind: string; entityId?: string; payload: Record<string, unknown> }> = [];
+  const calls: string[] = [];
+  const originalDateNow = Date.now;
+  let firstCall = true;
+
+  Date.now = () => {
+    if (firstCall) {
+      firstCall = false;
+      return 0;
+    }
+    return 59_500;
+  };
+
+  try {
+    const result = await handleSessionEnd(
+      {
+        sessionId: 'session-end-profile-budget-skip',
+        scope: { userId: 'u-session-end-profile', project: 'evermemory' },
+      },
+      {
+        experienceService: { log: () => createExperience() } as never,
+        reflectionService: {} as never,
+        behaviorService: {
+          listPendingReflections: () => [],
+          promoteFromReflection: () => undefined,
+          freezeRulesByDuration: () => [],
+          demoteStaleEmergingRules: () => 0,
+        } as never,
+        memoryService: { store: () => ({ accepted: false, reason: 'noop', memory: null }) } as never,
+        debugRepo: {
+          log: (kind: string, entityId: string | undefined, payload: Record<string, unknown>) => {
+            debugEvents.push({ kind, entityId, payload });
+          },
+        } as never,
+        memoryRepo: {
+          count: () => 51,
+          search: () => [{ id: 'm-1', timestamps: { updatedAt: '2026-03-15T00:00:00.000Z' } }],
+        } as never,
+        profileProjection: {
+          recomputeForUser: () => {
+            calls.push('profileProjection');
+            return null;
+          },
+        } as never,
+        housekeepingService: {
+          runIfNeeded: async () => {
+            calls.push('housekeeping');
+          },
+        } as never,
+        relationDetectionService: {
+          detectRelations: async () => {
+            calls.push('relationDiscovery');
+            return { detected: 1, inferred: 0, skipped: false };
+          },
+        } as never,
+      },
+    );
+
+    assert.deepEqual(calls, []);
+    assert.equal(result.profileUpdated, false);
+    assert.equal(result.learningInsights, 0);
+    assert.equal(result.autoMemory?.generated, 0);
+    assert.deepEqual(
+      debugEvents
+        .filter((event) => event.kind === 'session_end_budget_skip')
+        .map((event) => event.payload.skipped),
+      [
+        'processAutoCapture',
+        'extractLearningInsights',
+        'storeInsights',
+        'profileProjection',
+        'housekeeping',
+        'relationDiscovery',
+      ],
+    );
+  } finally {
+    Date.now = originalDateNow;
+  }
+});
+
 test('sessionEnd logs housekeeping timeout as debug telemetry and keeps teardown successful', async () => {
   const timeouts: number[] = [];
   const debugEvents: Array<{ kind: string; entityId?: string; payload: Record<string, unknown> }> = [];

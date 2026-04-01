@@ -5,6 +5,10 @@ import {
   DEFAULT_RETRIEVAL_KEYWORD_WEIGHTS,
 } from '../src/constants.js';
 import { loadConfig } from '../src/config.js';
+import {
+  RETRIEVAL_PRESETS,
+  resolvePresetWeights,
+} from '../src/tuning/retrieval.js';
 
 function sumWeights(weights: object): number {
   return Object.values(weights as Record<string, number>).reduce((sum, value) => sum + value, 0);
@@ -17,6 +21,16 @@ test('loadConfig exposes normalized default retrieval weights', () => {
   assert.deepEqual(config.retrieval.hybridWeights, DEFAULT_RETRIEVAL_HYBRID_WEIGHTS);
   assert.equal(sumWeights(config.retrieval.keywordWeights), 1);
   assert.equal(sumWeights(config.retrieval.hybridWeights), 1);
+});
+
+test('retrieval presets expose current default-aligned weights', () => {
+  assert.deepEqual(RETRIEVAL_PRESETS.balanced, {
+    keywordWeight: DEFAULT_RETRIEVAL_HYBRID_WEIGHTS.keyword,
+    semanticWeight: DEFAULT_RETRIEVAL_HYBRID_WEIGHTS.semantic,
+    recencyWeight: DEFAULT_RETRIEVAL_HYBRID_WEIGHTS.base,
+  });
+  assert.deepEqual(resolvePresetWeights('semantic-first'), RETRIEVAL_PRESETS['semantic-first']);
+  assert.deepEqual(resolvePresetWeights('keyword-first'), RETRIEVAL_PRESETS['keyword-first']);
 });
 
 test('loadConfig accepts custom retrieval weights and keeps normalization', () => {

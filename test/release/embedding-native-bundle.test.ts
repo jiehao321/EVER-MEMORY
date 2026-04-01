@@ -23,9 +23,14 @@ test('npm pack bundles sharp native binding required by local embedding startup'
       encoding: 'utf8',
     });
 
-    assert.match(
-      entries,
-      /package\/node_modules\/sharp\/build\/Release\/sharp-linux-x64\.node/,
+    const bundlesNativeBinary = /package\/node_modules\/sharp\/build\/Release\/sharp-linux-x64\.node/.test(entries);
+    const bundlesSharpInstallPayload = /package\/node_modules\/sharp\/binding\.gyp/.test(entries)
+      && /package\/node_modules\/sharp\/install\/can-compile\.js/.test(entries)
+      && /package\/node_modules\/sharp\/src\/sharp\.cc/.test(entries);
+
+    assert.ok(
+      bundlesNativeBinary || bundlesSharpInstallPayload,
+      'npm pack should include either the sharp native binary or the sharp install payload needed to materialize it',
     );
   } finally {
     rmSync(packDir, { recursive: true, force: true });

@@ -5,6 +5,14 @@ import { openDatabase, closeDatabase } from '../src/storage/db.js';
 import { CURRENT_SCHEMA_VERSION, getSchemaVersion, runMigrations } from '../src/storage/migrations.js';
 import { createTempDbPath } from './helpers.js';
 
+test('migrations directory barrel exposes the public migration API', async () => {
+  const exports = await import('../src/storage/migrations/index.js');
+
+  assert.equal(exports.runMigrations, runMigrations);
+  assert.equal(exports.getSchemaVersion, getSchemaVersion);
+  assert.equal(exports.CURRENT_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION);
+});
+
 test('migrations are idempotent and preserve schema version', () => {
   const databasePath = createTempDbPath('migration');
   const db = openDatabase(databasePath);
