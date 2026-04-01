@@ -1,6 +1,7 @@
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { ConsolidationMode, MemoryItem, MemoryLifecycle, MemoryScope } from '../../types.js';
+import { nowIso } from '../../util/time.js';
 import {
   calculateDecayScore,
   shouldArchive,
@@ -42,10 +43,6 @@ export interface ConsolidationReport {
   migratedToEpisodic: number;
   migratedToSemantic: number;
   archivedByDecay: number;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function parseTimestamp(iso: string): number {

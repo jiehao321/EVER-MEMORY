@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { ExperienceRepository } from '../../storage/experienceRepo.js';
 import type { ExperienceIndicators, ExperienceLog, ExperienceLogInput } from '../../types.js';
+import { nowIso } from '../../util/time.js';
 import {
   APPROVAL_CUE_EN_REGEX,
   APPROVAL_CUE_ZH_REGEX,
@@ -19,10 +20,6 @@ import {
   EXPERIENCE_PREFERENCE_APPROVAL_THRESHOLD,
   EXPERIENCE_SUMMARY_MAX_LENGTH,
 } from '../../tuning.js';
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function summarizeText(
   text: string | undefined,

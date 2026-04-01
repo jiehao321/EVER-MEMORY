@@ -29,6 +29,9 @@ type OpenAIEmbeddingsResponse = {
   data: OpenAIEmbeddingData[];
 };
 
+const OPENAI_API_KEY_HINT =
+  'OpenAI API key is not configured. Check your OPENAI_API_KEY or EverMemory LLM/embedding config.';
+
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   readonly kind = 'openai' as const;
   readonly dimensions = 1536;
@@ -66,7 +69,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   async embed(texts: string[]): Promise<EmbeddingVector[]> {
     const apiKey = this._apiKey;
     if (!apiKey) {
-      throw new Error('OpenAI API key is not configured');
+      throw new Error(OPENAI_API_KEY_HINT);
     }
 
     if (texts.length === 0) {
@@ -123,7 +126,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   ): Promise<OpenAIEmbeddingData[]> {
     const apiKey = this._apiKey;
     if (!apiKey) {
-      throw sdkError ?? new Error('OpenAI API key is not configured');
+      throw sdkError ?? new Error(OPENAI_API_KEY_HINT);
     }
 
     const response = await fetch('https://api.openai.com/v1/embeddings', {
@@ -156,7 +159,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 
     const apiKey = this._apiKey;
     if (!apiKey) {
-      throw new Error('OpenAI API key is not configured');
+      throw new Error(OPENAI_API_KEY_HINT);
     }
 
     const moduleName: string = 'openai';
@@ -166,7 +169,9 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
       (imported as { OpenAI?: OpenAIConstructor }).OpenAI;
 
     if (typeof OpenAIConstructor !== 'function') {
-      throw new Error('OpenAI SDK is unavailable');
+      throw new Error(
+        'OpenAI SDK is unavailable. Check that the embedding provider dependency is installed and your API key config is set correctly.',
+      );
     }
 
     this._client = new OpenAIConstructor({ apiKey });

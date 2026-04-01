@@ -8,6 +8,7 @@ import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { SemanticRepository } from '../../storage/semanticRepo.js';
 import { embeddingManager } from '../../embedding/manager.js';
+import { nowIso } from '../../util/time.js';
 import type {
   MemoryItem,
   MemoryScope,
@@ -26,10 +27,6 @@ interface MemoryServiceOptions {
 
 interface MemoryStoreOptions {
   skipProfileRecompute?: boolean;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function getErrorMessage(error: unknown): string {

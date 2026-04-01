@@ -1,4 +1,5 @@
 import type { MemoryRepository } from '../storage/memoryRepo.js';
+import { BATCH_SEARCH_LIMIT } from '../tuning/operations.js';
 import type { MemoryItem, MemoryLifecycle, MemoryScope, MemoryType } from '../types.js';
 
 export interface EverMemoryBrowseToolInput {
@@ -63,7 +64,7 @@ export function evermemoryBrowse(
     lifecycles: lifecycle ? [lifecycle] : ['working', 'episodic', 'semantic'],
     activeOnly: input.includeArchived === true ? false : true,
     archived: input.includeArchived === true ? undefined : false,
-    limit: 500, // fetch more for sorting
+    limit: BATCH_SEARCH_LIMIT, // fetch more for sorting
   });
 
   const sinceMinutesAgo = input.sinceMinutesAgo;

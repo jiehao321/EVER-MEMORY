@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { ButlerTask, NewButlerTask } from '../core/butler/types.js';
+import { nowIso } from '../util/time.js';
 
 interface ButlerTaskRow {
   id: string;
@@ -23,10 +24,6 @@ interface ButlerTaskRow {
 
 interface CountRow {
   count: number;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function toButlerTask(row: ButlerTaskRow): ButlerTask {

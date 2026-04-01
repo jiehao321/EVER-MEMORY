@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import { nowIso } from '../util/time.js';
 
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'abandoned';
 
@@ -44,10 +45,6 @@ interface ButlerGoalRow {
 
 interface ChangesRow {
   count: number;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function todayStamp(): string {

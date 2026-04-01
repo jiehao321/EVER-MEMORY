@@ -222,7 +222,7 @@ export class SemanticRepository {
       if (error instanceof StorageError) {
         throw error;
       }
-      throw new StorageError('Failed to search semantic index.', {
+      throw new StorageError('Failed to search semantic index. Check embedding provider status and confirm the database is accessible.', {
         code: 'STORAGE_SEMANTIC_SEARCH_FAILED',
         context: {
           query,

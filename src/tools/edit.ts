@@ -4,6 +4,7 @@ import type { MemoryRepository } from '../storage/memoryRepo.js';
 import type { SemanticRepository } from '../storage/semanticRepo.js';
 import { embeddingManager } from '../embedding/manager.js';
 import type { MemoryItem, MemoryLifecycle, MemoryScope, MemoryType } from '../types.js';
+import { nowIso } from '../util/time.js';
 
 export type EverMemoryEditAction = 'update' | 'delete' | 'correct' | 'merge' | 'pin' | 'unpin';
 
@@ -27,10 +28,6 @@ export interface EverMemoryEditToolResult {
   error?: string;
   previous: EverMemoryEditMemorySummary | null;
   current: EverMemoryEditMemorySummary | null;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function hasCallerAccess(memory: MemoryItem, callerScope?: MemoryScope): boolean {

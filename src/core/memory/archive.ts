@@ -2,6 +2,7 @@ import type { ProfileProjectionService } from '../profile/projection.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { SemanticRepository } from '../../storage/semanticRepo.js';
+import { nowIso } from '../../util/time.js';
 import type {
   EverMemoryRestoreMode,
   EverMemoryRestoreToolInput,
@@ -29,10 +30,6 @@ interface MemoryArchiveServiceOptions {
 
 interface RestoreCandidate {
   memory: MemoryItem;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function isValidReviewLimit(value: unknown): value is number {

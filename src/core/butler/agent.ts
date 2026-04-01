@@ -8,6 +8,7 @@ import type { WorkerThreadPool } from './worker/pool.js';
 import type { NarrativeThreadService } from './narrative/service.js';
 import type { CommitmentWatcher } from './commitments/watcher.js';
 import type { MemoryScope } from '../../types/memory.js';
+import { nowIso } from '../../util/time.js';
 import type {
   ButlerCycleTrace,
   ButlerLogger,
@@ -39,10 +40,6 @@ interface CyclePhaseResult {
 
 const MESSAGE_TTL_MS = 15 * 60 * 1000;
 const AGENT_NOTE_TTL_MS = 10 * 60 * 1000;
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function getCycleBudgetMs(trigger: ButlerTrigger['type']): number {
   switch (trigger) {

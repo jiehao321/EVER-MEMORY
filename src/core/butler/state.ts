@@ -1,15 +1,12 @@
 import type { ButlerLogger, ButlerMode, ButlerPersistentState, WorkingMemoryEntry } from './types.js';
 import { ButlerStateRepository } from '../../storage/butlerStateRepo.js';
+import { nowIso } from '../../util/time.js';
 
 const MAX_WORKING_MEMORY_ENTRIES = 20;
 
 interface ButlerStateManagerOptions {
   stateRepo: ButlerStateRepository;
   logger?: ButlerLogger;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function isExpired(entry: WorkingMemoryEntry, now: number): boolean {

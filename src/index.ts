@@ -113,6 +113,7 @@ import type {
 import type { EverMemoryEditToolInput, EverMemoryEditToolResult } from './tools/edit.js';
 import type { EverMemoryBrowseToolInput, EverMemoryBrowseToolResult } from './tools/browse.js';
 import type { EverMemoryRelationsToolInput, EverMemoryRelationsToolResult } from './tools/relations.js';
+import { nowIso } from './util/time.js';
 
 export * from './errors.js';
 export * from './core/io/exportService.js';
@@ -162,10 +163,6 @@ function logEmbeddingInitStatus(
   } catch (error) {
     console.warn('[EverMemory] Failed to log embedding init status.', error);
   }
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function createDisabledBriefing(input: SessionStartInput, tokenTarget: number) {
@@ -307,7 +304,7 @@ export function initializeEverMemory(
   const predictiveContextService = new PredictiveContextService(intentRepo, memoryRepo);
   const proactiveAlertsService = new ProactiveAlertsService(memoryRepo);
   const selfTuningDecayService = new SelfTuningDecayService(feedbackRepo, database.connection, debugRepo);
-  const progressiveConsolidationService = new ProgressiveConsolidationService(compressionService, memoryRepo);
+  const progressiveConsolidationService = new ProgressiveConsolidationService(compressionService, memoryRepo, debugRepo);
   const driftDetectionService = new DriftDetectionService(database.connection, debugRepo);
   const housekeepingService = new MemoryHousekeepingService(
     memoryRepo,

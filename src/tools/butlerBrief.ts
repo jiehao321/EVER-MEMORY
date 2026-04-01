@@ -53,7 +53,9 @@ export async function butlerBrief(input: {
   const scope = toScopedRecord(input.scope);
   const state = await ensureState(input.agent, scope);
   if (!state) {
-    throw new Error('Butler state unavailable.');
+    throw new Error(
+      'Butler state unavailable. Check that butler is enabled in config and the database is accessible.',
+    );
   }
   const topInsights = input.attentionService.getTopInsights();
   const overlay = await input.overlayGenerator.generateOverlay(state, { scope, recentMessages: [] });

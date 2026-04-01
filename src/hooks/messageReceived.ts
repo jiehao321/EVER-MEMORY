@@ -17,6 +17,7 @@ import type {
   MessageReceivedResult,
   RuntimeUserProfile,
 } from '../types.js';
+import { nowIso } from '../util/time.js';
 import { semanticPreload, type SemanticPreloadResult } from './beforeAgentStart.js';
 
 export interface MessageReceivedContext {
@@ -30,10 +31,6 @@ export interface MessageReceivedContext {
   contradictionMonitor?: ContradictionMonitor;
   userProfile?: RuntimeUserProfile;
   progressiveConsolidationService?: ProgressiveConsolidationService;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function toWarningItem(content: string, sessionId: string, index: number, messageId?: string): MemoryItem {

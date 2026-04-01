@@ -27,6 +27,7 @@ import {
   AUTO_CAPTURE_PREFERENCE_RELEVANCE_THRESHOLD,
   AUTO_CAPTURE_SUMMARY_MIN_SIGNALS,
 } from '../../tuning.js';
+import { clip, dedupeStrings } from '../../util/string.js';
 
 export type AutoMemoryCandidateKind =
   | 'project_state'
@@ -51,37 +52,12 @@ export interface AutoCaptureContext {
   reflection?: ReflectionRecord;
 }
 
-function clip(value: string | undefined, max = AUTO_CAPTURE_CLIP_DEFAULT): string {
-  if (!value) {
-    return '';
-  }
-  const normalized = value.trim().replace(/\s+/g, ' ');
-  if (normalized.length <= max) {
-    return normalized;
-  }
-  return `${normalized.slice(0, max - 1)}…`;
-}
-
 function containsAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
 function shouldSkipAutoCapture(text: string): boolean {
   return containsAny(text, TEST_NOISE_PATTERNS);
-}
-
-function dedupeStrings(values: string[]): string[] {
-  const seen = new Set<string>();
-  const output: string[] = [];
-  for (const value of values) {
-    const normalized = value.trim();
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    output.push(normalized);
-  }
-  return output;
 }
 
 function stripExperiencePlaceholder(value: string | undefined): string {

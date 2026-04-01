@@ -10,6 +10,7 @@ import type { SemanticRepository } from '../storage/semanticRepo.js';
 import type { SmartnessMetricsService, SmartnessSummary } from '../core/analytics/smartnessMetrics.js';
 import { getSchemaVersion } from '../storage/migrations.js';
 import { embeddingManager } from '../embedding/manager.js';
+import { toBoolean, toNumber, toRecord, toString } from '../util/coerce.js';
 import type {
   EverMemoryStatusDiagnostics,
   EverMemoryStatusSummary,
@@ -54,25 +55,6 @@ function buildStatusSummary(status: EverMemoryStatusToolResult): EverMemoryStatu
     atRiskCount: status.atRiskMemories?.count ?? 0,
     alerts: buildStatusAlerts(status),
   };
-}
-
-function toNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
-}
-
-function toString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function toBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined;
-}
-
-function toRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
 }
 
 function calculateAverage(values: number[]): number | null {

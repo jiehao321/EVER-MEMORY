@@ -7,6 +7,7 @@ import type {
   GraphNode,
 } from '../types/relation.js';
 import { randomUUID } from 'node:crypto';
+import { nowIso } from '../util/time.js';
 
 export type RelationsAction = 'list' | 'add' | 'remove' | 'graph';
 
@@ -28,10 +29,6 @@ export interface EverMemoryRelationsToolResult {
   added?: MemoryRelation;
   removed?: boolean;
   total: number;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 export function evermemoryRelations(

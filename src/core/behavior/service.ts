@@ -15,6 +15,7 @@ import { rankBehaviorRules } from './ranking.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { BehaviorRepository } from '../../storage/behaviorRepo.js';
 import type { ReflectionRepository } from '../../storage/reflectionRepo.js';
+import { nowIso } from '../../util/time.js';
 import {
   BEHAVIOR_CANDIDATE_FETCH_MULTIPLIER,
   BEHAVIOR_DEFAULT_ACTIVE_RULES_LIMIT,
@@ -35,10 +36,6 @@ import type {
   PromoteFromReflectionResult,
   ReflectionRecord,
 } from '../../types.js';
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function mergeTags(...groups: Array<string[] | undefined>): string[] {
   return Array.from(new Set(groups.flatMap((group) => group ?? []).filter((tag) => tag.trim().length > 0)));

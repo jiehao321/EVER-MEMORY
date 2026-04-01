@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FeedbackRepository } from '../../storage/feedbackRepo.js';
 import type { RetrievalFactor, RetrievalFeedback } from '../../types/feedback.js';
 import type { RecallResult } from '../../types/memory.js';
+import { nowIso } from '../../util/time.js';
 
 interface RecallHistoryEntry {
   memoryId: string;
@@ -36,10 +37,6 @@ function keywordOverlap(a: Set<string>, b: Set<string>): number {
   }
 
   return overlap / Math.min(a.size, b.size);
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 export class MicroReflectionService {

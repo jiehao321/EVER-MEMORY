@@ -21,7 +21,10 @@ import { sanitizeContent } from '../core/policy/sanitize.js';
 import type { SessionEndInput, SessionEndResult } from '../types.js';
 import { clearSessionContext, getInteractionContext } from '../runtime/context.js';
 import { withTimeout } from '../util/timeout.js';
+import { nowIso } from '../util/time.js';
 import type { ProfileRepository } from '../storage/profileRepo.js';
+
+const SESSION_END_TOTAL_BUDGET_MS = 60_000;
 
 export interface SessionEndContext {
   experienceService: ExperienceService;
@@ -40,10 +43,6 @@ export interface SessionEndContext {
   predictiveContextService?: PredictiveContextService;
   contradictionMonitor?: ContradictionMonitor;
   relationDetectionService?: RelationDetectionService;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function pickTriggerKind(input: SessionEndInput, correction: boolean, repeat: boolean) {
@@ -79,6 +78,14 @@ export async function handleSessionEnd(
   input: SessionEndInput,
   ctx: SessionEndContext,
 ): Promise<SessionEndResult> {
+  const deadline = Date.now() + SESSION_END_TOTAL_BUDGET_MS;
+  function budgetRemaining(): number {
+    return Math.max(0, deadline - Date.now());
+  }
+  function hasBudget(minMs = 1_000): boolean {
+    return budgetRemaining() >= minMs;
+  }
+
   const sanitizedInput: SessionEndInput = {
     ...input,
     inputText: sanitizeOptionalText(input.inputText),
@@ -102,14 +109,24 @@ export async function handleSessionEnd(
     experience.indicators.repeatMistakeSignal,
   );
 
-  const reflection = triggerKind
-    ? ctx.reflectionService.reflect({
+  const reflectionOutput = triggerKind
+    ? await withTimeout(
+      Promise.resolve(ctx.reflectionService.reflect({
         triggerKind,
         sessionId: input.sessionId,
         experienceIds: [experience.id],
         mode: 'light',
-      }).reflection ?? undefined
-    : undefined;
+      })),
+      10_000,
+      'reflection',
+    ).catch((error: unknown) => {
+      ctx.debugRepo?.log('reflection_timeout', input.sessionId, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { reflection: undefined };
+    })
+    : { reflection: undefined };
+  const reflection = reflectionOutput?.reflection ?? undefined;
   const promotionResult = reflection
     ? ctx.behaviorService.promoteFromReflection({
         reflectionId: reflection.id,
@@ -151,59 +168,99 @@ export async function handleSessionEnd(
     channel: input.channel,
   });
 
-  const autoCapture = await withTimeout(
-    processAutoCapture(
-      sanitizedInput,
-      {
+  const emptyAutoCaptureResult: AutoCaptureResult = {
+    generated: 0,
+    accepted: 0,
+    rejected: 0,
+    storedIds: [],
+    rejectedReasons: [],
+    generatedByKind: {},
+    acceptedByKind: {},
+    acceptedIdsByKind: {},
+  };
+  const autoCapture = hasBudget(2_000)
+    ? await withTimeout(
+      processAutoCapture(
+        sanitizedInput,
+        {
+          intent: interaction?.intent,
+          experience,
+          reflection: reviewedReflection,
+        },
+        ctx.memoryService,
+        ctx.profileProjection,
+        ctx.semanticRepo,
+        ctx.memoryRepo,
+      ),
+      10_000,
+      'processAutoCapture',
+    ).catch((error: unknown) => {
+      ctx.debugRepo?.log('session_end_processed', input.sessionId, {
+        sessionId: input.sessionId,
+        autoCaptureFailed: true,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return emptyAutoCaptureResult;
+    })
+    : (() => {
+      ctx.debugRepo?.log('session_end_budget_skip', input.sessionId, {
+        skipped: 'processAutoCapture',
+        budgetRemainingMs: budgetRemaining(),
+      });
+      return emptyAutoCaptureResult;
+    })();
+  const extractedInsights = hasBudget(1_000)
+    ? await withTimeout(
+      extractLearningInsights(sanitizedInput, {
         intent: interaction?.intent,
-        experience,
         reflection: reviewedReflection,
-      },
-      ctx.memoryService,
-      ctx.profileProjection,
-      ctx.semanticRepo,
-      ctx.memoryRepo,
-    ),
-    10_000,
-    'processAutoCapture',
-  ).catch((error: unknown) => {
-    ctx.debugRepo?.log('session_end_processed', input.sessionId, {
-      sessionId: input.sessionId,
-      autoCaptureFailed: true,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { generated: 0, accepted: 0, rejected: 0, storedIds: [], rejectedReasons: [], generatedByKind: {}, acceptedByKind: {}, acceptedIdsByKind: {} } as AutoCaptureResult;
-  });
-  const extractedInsights = await withTimeout(
-    extractLearningInsights(sanitizedInput, {
-      intent: interaction?.intent,
-      reflection: reviewedReflection,
-    }),
-    5_000,
-    'extractLearningInsights',
-  ).catch(() => []);
-  const learningResult = await withTimeout(
-    storeInsights(
-      extractedInsights,
-      sanitizedInput.scope ?? {},
-      ctx.memoryService,
-      ctx.semanticRepo,
-    ),
-    5_000,
-    'storeInsights',
-  ).catch((error: unknown) => {
-    ctx.debugRepo?.log('session_end_processed', input.sessionId, {
-      sessionId: input.sessionId,
-      storeInsightsFailed: true,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { storedCount: 0 };
-  });
+      }),
+      5_000,
+      'extractLearningInsights',
+    ).catch(() => [])
+    : (() => {
+      ctx.debugRepo?.log('session_end_budget_skip', input.sessionId, {
+        skipped: 'extractLearningInsights',
+        budgetRemainingMs: budgetRemaining(),
+      });
+      return [];
+    })();
+  const learningResult = hasBudget(1_000)
+    ? await withTimeout(
+      storeInsights(
+        extractedInsights,
+        sanitizedInput.scope ?? {},
+        ctx.memoryService,
+        ctx.semanticRepo,
+      ),
+      5_000,
+      'storeInsights',
+    ).catch((error: unknown) => {
+      ctx.debugRepo?.log('session_end_processed', input.sessionId, {
+        sessionId: input.sessionId,
+        storeInsightsFailed: true,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { storedCount: 0 };
+    })
+    : (() => {
+      ctx.debugRepo?.log('session_end_budget_skip', input.sessionId, {
+        skipped: 'storeInsights',
+        budgetRemainingMs: budgetRemaining(),
+      });
+      return { storedCount: 0 };
+    })();
   let profileUpdated = false;
   let previousProfile = input.scope?.userId && ctx.profileRepo
     ? ctx.profileRepo.getByUserId(input.scope.userId)
     : null;
   if (input.scope?.userId && ctx.profileProjection) {
+    if (!hasBudget(1_000)) {
+      ctx.debugRepo?.log('session_end_budget_skip', input.sessionId, {
+        skipped: 'profileProjection',
+        budgetRemainingMs: budgetRemaining(),
+      });
+    } else {
     try {
       const nextProfile = await withTimeout(
         Promise.resolve(ctx.profileProjection.recomputeForUser(input.scope.userId)),
@@ -224,6 +281,7 @@ export async function handleSessionEnd(
         userId: input.scope?.userId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
     }
   }
 
@@ -254,22 +312,29 @@ export async function handleSessionEnd(
   });
 
   if (ctx.housekeepingService && ctx.memoryRepo && input.scope && ctx.memoryRepo.count({ scope: input.scope }) > 50) {
-    const lastRunAt = ctx.memoryRepo.search({
-      scope: input.scope,
-      limit: 1,
-    })[0]?.timestamps.updatedAt;
-    try {
-      await withTimeout(
-        ctx.housekeepingService.runIfNeeded(input.scope, lastRunAt),
-        8_000,
-        'housekeeping',
-      );
-    } catch (error) {
-      ctx.debugRepo?.log('housekeeping_error', input.sessionId, {
-        sessionId: input.sessionId,
-        reason: isTimeoutError(error) ? 'timeout' : 'failed',
-        error: getErrorMessage(error),
+    if (!hasBudget(2_000)) {
+      ctx.debugRepo?.log('session_end_budget_skip', input.sessionId, {
+        skipped: 'housekeeping',
+        budgetRemainingMs: budgetRemaining(),
       });
+    } else {
+      const lastRunAt = ctx.memoryRepo.search({
+        scope: input.scope,
+        limit: 1,
+      })[0]?.timestamps.updatedAt;
+      try {
+        await withTimeout(
+          ctx.housekeepingService.runIfNeeded(input.scope, lastRunAt),
+          8_000,
+          'housekeeping',
+        );
+      } catch (error) {
+        ctx.debugRepo?.log('housekeeping_error', input.sessionId, {
+          sessionId: input.sessionId,
+          reason: isTimeoutError(error) ? 'timeout' : 'failed',
+          error: getErrorMessage(error),
+        });
+      }
     }
   }
 
@@ -310,23 +375,30 @@ export async function handleSessionEnd(
     let relationsDiscovered = 0;
     let timedOut = false;
 
-    try {
-      await withTimeout((async () => {
-        const recentMemories = ctx.memoryRepo!.search({
-          scope: input.scope,
-          activeOnly: true,
-          archived: false,
-          limit: 50,
-        });
+    if (!hasBudget(1_000)) {
+      ctx.debugRepo?.log('session_end_budget_skip', input.sessionId, {
+        skipped: 'relationDiscovery',
+        budgetRemainingMs: budgetRemaining(),
+      });
+    } else {
+      try {
+        await withTimeout((async () => {
+          const recentMemories = ctx.memoryRepo!.search({
+            scope: input.scope,
+            activeOnly: true,
+            archived: false,
+            limit: 50,
+          });
 
-        memoriesScanned = recentMemories.length;
-        for (const memory of recentMemories) {
-          const result = await ctx.relationDetectionService!.detectRelations(memory);
-          relationsDiscovered += result.detected + result.inferred;
-        }
-      })(), 2_000, 'offlineRelationDiscovery');
-    } catch {
-      timedOut = true;
+          memoriesScanned = recentMemories.length;
+          for (const memory of recentMemories) {
+            const result = await ctx.relationDetectionService!.detectRelations(memory);
+            relationsDiscovered += result.detected + result.inferred;
+          }
+        })(), 2_000, 'offlineRelationDiscovery');
+      } catch {
+        timedOut = true;
+      }
     }
 
     ctx.debugRepo?.log('offline_relation_discovery', input.sessionId, {

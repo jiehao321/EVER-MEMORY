@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { ButlerInsight, InsightKind, NewButlerInsight } from '../core/butler/types.js';
+import { nowIso } from '../util/time.js';
 
 interface ButlerInsightRow {
   id: string;
@@ -24,10 +25,6 @@ interface ChangesRow {
 }
 
 const OPEN_LOOP_FRESH_HOURS = 72;
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function futureIso(hours: number): string {
   return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();

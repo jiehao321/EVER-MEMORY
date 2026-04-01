@@ -61,7 +61,9 @@ export const DEBUG_EVENT_KINDS = [
   'experience_logged',
   'reflection_created',
   'reflection_skipped',
+  'reflection_timeout',
   'session_end_processed',
+  'session_end_budget_skip',
   'rule_promoted',
   'rule_rejected',
   'rule_frozen',
@@ -86,6 +88,7 @@ export const DEBUG_EVENT_KINDS = [
   'relation_detected',
   'relation_detection_error',
   'relation_inference_triggered',
+  'progressive_consolidation_error',
   'retrieval_feedback_recorded',
 ] as const;
 

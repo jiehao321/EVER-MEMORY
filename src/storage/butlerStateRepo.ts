@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { ButlerMode, ButlerPersistentState } from '../core/butler/types.js';
 import { safeJsonParse } from '../util/json.js';
+import { nowIso } from '../util/time.js';
 
 const SINGLETON_ID = 'singleton';
 
@@ -12,10 +13,6 @@ interface ButlerStateRow {
   last_cycle_at: string | null;
   last_cycle_version: number;
   updated_at: string;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function toButlerPersistentState(row: ButlerStateRow): ButlerPersistentState {

@@ -4,6 +4,8 @@ import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { ProfileRepository } from '../../storage/profileRepo.js';
 import type { MemoryItem, ProfileStableField, ProjectedProfile } from '../../types.js';
+import { dedupeStrings } from '../../util/string.js';
+import { nowIso } from '../../util/time.js';
 import {
   PROFILE_DERIVED_WEIGHT_CAP,
   PROFILE_EXCLUDED_SOURCE_KINDS,
@@ -28,10 +30,6 @@ import {
 
 interface ProfileProjectionServiceOptions {
   maxMemoryScan?: number;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function isExplicit(memory: MemoryItem): boolean {
@@ -77,20 +75,6 @@ function createStableField<T extends string>(value: T, evidenceRefs: Iterable<st
     canonical: true,
     evidenceRefs: [...new Set(evidenceRefs)].slice(0, 3),
   };
-}
-
-function dedupeStrings(values: string[]): string[] {
-  const result: string[] = [];
-  const seen = new Set<string>();
-  for (const value of values) {
-    const normalized = value.trim();
-    if (!normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    result.push(normalized);
-  }
-  return result;
 }
 
 function isReservedBehaviorHint(value: string): boolean {

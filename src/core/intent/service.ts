@@ -5,15 +5,12 @@ import { buildIntentEnrichPrompt } from './prompt.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { IntentRepository } from '../../storage/intentRepo.js';
 import type { IntentAnalyzeInput, IntentLLMAnalyzer, IntentRecord } from '../../types.js';
+import { nowIso } from '../../util/time.js';
 
 interface IntentServiceOptions {
   useLLM?: boolean;
   fallbackHeuristics?: boolean;
   llmAnalyzer?: IntentLLMAnalyzer;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 export class IntentService {

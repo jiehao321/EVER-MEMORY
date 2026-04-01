@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { RelationRepository } from '../../storage/relationRepo.js';
+import { BATCH_SEARCH_LIMIT } from '../../tuning/operations.js';
 import type { MemoryItem, MemoryScope } from '../../types/memory.js';
 
 export interface CompressionResult {
@@ -23,7 +24,6 @@ export interface CompressionOptions {
 const DEFAULT_MIN_CLUSTER_SIZE = 3;
 const DEFAULT_MAX_CLUSTERS = 5;
 const DEFAULT_SIMILARITY_THRESHOLD = 0.7;
-const SEARCH_LIMIT = 500;
 const SUMMARY_SNIPPET_LENGTH = 100;
 const MAX_SUMMARY_ADDITIONS = 3;
 
@@ -44,7 +44,7 @@ export class MemoryCompressionService {
         scope: options.scope,
         activeOnly: true,
         archived: false,
-        limit: SEARCH_LIMIT,
+        limit: BATCH_SEARCH_LIMIT,
       }),
     );
 

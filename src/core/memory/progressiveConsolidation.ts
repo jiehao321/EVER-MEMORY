@@ -1,4 +1,5 @@
-import type { MemoryCompressionService } from './compression.js';
+import type { CompressionResult, MemoryCompressionService } from './compression.js';
+import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 
 const PROGRESSIVE_INTERVAL = 5; // every 5 messages
@@ -6,6 +7,7 @@ const PROGRESSIVE_MIN_MEMORIES = 100; // only when >100 active memories
 
 type CountableMemoryRepository = MemoryRepository & {
   countActive?: () => number;
+  count?: (filters?: { activeOnly?: boolean; archived?: boolean }) => number;
 };
 
 export class ProgressiveConsolidationService {
@@ -14,13 +16,14 @@ export class ProgressiveConsolidationService {
   constructor(
     private readonly compressionService: MemoryCompressionService,
     private readonly memoryRepo: MemoryRepository,
+    private readonly debugRepo?: DebugRepository,
   ) {}
 
   /**
    * Called on each messageReceived. Increments counter.
    * Returns true if consolidation was triggered.
    */
-  onMessage(sessionId: string): { triggered: boolean; result?: any } {
+  onMessage(sessionId: string): { triggered: boolean; result?: CompressionResult } {
     const count = (this.messageCounter.get(sessionId) ?? 0) + 1;
     this.messageCounter.set(sessionId, count);
 
@@ -40,7 +43,10 @@ export class ProgressiveConsolidationService {
         minClusterSize: 3,
       });
       return { triggered: true, result };
-    } catch {
+    } catch (error) {
+      this.debugRepo?.log('progressive_consolidation_error', sessionId, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return { triggered: false };
     }
   }
@@ -51,6 +57,7 @@ export class ProgressiveConsolidationService {
   }
 
   private estimateActiveCount(): number {
-    return 0;
+    const repo = this.memoryRepo as CountableMemoryRepository;
+    return repo.countActive?.() ?? repo.count?.({ activeOnly: true, archived: false }) ?? 0;
   }
 }

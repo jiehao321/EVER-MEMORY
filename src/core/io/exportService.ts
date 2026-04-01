@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { MEMORY_TYPES } from '../../constants.js';
 import type { MemoryItem, MemoryScope, MemoryType } from '../../types.js';
 import { MemoryRepository } from '../../storage/memoryRepo.js';
+import { nowIso } from '../../util/time.js';
 
 export interface ExportFormat {
   readonly format: 'json' | 'markdown';
@@ -35,10 +36,6 @@ type ImportShape = {
 const DEFAULT_LIMIT = 1000;
 const MAX_CONTENT_LENGTH = 10_000;
 const DEDUP_SCAN_LIMIT = 10_000;
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function normalizeType(value: unknown): MemoryType | null {
   return typeof value === 'string' && MEMORY_TYPES.includes(value as MemoryType) ? value as MemoryType : null;

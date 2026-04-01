@@ -32,7 +32,7 @@ export function openDatabase(storagePath: string): DatabaseHandle {
     if (error instanceof StorageError) {
       throw error;
     }
-    throw new StorageError('Failed to open database.', {
+    throw new StorageError('Failed to open database. Check the database path and verify EverMemory can read and write that location.', {
       code: 'STORAGE_OPEN_FAILED',
       context: { path },
       cause: error,

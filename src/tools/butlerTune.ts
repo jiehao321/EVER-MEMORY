@@ -28,10 +28,12 @@ function readPositiveInteger(value: unknown, key: string): number {
 
 function readMode(value: unknown): ButlerMode {
   if (value === 'steward') {
-    throw new Error('Cannot set mode to steward: LLM gateway not available in current SDK host.');
+    throw new Error(
+      'Cannot set mode to steward: LLM gateway not available in current SDK host. Check your API key and EverMemory LLM config before enabling Butler steward mode.',
+    );
   }
   if (value !== 'reduced') {
-    throw new Error('Invalid Butler mode.');
+    throw new Error('Invalid Butler mode. Check your butler config and choose a supported mode.');
   }
   return value;
 }
@@ -82,7 +84,7 @@ export function butlerTune(input: {
     return { action: 'get', config: cloneConfig(input.config) };
   }
   if (!input.key || !SETTABLE_KEYS.has(input.key)) {
-    throw new Error('Invalid Butler tune key.');
+    throw new Error('Invalid Butler tune key. Check the butler config path and supported tuning keys.');
   }
   applyUpdate(input.stateManager, input.config, input.key, input.value);
   return {

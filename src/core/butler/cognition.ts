@@ -7,6 +7,7 @@ import type {
   LlmRequest,
 } from '../butler/types.js';
 import { ButlerLlmClient } from './llmClient.js';
+import { nowIso } from '../../util/time.js';
 
 interface LlmInvocationRepo {
   insert(invocation: {
@@ -37,10 +38,6 @@ const TOKEN_ESTIMATES: Record<CognitiveTask['budgetClass'], number> = {
   balanced: 25,
   strong: 40,
 };
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function createFallbackResult<T>(): CognitiveResult<T> {
   return {

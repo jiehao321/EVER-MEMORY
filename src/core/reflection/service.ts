@@ -3,6 +3,7 @@ import { generateCandidateRules } from './candidateRules.js';
 import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { ExperienceRepository } from '../../storage/experienceRepo.js';
 import type { ReflectionRepository } from '../../storage/reflectionRepo.js';
+import { nowIso } from '../../util/time.js';
 import type {
   ExperienceLog,
   ReflectionRecord,
@@ -23,10 +24,6 @@ import {
   REFLECTION_MODE_PENALTY,
   REFLECTION_RECURRENCE_BOOST_INCREMENT,
 } from '../../tuning.js';
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function clamp01(value: number): number {
   if (value < 0) {

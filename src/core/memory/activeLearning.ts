@@ -7,6 +7,7 @@ import type {
 } from '../../types.js';
 import type { SemanticRepository } from '../../storage/semanticRepo.js';
 import type { MemoryService } from './service.js';
+import { clip } from '../../util/string.js';
 
 const WARNING_PATTERN = /注意|小心|警告|danger|warning|careful/iu;
 const SUCCESS_PATTERN = /有效|成功|顺利|通过|认可|approved|worked/iu;
@@ -30,13 +31,7 @@ export interface ActiveLearningResult {
   readonly skippedCount: number;
 }
 
-function clip(value: string | undefined, max = 180): string {
-  const normalized = (value ?? '').trim().replace(/\s+/g, ' ');
-  if (!normalized) {
-    return '';
-  }
-  return normalized.length <= max ? normalized : `${normalized.slice(0, max - 1)}…`;
-}
+const ACTIVE_LEARNING_CLIP_DEFAULT = 180;
 
 function dedupeInsights(insights: readonly LearningInsight[]): readonly LearningInsight[] {
   const seen = new Set<string>();
@@ -57,6 +52,7 @@ function buildEvidence(input: SessionEndInput, context: SessionContext): string 
       || input.outcomeSummary
       || input.actionSummary
       || context.reflection?.analysis.nextTimeRecommendation,
+    ACTIVE_LEARNING_CLIP_DEFAULT,
   );
 }
 
@@ -90,11 +86,15 @@ export async function extractLearningInsights(
   const insights: LearningInsight[] = [];
 
   if (context.intent?.intent.type === 'correction' || (context.intent?.signals.correctionSignal ?? 0) >= 0.8) {
-    const cause = clip(input.actionSummary || input.outcomeSummary || '执行方式偏离了用户预期');
+    const cause = clip(
+      input.actionSummary || input.outcomeSummary || '执行方式偏离了用户预期',
+      ACTIVE_LEARNING_CLIP_DEFAULT,
+    );
     const fix = clip(
       input.inputText
         || context.reflection?.analysis.nextTimeRecommendation
         || '先复述修正点并确认，再继续执行',
+      ACTIVE_LEARNING_CLIP_DEFAULT,
     );
     insights.push({
       content: `踩坑：${cause}；修正：${fix}`,
@@ -111,6 +111,7 @@ export async function extractLearningInsights(
         || input.outcomeSummary
         || input.actionSummary
         || '当前做法在重复场景中表现稳定',
+      ACTIVE_LEARNING_CLIP_DEFAULT,
     );
     insights.push({
       content: `有效模式：${pattern}`,
@@ -121,7 +122,7 @@ export async function extractLearningInsights(
     });
   }
 
-  const recommendation = clip(context.reflection?.analysis.nextTimeRecommendation);
+  const recommendation = clip(context.reflection?.analysis.nextTimeRecommendation, ACTIVE_LEARNING_CLIP_DEFAULT);
   if (recommendation) {
     insights.push({
       content: recommendation,
@@ -134,7 +135,7 @@ export async function extractLearningInsights(
 
   if (WARNING_PATTERN.test(combined)) {
     insights.push({
-      content: clip(input.inputText || input.outcomeSummary || combined),
+      content: clip(input.inputText || input.outcomeSummary || combined, ACTIVE_LEARNING_CLIP_DEFAULT),
       kind: 'warning',
       confidence: 0.9,
       trigger: 'explicit',

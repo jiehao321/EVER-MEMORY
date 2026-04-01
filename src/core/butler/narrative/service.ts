@@ -7,6 +7,7 @@ import type {
   NarrativeThread,
 } from '../types.js';
 import { NarrativeRepository } from '../../../storage/narrativeRepo.js';
+import { nowIso } from '../../../util/time.js';
 
 const PHASES = new Set<NarrativePhase>([
   'exploring',
@@ -19,10 +20,6 @@ const PHASES = new Set<NarrativePhase>([
 ]);
 
 const MOMENTA = new Set<NarrativeMomentum>(['accelerating', 'steady', 'stalling', 'blocked']);
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function isPhase(value: unknown): value is NarrativePhase {
   return typeof value === 'string' && PHASES.has(value as NarrativePhase);

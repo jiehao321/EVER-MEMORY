@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { NarrativeThread } from '../core/butler/types.js';
 import { safeJsonParse } from '../util/json.js';
+import { nowIso } from '../util/time.js';
 
 interface NarrativeThreadRow {
   id: string;
@@ -17,10 +18,6 @@ interface NarrativeThreadRow {
   started_at: string;
   updated_at: string;
   closed_at: string | null;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function isStringArray(value: unknown): value is string[] {

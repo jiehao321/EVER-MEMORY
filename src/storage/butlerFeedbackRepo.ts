@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import { nowIso } from '../util/time.js';
 
 export type ButlerFeedbackAction = 'accepted' | 'rejected' | 'snoozed' | 'dismissed';
 
@@ -36,10 +37,6 @@ interface StatsRow {
   accepted: number | null;
   rejected: number | null;
   total: number | null;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function toMs(value: string | undefined): number | null {

@@ -4,6 +4,7 @@ import type { DebugRepository } from '../../storage/debugRepo.js';
 import type { DatabaseHandle } from '../../storage/db.js';
 import type { SemanticRepository } from '../../storage/semanticRepo.js';
 import type { MemoryItem, MemoryScope, MemoryType } from '../../types.js';
+import { nowIso } from '../../util/time.js';
 import {
   STALE_THRESHOLD_DAYS_PRIMARY,
   STALE_THRESHOLD_DAYS_DERIVED,
@@ -12,6 +13,7 @@ import {
   MAX_SUMMARY_PER_PROJECT,
   MAX_PROJECT_PER_PROJECT,
 } from '../../tuning/memory.js';
+import { BATCH_SEARCH_LIMIT } from '../../tuning/operations.js';
 
 export interface HousekeepingConfig {
   readonly staleThresholdDays: number;
@@ -53,10 +55,6 @@ export const DEFAULT_CONFIG: HousekeepingConfig = {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 /** Upper bound when fetching all memories of a type for kind-limit enforcement */
 const KIND_LIMIT_FETCH_MAX = 10_000;
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function parseIso(value?: string): number {
   if (!value) {
@@ -113,7 +111,7 @@ export class MemoryHousekeepingService {
       scope,
       activeOnly: true,
       archived: false,
-      limit: 500,
+      limit: BATCH_SEARCH_LIMIT,
     });
 
     const mergedCount = this.mergeNearDuplicates(candidates);
@@ -218,10 +216,10 @@ export class MemoryHousekeepingService {
       scope,
       activeOnly: true,
       archived: false,
-      limit: 500,
+      limit: BATCH_SEARCH_LIMIT,
     });
 
-    // RC3: Precompute per-grade cutoffs once (not per-memory) to avoid 500× Date.now() calls
+    // RC3: Precompute per-grade cutoffs once (not per-memory) to avoid one Date.now() call per batch item
     const nowMs = Date.now();
     const cutoffs = {
       primary: nowMs - STALE_THRESHOLD_DAYS_PRIMARY * MS_PER_DAY,
@@ -299,7 +297,7 @@ export class MemoryHousekeepingService {
       scope,
       activeOnly: true,
       archived: false,
-      limit: 500,
+      limit: BATCH_SEARCH_LIMIT,
     });
     let reinforced = 0;
 

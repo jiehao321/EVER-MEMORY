@@ -1,24 +1,5 @@
 import type { DebugEvent, EverMemoryExplainToolResult } from '../types.js';
-
-function toNumber(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined;
-}
-
-function toString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function toBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined;
-}
-
-function toStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const items = value.filter((entry): entry is string => typeof entry === 'string');
-  return items;
-}
+import { toBoolean, toNumber, toString, toStringArray } from '../util/coerce.js';
 
 export function explainWrite(event: DebugEvent): EverMemoryExplainToolResult['items'][number] {
   if (event.kind === 'memory_write_rejected') {

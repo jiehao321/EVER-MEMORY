@@ -2,7 +2,30 @@
  * Retrieval, briefing, intent, and transfer tuning constants.
  */
 
+import { DEFAULT_RETRIEVAL_HYBRID_WEIGHTS } from '../constants.js';
 import type { RetrievalKeywordWeights } from '../types/config.js';
+
+export interface RetrievalPresetWeights {
+  readonly keywordWeight: number;
+  readonly semanticWeight: number;
+  readonly recencyWeight: number;
+}
+
+export const RETRIEVAL_PRESETS = {
+  balanced: {
+    keywordWeight: DEFAULT_RETRIEVAL_HYBRID_WEIGHTS.keyword,
+    semanticWeight: DEFAULT_RETRIEVAL_HYBRID_WEIGHTS.semantic,
+    recencyWeight: DEFAULT_RETRIEVAL_HYBRID_WEIGHTS.base,
+  },
+  'semantic-first': { keywordWeight: 0.25, semanticWeight: 0.6, recencyWeight: 0.15 },
+  'keyword-first': { keywordWeight: 0.6, semanticWeight: 0.25, recencyWeight: 0.15 },
+} as const satisfies Record<string, RetrievalPresetWeights>;
+
+export type RetrievalPreset = keyof typeof RETRIEVAL_PRESETS;
+
+export function resolvePresetWeights(preset: RetrievalPreset): RetrievalPresetWeights {
+  return RETRIEVAL_PRESETS[preset];
+}
 
 /** Default recall limit when not specified by request */
 export const DEFAULT_RECALL_LIMIT = 8;

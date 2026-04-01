@@ -67,9 +67,7 @@ export function describeType(value: unknown): string {
   return typeof value;
 }
 
-export function nowIso(): string {
-  return new Date().toISOString();
-}
+export { nowIso } from '../../util/time.js';
 
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);

@@ -3,6 +3,7 @@ import type { BriefingRepository } from '../../storage/briefingRepo.js';
 import type { MemoryRepository } from '../../storage/memoryRepo.js';
 import type { ProfileRepository } from '../../storage/profileRepo.js';
 import type { BootBriefing, BootBriefingQuality, SessionContinuityScore, MemoryItem, MemoryScope } from '../../types.js';
+import { nowIso } from '../../util/time.js';
 import { PreferenceGraphService } from '../profile/preferenceGraph.js';
 import { CrossProjectTransferService } from '../profile/crossProjectTransfer.js';
 import {
@@ -31,10 +32,6 @@ import {
   type BriefingSectionEntry,
   resolveTokenTarget,
 } from './builder.js';
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
 
 function pickContent(memories: MemoryItem[], limit: number): string[] {
   return memories.slice(0, limit).map((memory) => clip(memory.content));
