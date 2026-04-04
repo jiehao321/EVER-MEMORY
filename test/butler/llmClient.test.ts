@@ -1,8 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { LlmRequest, LlmResponse } from '../../src/core/butler/types.js';
+import type { LlmGateway, LlmRequest, LlmResponse } from '../../src/core/butler/types.js';
 import { ButlerLlmClient } from '../../src/core/butler/llmClient.js';
-import type { ProviderDirectLlmGateway } from '../../src/openclaw/llmGateway.js';
 
 function createLogger() {
   return {
@@ -31,23 +30,26 @@ function createRequest(overrides: Partial<LlmRequest> = {}): LlmRequest {
 }
 
 describe('ButlerLlmClient', () => {
-  it('detects gateway mode readiness and provider metadata', () => {
+  it('prefers explicit gateway readiness metadata methods when available', () => {
     const gateway = {
       invoke: async (_request: LlmRequest): Promise<LlmResponse> => ({ content: 'ok', provider: 'openai' }),
+      getReadiness: () => 'untested' as const,
+      getProvider: () => 'gateway-method',
+      getLastAuthError: () => 'auth pending',
       authFailed: false,
       authVerified: true,
       defaultProvider: 'openai',
       lastAuthError: undefined,
-    } as unknown as ProviderDirectLlmGateway;
+    } satisfies LlmGateway & Record<string, unknown>;
     const client = new ButlerLlmClient({
       gateway,
       logger: createLogger(),
     });
 
     assert.equal(client.isAvailable(), true);
-    assert.equal(client.getReadiness(), 'ready');
-    assert.equal(client.getProvider(), 'openai');
-    assert.equal(client.getLastAuthError(), undefined);
+    assert.equal(client.getReadiness(), 'untested');
+    assert.equal(client.getProvider(), 'gateway-method');
+    assert.equal(client.getLastAuthError(), 'auth pending');
   });
 
   it('detects legacy bridge mode when no gateway is present', async () => {
@@ -116,7 +118,7 @@ describe('ButlerLlmClient', () => {
       authVerified: false,
       defaultProvider: 'anthropic',
       lastAuthError: 'missing api key',
-    } as unknown as ProviderDirectLlmGateway;
+    } as LlmGateway & Record<string, unknown>;
     const client = new ButlerLlmClient({
       gateway,
       logger: createLogger(),

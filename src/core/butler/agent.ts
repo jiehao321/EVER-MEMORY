@@ -38,6 +38,17 @@ interface CyclePhaseResult {
   llmInvoked: boolean;
 }
 
+type OrientationUrgency = 'normal' | 'elevated' | 'critical';
+type OrientationAction = 'advise' | 'act' | 'ask' | 'defer';
+
+interface OrientationDecision {
+  urgency: OrientationUrgency;
+  recommendedAction: OrientationAction;
+  pendingTasks: number;
+  skipped?: boolean;
+  reason?: 'reduced_mode' | 'no_time_remaining';
+}
+
 const MESSAGE_TTL_MS = 15 * 60 * 1000;
 const AGENT_NOTE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_CLOCK: ClockPort = {
@@ -57,6 +68,8 @@ function getCycleBudgetMs(trigger: ButlerTrigger['type']): number {
       return 600;
     case 'service_started':
       return 500;
+    case 'autonomous_tick':
+      return 3000;
   }
 }
 
@@ -192,6 +205,8 @@ export class ButlerAgent {
         return this.observeAgentEnded(trigger, state);
       case 'service_started':
         return this.observeServiceStarted(state);
+      case 'autonomous_tick':
+        return this.observeAutonomousTick(trigger, state);
     }
   }
 
@@ -284,6 +299,24 @@ export class ButlerAgent {
     };
   }
 
+  private observeAutonomousTick(
+    trigger: ButlerTrigger,
+    state: ButlerPersistentState,
+  ): CyclePhaseResult {
+    return {
+      state: this.stateManager.addWorkingMemoryEntry(
+        state,
+        'autonomous_tick',
+        trigger.payload ?? { autonomous: true },
+        AGENT_NOTE_TTL_MS,
+      ),
+      observationSummary: 'Autonomous scheduler tick recorded.',
+      decisions: { trigger: 'autonomous_tick' },
+      actions: {},
+      llmInvoked: false,
+    };
+  }
+
   private orient(
     trigger: ButlerTrigger,
     result: CyclePhaseResult,
@@ -291,12 +324,12 @@ export class ButlerAgent {
     startedAt: number,
     maxTimeMs: number,
   ): CyclePhaseResult {
-    const reason = this.getOrientationReason(trigger, state, startedAt, maxTimeMs);
+    const orientation = this.getOrientationReason(trigger, state, startedAt, maxTimeMs);
     return {
       ...result,
       decisions: {
         ...result.decisions,
-        orientation: reason,
+        orientation,
       },
       llmInvoked: false,
     };
@@ -307,25 +340,76 @@ export class ButlerAgent {
     state: ButlerPersistentState,
     startedAt: number,
     maxTimeMs: number,
-  ): string {
+  ): OrientationDecision {
+    const pendingTasks = this.taskQueue.getPendingCount();
     if (state.mode === 'reduced') {
-      return 'reduced mode skips orientation';
+      return {
+        urgency: 'normal',
+        recommendedAction: 'defer',
+        pendingTasks,
+        skipped: true,
+        reason: 'reduced_mode',
+      };
     }
     if (!hasTimeRemaining(startedAt, maxTimeMs)) {
-      return 'budget exhausted before orientation';
+      return {
+        urgency: 'normal',
+        recommendedAction: 'defer',
+        pendingTasks,
+        skipped: true,
+        reason: 'no_time_remaining',
+      };
     }
-    if (trigger.type !== 'session_started' && trigger.type !== 'message_received') {
-      return 'orientation not needed for this trigger';
+
+    const urgency = this.assessUrgency(state, pendingTasks);
+
+    if (trigger.type === 'session_ended') {
+      return {
+        urgency,
+        recommendedAction: 'defer',
+        pendingTasks,
+      };
     }
-    return this.cognitiveEngine.canAfford({
-      taskType: 'butler-orientation',
-      evidence: { trigger: trigger.type },
-      latencyClass: 'background',
-      privacyClass: 'local_only',
-      budgetClass: 'cheap',
-    })
-      ? 'phase 1 orientation intentionally deferred'
-      : 'orientation skipped because budget or llm availability is insufficient';
+
+    if (trigger.type === 'session_started') {
+      return {
+        urgency,
+        recommendedAction: urgency === 'critical' || urgency === 'elevated' ? 'act' : 'defer',
+        pendingTasks,
+      };
+    }
+
+    if (trigger.type === 'message_received') {
+      if (urgency === 'critical') {
+        return { urgency, recommendedAction: 'act', pendingTasks };
+      }
+      if (urgency === 'elevated') {
+        return { urgency, recommendedAction: 'advise', pendingTasks };
+      }
+      return { urgency, recommendedAction: 'defer', pendingTasks };
+    }
+
+    return {
+      urgency,
+      recommendedAction: 'defer',
+      pendingTasks,
+    };
+  }
+
+  private assessUrgency(
+    state: ButlerPersistentState,
+    pendingTasks: number,
+  ): OrientationUrgency {
+    const hasContradictionAlert = state.workingMemory.some((entry) => entry.key === 'contradiction_alert');
+    const freshInsights = this.insightRepo.findFresh(6).length;
+
+    if (hasContradictionAlert || pendingTasks > 10) {
+      return 'critical';
+    }
+    if (pendingTasks > 3 || freshInsights > 5) {
+      return 'elevated';
+    }
+    return 'normal';
   }
 
   private async act(
@@ -408,6 +492,32 @@ export class ButlerAgent {
       }
       return;
     }
+
+    if (task.type === 'commitment_scan') {
+      if (this.commitmentWatcher) {
+        const payload = parseTaskPayload(task);
+        await this.commitmentWatcher.scanCommitments(
+          payload as { userId?: string; chatId?: string; project?: string } | undefined,
+          { forceHeuristic: true },
+        );
+      }
+      return;
+    }
+
+    if (task.type === 'strategy_review') {
+      this.logger?.info('ButlerAgent: strategy_review task acknowledged (implementation deferred)');
+      return;
+    }
+
+    if (task.type === 'contradiction_check') {
+      this.logger?.info('ButlerAgent: contradiction_check task acknowledged (implementation deferred)');
+      return;
+    }
+
+    if (task.type === 'memory_consolidation') {
+      this.logger?.info('ButlerAgent: memory_consolidation task acknowledged (implementation deferred)');
+      return;
+    }
   }
 
   private surfaceFreshInsights(): string[] {
@@ -434,6 +544,14 @@ export class ButlerAgent {
         idempotencyKey: `session-ended:narrative:${sessionId}`,
       }),
       this.taskQueue.enqueue({
+        type: 'commitment_scan',
+        priority: 4,
+        trigger: trigger.type,
+        payload: trigger.scope ?? {},
+        budgetClass: 'medium',
+        idempotencyKey: `session-ended:commitments:${sessionId}`,
+      }),
+      this.taskQueue.enqueue({
         type: 'insight_refresh',
         priority: 5,
         trigger: trigger.type,
@@ -455,7 +573,7 @@ export class ButlerAgent {
       ...result,
       actions: {
         queuedTaskIds,
-        queuedTaskTypes: ['narrative_update', 'insight_refresh', 'goal_derivation'],
+        queuedTaskTypes: ['narrative_update', 'commitment_scan', 'insight_refresh', 'goal_derivation'],
       },
     };
   }

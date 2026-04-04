@@ -8,6 +8,8 @@ import type {
   LlmInvocation,
   NarrativeThread,
 } from '../../src/core/butler/types.js';
+import type { ActionRecord } from '../../src/core/butler/actions/types.js';
+import { ButlerActionRepository } from '../../src/storage/butlerActionRepo.js';
 import { ButlerInsightRepository } from '../../src/storage/butlerInsightRepo.js';
 import { ButlerStateRepository } from '../../src/storage/butlerStateRepo.js';
 import { ButlerTaskRepository } from '../../src/storage/butlerTaskRepo.js';
@@ -112,6 +114,26 @@ function buildInvocation(overrides: Partial<LlmInvocation> = {}): LlmInvocation 
     success: overrides.success ?? true,
     createdAt: overrides.createdAt ?? '2026-03-23T00:00:00.000Z',
   };
+}
+
+function buildActionRecord(overrides: Partial<ActionRecord> = {}): ActionRecord {
+  return {
+    id: overrides.id ?? 'action-1',
+    cycleId: overrides.cycleId ?? 'cycle-1',
+    actionType: overrides.actionType ?? 'store_memory',
+    paramsJson: overrides.paramsJson ?? JSON.stringify({ content: 'remember this' }),
+    resultJson: overrides.resultJson,
+    status: overrides.status ?? 'pending',
+    rollbackJson: overrides.rollbackJson,
+    budgetCostMs: overrides.budgetCostMs ?? 25,
+    createdAt: overrides.createdAt ?? '2026-04-04T00:00:00.000Z',
+    completedAt: overrides.completedAt,
+  };
+}
+
+function toNewActionRecord(record: ActionRecord): Omit<ActionRecord, 'id'> {
+  const { id: _id, ...rest } = record;
+  return rest;
 }
 
 describe('Butler repositories', () => {
@@ -237,5 +259,39 @@ describe('Butler repositories', () => {
 
     assert.deepEqual(repo.getSessionUsage('trace-1'), { totalTokens: 25, count: 2 });
     assert.deepEqual(repo.getDailyUsage('2026-03-23'), { totalTokens: 25, count: 2 });
+  });
+
+  it('stores butler actions, updates status, and counts rows by day', () => {
+    db = createInMemoryDb();
+    const repo = new ButlerActionRepository(db);
+
+    const first = buildActionRecord();
+    const second = buildActionRecord({
+      cycleId: 'cycle-1',
+      actionType: 'ask_user',
+      paramsJson: JSON.stringify({ question: 'Need clarification?' }),
+      createdAt: '2026-04-04T12:00:00.000Z',
+    });
+    const third = buildActionRecord({
+      cycleId: 'cycle-2',
+      actionType: 'search_knowledge',
+      createdAt: '2026-04-05T00:00:00.000Z',
+    });
+
+    const firstId = repo.insert(toNewActionRecord(first));
+    const secondId = repo.insert(toNewActionRecord(second));
+    repo.insert(toNewActionRecord(third));
+    repo.updateStatus(secondId, 'completed', JSON.stringify({ answer: 'yes' }), '2026-04-04T12:00:03.000Z');
+
+    const cycleRows = repo.findByCycleId('cycle-1');
+
+    assert.equal(firstId.length > 0, true);
+    assert.equal(cycleRows.length, 2);
+    assert.equal(cycleRows[0]?.status, 'pending');
+    assert.equal(cycleRows[1]?.status, 'completed');
+    assert.equal(cycleRows[1]?.resultJson, JSON.stringify({ answer: 'yes' }));
+    assert.equal(cycleRows[1]?.completedAt, '2026-04-04T12:00:03.000Z');
+    assert.equal(repo.getDailyCount('2026-04-04'), 2);
+    assert.equal(repo.getDailyCount('2026-04-05'), 1);
   });
 });

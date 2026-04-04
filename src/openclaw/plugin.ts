@@ -7,6 +7,8 @@ import { CognitiveEngine } from '../core/butler/cognition.js';
 import { ButlerGoalService } from '../core/butler/goals/service.js';
 import { ButlerLlmClient } from '../core/butler/llmClient.js';
 import { NarrativeThreadService } from '../core/butler/narrative/service.js';
+import type { HostPort } from '../core/butler/ports/host.js';
+import { ButlerScheduler } from '../core/butler/scheduler/service.js';
 import { ButlerStateManager } from '../core/butler/state.js';
 import { StrategicOverlayGenerator } from '../core/butler/strategy/overlay.js';
 import { TaskQueueService } from '../core/butler/taskQueue.js';
@@ -135,23 +137,39 @@ export default definePluginEntry({
             cognitiveEngine,
             logger: api.logger,
           });
-          return {
-            agent: new ButlerAgent({
-              stateManager,
-              taskQueue,
-              cognitiveEngine,
-              insightRepo: storage.insights,
+          const hostPort = createPluginHostPort(api);
+          const agent = new ButlerAgent({
+            stateManager,
+            taskQueue,
+            cognitiveEngine,
+            insightRepo: storage.insights,
+            clock: systemClock,
+            goalService,
+            workerPool,
+            narrativeService,
+            commitmentWatcher,
+            logger: api.logger,
+          });
+          const scheduler = new ButlerScheduler(
+            agent,
+            {
+              tasks: storage.tasks,
+              goals: goalService ? storage.goals : undefined,
+              insights: storage.insights,
               clock: systemClock,
-              goalService,
-              workerPool,
-              narrativeService,
-              commitmentWatcher,
-              logger: api.logger,
-            }),
+            },
+            systemClock,
+            api.logger,
+            { enabled: true, tickIntervalMs: 60_000 },
+          );
+          return {
+            agent,
             workerPool,
             overlayGenerator,
             narrativeService,
             commitmentWatcher,
+            hostPort,
+            scheduler,
             attentionService: new AttentionService({
               insightRepo: storage.insights,
               feedbackRepo: storage.feedback,
@@ -233,6 +251,7 @@ export default definePluginEntry({
             attentionService: butler.attentionService,
             goalService: butler.goalService,
             llmProbe,
+            scheduler: butler.scheduler,
           }
         : undefined,
     );
@@ -347,6 +366,7 @@ export default definePluginEntry({
           await butler.agent.runCycle({ type: 'service_started' }).catch((error: unknown) => {
             api.logger.warn(`[EverMemory] Butler startup cycle failed: ${toErrorMessage(error)}`);
           });
+          butler.scheduler.start();
         }
         const setup = await runAutoSetup(context.evermemory.memoryRepo, embeddingManager);
         api.logger.info(`[EverMemory] Ready. memories=${setup.memoryCount}, embedding=${setup.embeddingProvider}`);
@@ -360,6 +380,7 @@ export default definePluginEntry({
       stop: async (_ctx: OpenClawPluginServiceContext) => {
         // A4c: Dispose embedding resources before closing DB
         if (butler) {
+          butler.scheduler.stop();
           await butler.workerPool?.terminate().catch((err: unknown) => {
             api.logger.warn(`${PLUGIN_NAME}: worker pool terminate failed: ${toErrorMessage(err)}`);
           });
@@ -377,6 +398,13 @@ export default definePluginEntry({
     });
   },
 });
+
+function createPluginHostPort(_api?: OpenClawPluginApi): HostPort {
+  return {
+    // Hook-driven prependContext injection already handles prompt context for plugin mode.
+    injectContext: () => {},
+  };
+}
 
 function resolveModelTiers(
   pluginConfig: unknown,

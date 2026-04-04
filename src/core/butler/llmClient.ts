@@ -52,6 +52,9 @@ export class ButlerLlmClient {
     if (!this.available) {
       return 'unavailable';
     }
+    if (typeof this.gateway?.getReadiness === 'function') {
+      return this.gateway.getReadiness();
+    }
     const gateway = getGatewayMetadata(this.gateway);
     if (gateway && 'authFailed' in gateway && 'authVerified' in gateway) {
       if (gateway.authFailed === true) return 'unavailable';
@@ -63,6 +66,9 @@ export class ButlerLlmClient {
 
   getProvider(): string | undefined {
     if (!this.available) return undefined;
+    if (typeof this.gateway?.getProvider === 'function') {
+      return this.gateway.getProvider();
+    }
     const gateway = getGatewayMetadata(this.gateway);
     if (gateway && 'defaultProvider' in gateway && typeof gateway.defaultProvider === 'string') {
       return gateway.defaultProvider;
@@ -72,6 +78,9 @@ export class ButlerLlmClient {
 
   getLastAuthError(): string | undefined {
     if (!this.available) return undefined;
+    if (typeof this.gateway?.getLastAuthError === 'function') {
+      return this.gateway.getLastAuthError();
+    }
     const gateway = getGatewayMetadata(this.gateway);
     if (gateway && 'lastAuthError' in gateway && typeof gateway.lastAuthError === 'string') {
       return gateway.lastAuthError;

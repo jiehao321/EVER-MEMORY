@@ -334,3 +334,20 @@ export const CREATE_PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SQL = [
   'ALTER TABLE behavior_rules ADD COLUMN auto_suspended INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE behavior_rules ADD COLUMN auto_suspended_at TEXT',
 ] as const;
+
+export const CREATE_PHASE28_BUTLER_ACTIONS_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_actions (
+    id TEXT PRIMARY KEY,
+    cycle_id TEXT,
+    action_type TEXT NOT NULL,
+    params_json TEXT,
+    result_json TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    rollback_json TEXT,
+    budget_cost_ms INTEGER,
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_actions_cycle ON butler_actions(cycle_id)',
+  'CREATE INDEX IF NOT EXISTS idx_butler_actions_status ON butler_actions(status)',
+] as const;

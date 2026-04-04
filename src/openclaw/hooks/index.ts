@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { ButlerAgent } from '../../core/butler/agent.js';
 import type { AttentionService } from '../../core/butler/attention/service.js';
 import type { ButlerGoalService } from '../../core/butler/goals/service.js';
+import type { ButlerScheduler } from '../../core/butler/scheduler/service.js';
 import { compileOverlay, compileSessionWatchlist } from '../../core/butler/strategy/compiler.js';
 import type { StrategicOverlayGenerator } from '../../core/butler/strategy/overlay.js';
 import type { OpenClawRegistrationContext } from '../shared.js';
@@ -22,6 +23,7 @@ interface ButlerHookContext {
   attentionService: AttentionService;
   goalService?: ButlerGoalService;
   llmProbe?: () => Promise<void>;
+  scheduler?: ButlerScheduler;
 }
 
 function logButlerFailure(
@@ -86,6 +88,13 @@ export function registerHooks(
       await butler.llmProbe().catch((error) => {
         logButlerFailure(registrationContext, 'llm_probe', error);
       });
+    }
+    if (butler?.scheduler) {
+      try {
+        await butler.scheduler.checkAndTick();
+      } catch (error) {
+        logButlerFailure(registrationContext, 'before_agent_start_scheduler', error);
+      }
     }
     if (!isRecord(ctx)) {
       return undefined;

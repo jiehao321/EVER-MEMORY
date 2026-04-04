@@ -278,3 +278,46 @@ test('ButlerAgent runDeferredTask fallback when no pool', () => {
   });
   assert.deepEqual(warnings, []);
 });
+
+test('ButlerAgent runDeferredTask calls commitmentWatcher.scanCommitments for commitment_scan', async () => {
+  const scans: Array<{ scope: unknown; options: unknown }> = [];
+  const agent = new ButlerAgent({
+    stateManager: {
+      load: () => { throw new Error('unused'); },
+      save: () => undefined,
+      pruneExpiredWorkingMemory: () => { throw new Error('unused'); },
+      addWorkingMemoryEntry: () => { throw new Error('unused'); },
+    } as any,
+    taskQueue: {
+      drain: () => [],
+      complete: () => undefined,
+      fail: () => undefined,
+      enqueue: () => 'task-id',
+      getPendingCount: () => 0,
+    } as any,
+    cognitiveEngine: {
+      canAfford: () => false,
+      runTask: async () => ({ output: {}, confidence: 0, evidenceIds: [], fallbackUsed: true }),
+    } as unknown as CognitiveEngine,
+    insightRepo: {} as ButlerInsightRepository,
+    commitmentWatcher: {
+      scanCommitments: async (scope: unknown, options: unknown) => {
+        scans.push({ scope, options });
+        return [];
+      },
+      getActiveCommitments: () => [],
+    } as any,
+    logger: createLogger(),
+  });
+
+  await (agent as unknown as { runDeferredTask(task: unknown): Promise<void> }).runDeferredTask({
+    id: 'task-3',
+    type: 'commitment_scan',
+    payloadJson: JSON.stringify({ project: 'evermemory', chatId: 'chat-1' }),
+  });
+
+  assert.deepEqual(scans, [{
+    scope: { project: 'evermemory', chatId: 'chat-1' },
+    options: { forceHeuristic: true },
+  }]);
+});

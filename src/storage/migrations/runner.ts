@@ -29,6 +29,7 @@ import {
   CREATE_PHASE23_BUTLER_GOALS_SQL,
   CREATE_PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SQL,
   CREATE_PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SQL,
+  CREATE_PHASE28_BUTLER_ACTIONS_SQL,
 } from './schemas.js';
 import {
   CURRENT_SCHEMA_VERSION,
@@ -59,6 +60,7 @@ import {
   PHASE23_BUTLER_GOALS_SCHEMA_VERSION,
   PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION,
   PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION,
+  PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION,
 } from './versions.js';
 
 function ensureSchemaVersionTable(db: Database.Database): void {
@@ -282,6 +284,12 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
       runStatementsIgnoreDuplicateColumns(db, CREATE_PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SQL);
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION);
     });
+    const phase28ButlerActionsTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE28_BUTLER_ACTIONS_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -406,6 +414,11 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
     if (currentVersion < PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION) {
       phase25BehaviorOverrideLifecycleTx();
       currentVersion = PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION) {
+      phase28ButlerActionsTx();
+      currentVersion = PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION;
     }
 
     return currentVersion;

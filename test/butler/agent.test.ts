@@ -98,16 +98,22 @@ describe('ButlerAgent', () => {
       queuedTaskIds?: string[];
     };
 
-    assert.deepEqual(endActions.queuedTaskTypes, ['narrative_update', 'insight_refresh', 'goal_derivation']);
-    assert.equal(endActions.queuedTaskIds?.length, 3);
-    assert.deepEqual(startActions.drainedTaskTypes, ['narrative_update', 'insight_refresh', 'goal_derivation']);
+    assert.deepEqual(endActions.queuedTaskTypes, ['narrative_update', 'commitment_scan', 'insight_refresh', 'goal_derivation']);
+    assert.equal(endActions.queuedTaskIds?.length, 4);
+    assert.deepEqual(startActions.drainedTaskTypes, ['narrative_update', 'commitment_scan', 'insight_refresh']);
     assert.deepEqual(startActions.surfacedInsightIds, [insightId]);
     assert.deepEqual(narrativeCalls, [{ project: 'evermemory', chatId: 'chat-1' }]);
-    assert.deepEqual(commitmentCalls, [{
-      scope: { project: 'evermemory', chatId: 'chat-1' },
-      options: { forceHeuristic: true },
-    }]);
-    assert.deepEqual(goalPayloads, [{ project: 'evermemory', chatId: 'chat-1' }]);
+    assert.deepEqual(commitmentCalls, [
+      {
+        scope: { project: 'evermemory', chatId: 'chat-1' },
+        options: { forceHeuristic: true },
+      },
+      {
+        scope: { project: 'evermemory', chatId: 'chat-1' },
+        options: { forceHeuristic: true },
+      },
+    ]);
+    assert.deepEqual(goalPayloads, []);
     assert.equal(startTrace.hook, 'session_started');
     assert.match(startTrace.observationSummary, /Session started/);
     assert.ok(startTrace.cycleId.length > 0);
@@ -171,9 +177,9 @@ describe('ButlerAgent', () => {
     const actions = JSON.parse(trace.actionsJson) as { queuedTaskIds?: string[]; queuedTaskTypes?: string[] };
     const drained = ctx.taskQueue.drain({ maxTasks: 5, maxTimeMs: 1_000, priorityFilter: 'all' });
 
-    assert.deepEqual(actions.queuedTaskTypes, ['narrative_update', 'insight_refresh', 'goal_derivation']);
-    assert.equal(actions.queuedTaskIds?.length, 3);
-    assert.deepEqual(drained.map((task) => task.type), ['narrative_update', 'insight_refresh', 'goal_derivation']);
+    assert.deepEqual(actions.queuedTaskTypes, ['narrative_update', 'commitment_scan', 'insight_refresh', 'goal_derivation']);
+    assert.equal(actions.queuedTaskIds?.length, 4);
+    assert.deepEqual(drained.map((task) => task.type), ['narrative_update', 'commitment_scan', 'insight_refresh', 'goal_derivation']);
     assert.equal((ctx.stateRepo.load() as ButlerPersistentState).lastCycleVersion, 1);
   });
 
@@ -225,11 +231,26 @@ describe('ButlerAgent', () => {
       payload: { text: 'test message' },
     });
     const savedState = ctx.stateRepo.load() as ButlerPersistentState;
-    const decisions = JSON.parse(trace.decisionsJson) as { trigger?: string; orientation?: string };
+    const decisions = JSON.parse(trace.decisionsJson) as {
+      trigger?: string;
+      orientation?: {
+        urgency?: string;
+        skipped?: boolean;
+        reason?: string;
+        recommendedAction?: string;
+        pendingTasks?: number;
+      };
+    };
 
     assert.equal(trace.hook, 'message_received');
     assert.equal(decisions.trigger, 'message_received');
-    assert.match(decisions.orientation ?? '', /reduced mode skips orientation/);
+    assert.deepEqual(decisions.orientation, {
+      urgency: 'normal',
+      skipped: true,
+      reason: 'reduced_mode',
+      recommendedAction: 'defer',
+      pendingTasks: 0,
+    });
     assert.equal(savedState.lastCycleVersion, 1);
     assert.deepEqual(savedState.workingMemory.at(-1)?.value, { text: 'test message' });
   });

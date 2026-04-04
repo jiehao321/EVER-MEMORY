@@ -279,6 +279,7 @@ test('ButlerAgent runCycle produces cycle trace for session_started', async () =
       stateRepo: new ButlerStateRepository(ctx.db),
       logger: createLogger(),
     });
+    stateManager.save(createState({ mode: 'steward' }));
     const taskQueue = new TaskQueueService({
       taskRepo: new ButlerTaskRepository(ctx.db),
       logger: createLogger(),
@@ -304,13 +305,21 @@ test('ButlerAgent runCycle produces cycle trace for session_started', async () =
       sessionId: 'session-1',
       scope: { project: 'evermemory' },
     });
+    const decisions = JSON.parse(trace.decisionsJson) as {
+      orientation?: { urgency?: string; recommendedAction?: string; pendingTasks?: number };
+    };
 
     assert.equal(trace.hook, 'session_started');
     assert.equal(trace.llmInvoked, false);
     assert.match(trace.observationSummary, /pending/i);
     assert.match(trace.actionsJson, /resume-briefing/);
+    assert.deepEqual(decisions.orientation, {
+      urgency: 'normal',
+      recommendedAction: 'defer',
+      pendingTasks: 1,
+    });
     assert.equal(taskQueue.getPendingCount(), 0);
-    assert.equal(agent.getState()?.lastCycleVersion, 1);
+    assert.equal(agent.getState()?.lastCycleVersion, 2);
   } finally {
     ctx.cleanup();
   }
@@ -323,6 +332,7 @@ test('ButlerAgent runCycle for session_ended only enqueues', async () => {
       stateRepo: new ButlerStateRepository(ctx.db),
       logger: createLogger(),
     });
+    stateManager.save(createState({ mode: 'steward' }));
     const taskQueue = new TaskQueueService({
       taskRepo: new ButlerTaskRepository(ctx.db),
       logger: createLogger(),
@@ -340,17 +350,26 @@ test('ButlerAgent runCycle for session_ended only enqueues', async () => {
       sessionId: 'session-2',
       scope: { project: 'evermemory' },
     });
+    const decisions = JSON.parse(trace.decisionsJson) as {
+      orientation?: { urgency?: string; recommendedAction?: string; pendingTasks?: number };
+    };
 
     assert.equal(trace.hook, 'session_ended');
-    assert.equal(taskQueue.getPendingCount(), 3);
+    assert.equal(taskQueue.getPendingCount(), 4);
+    assert.deepEqual(decisions.orientation, {
+      urgency: 'normal',
+      recommendedAction: 'defer',
+      pendingTasks: 0,
+    });
     assert.match(trace.actionsJson, /goal_derivation/);
+    assert.match(trace.actionsJson, /commitment_scan/);
     assert.doesNotMatch(trace.actionsJson, /completed/i);
   } finally {
     ctx.cleanup();
   }
 });
 
-test('ButlerAgent runCycle in reduced mode skips orientation', async () => {
+test('ButlerAgent runCycle in reduced mode records skipped orientation metadata', async () => {
   const ctx = createDbContext();
   try {
     const stateManager = new ButlerStateManager({
@@ -374,10 +393,121 @@ test('ButlerAgent runCycle in reduced mode skips orientation', async () => {
       sessionId: 'session-3',
       payload: { text: 'hello' },
     });
+    const decisions = JSON.parse(trace.decisionsJson) as {
+      orientation?: {
+        urgency?: string;
+        skipped?: boolean;
+        reason?: string;
+        recommendedAction?: string;
+        pendingTasks?: number;
+      };
+    };
 
     assert.equal(agent.isReduced(), true);
     assert.equal(trace.llmInvoked, false);
-    assert.match(trace.decisionsJson, /reduced/i);
+    assert.deepEqual(decisions.orientation, {
+      urgency: 'normal',
+      skipped: true,
+      reason: 'reduced_mode',
+      recommendedAction: 'defer',
+      pendingTasks: 0,
+    });
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test('ButlerAgent orients elevated message input toward advice', async () => {
+  const ctx = createDbContext();
+  try {
+    const stateManager = new ButlerStateManager({
+      stateRepo: new ButlerStateRepository(ctx.db),
+      logger: createLogger(),
+    });
+    stateManager.save(createState({
+      mode: 'steward',
+      workingMemory: [
+        createMemoryEntry('note-1', { ok: true }),
+        createMemoryEntry('note-2', { ok: true }),
+        createMemoryEntry('note-3', { ok: true }),
+        createMemoryEntry('note-4', { ok: true }),
+        createMemoryEntry('note-5', { ok: true }),
+        createMemoryEntry('note-6', { ok: true }),
+      ],
+    }));
+    const taskQueue = new TaskQueueService({
+      taskRepo: new ButlerTaskRepository(ctx.db),
+      logger: createLogger(),
+    });
+    taskQueue.enqueue({ type: 'queued-1', priority: 2 });
+    taskQueue.enqueue({ type: 'queued-2', priority: 2 });
+    taskQueue.enqueue({ type: 'queued-3', priority: 2 });
+    taskQueue.enqueue({ type: 'queued-4', priority: 2 });
+    const agent = new ButlerAgent({
+      stateManager,
+      taskQueue,
+      cognitiveEngine: createCognitiveStub(false),
+      insightRepo: new ButlerInsightRepository(ctx.db),
+      logger: createLogger(),
+    });
+
+    const trace = await agent.runCycle({
+      type: 'message_received',
+      sessionId: 'session-5',
+      payload: { text: 'follow up' },
+    });
+    const decisions = JSON.parse(trace.decisionsJson) as {
+      orientation?: { urgency?: string; recommendedAction?: string; pendingTasks?: number };
+    };
+
+    assert.deepEqual(decisions.orientation, {
+      urgency: 'elevated',
+      recommendedAction: 'advise',
+      pendingTasks: 4,
+    });
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test('ButlerAgent orients critical session start toward action', async () => {
+  const ctx = createDbContext();
+  try {
+    const stateManager = new ButlerStateManager({
+      stateRepo: new ButlerStateRepository(ctx.db),
+      logger: createLogger(),
+    });
+    stateManager.save(createState({
+      mode: 'steward',
+      workingMemory: [createMemoryEntry('contradiction_alert', { id: 'c-1' })],
+    }));
+    const taskQueue = new TaskQueueService({
+      taskRepo: new ButlerTaskRepository(ctx.db),
+      logger: createLogger(),
+    });
+    const insightRepo = new ButlerInsightRepository(ctx.db);
+    const agent = new ButlerAgent({
+      stateManager,
+      taskQueue,
+      cognitiveEngine: createCognitiveStub(false),
+      insightRepo,
+      logger: createLogger(),
+    });
+
+    const trace = await agent.runCycle({
+      type: 'session_started',
+      sessionId: 'session-6',
+      scope: { project: 'evermemory' },
+    });
+    const decisions = JSON.parse(trace.decisionsJson) as {
+      orientation?: { urgency?: string; recommendedAction?: string; pendingTasks?: number };
+    };
+
+    assert.deepEqual(decisions.orientation, {
+      urgency: 'critical',
+      recommendedAction: 'act',
+      pendingTasks: 0,
+    });
   } finally {
     ctx.cleanup();
   }

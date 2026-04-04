@@ -711,6 +711,20 @@ const versionCheckpoints: Array<{
       ]);
     },
   },
+  {
+    name: 'v28 creates butler_actions',
+    seedVersion: 27,
+    assertSchema: (db) => {
+      assertHasTables(db, ['butler_actions']);
+      assertHasColumns(db, 'butler_actions', [
+        'cycle_id',
+        'action_type',
+        'status',
+        'budget_cost_ms',
+        'completed_at',
+      ]);
+    },
+  },
 ];
 
 describe('storage migrations', () => {
@@ -739,6 +753,7 @@ describe('storage migrations', () => {
 
     it('migrates an empty database to CURRENT_SCHEMA_VERSION', () => {
       assert.equal(getSchemaVersion(db), CURRENT_SCHEMA_VERSION);
+      assertHasTables(db, ['butler_actions']);
     });
   });
 

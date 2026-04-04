@@ -9,6 +9,9 @@ export type ButlerLogger = {
 // LLM
 export interface LlmGateway {
   invoke(request: LlmRequest): Promise<LlmResponse>;
+  getReadiness?(): 'ready' | 'untested' | 'unavailable';
+  getProvider?(): string | undefined;
+  getLastAuthError?(): string | undefined;
 }
 
 export interface LlmRequest {
@@ -287,7 +290,7 @@ export interface CognitiveResult<T = unknown> {
 
 // Butler trigger and cycle
 export interface ButlerTrigger {
-  type: 'session_started' | 'message_received' | 'session_ended' | 'agent_ended' | 'service_started';
+  type: 'session_started' | 'message_received' | 'session_ended' | 'agent_ended' | 'service_started' | 'autonomous_tick';
   sessionId?: string;
   scope?: Record<string, unknown>;
   payload?: Record<string, unknown>;
