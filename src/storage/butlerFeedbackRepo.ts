@@ -1,24 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import type {
+  ButlerFeedback,
+  ButlerFeedbackAction,
+  NewButlerFeedback,
+} from '../core/butler/types.js';
 import { nowIso } from '../util/time.js';
-
-export type ButlerFeedbackAction = 'accepted' | 'rejected' | 'snoozed' | 'dismissed';
-
-export interface NewButlerFeedback {
-  insightId: string;
-  action: ButlerFeedbackAction;
-  snoozeUntil?: string;
-  reason?: string;
-}
-
-export interface ButlerFeedback {
-  id: string;
-  insightId: string;
-  action: ButlerFeedbackAction;
-  snoozeUntil?: string;
-  reason?: string;
-  createdAt: string;
-}
+export type { ButlerFeedback, ButlerFeedbackAction, NewButlerFeedback } from '../core/butler/types.js';
 
 interface ButlerFeedbackRow {
   id: string;

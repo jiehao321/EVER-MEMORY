@@ -1,8 +1,8 @@
 import type { ButlerLogger, ButlerTask, DrainBudget, NewButlerTask } from './types.js';
-import { ButlerTaskRepository } from '../../storage/butlerTaskRepo.js';
+import type { TaskStore } from './ports/storage.js';
 
 interface TaskQueueServiceOptions {
-  taskRepo: ButlerTaskRepository;
+  taskRepo: TaskStore;
   logger?: ButlerLogger;
 }
 
@@ -28,7 +28,7 @@ function canContinue(startedAt: number, budget: DrainBudget, tasksDrained: numbe
 }
 
 export class TaskQueueService {
-  private readonly taskRepo: ButlerTaskRepository;
+  private readonly taskRepo: TaskStore;
   private readonly logger?: ButlerLogger;
 
   constructor(options: TaskQueueServiceOptions) {

@@ -1,14 +1,9 @@
-import type { ButlerInsight, ButlerLogger } from '../types.js';
-import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
-import {
-  ButlerGoalRepository,
-  type ButlerGoal,
-  type NewButlerGoal,
-} from '../../../storage/butlerGoalRepo.js';
+import type { ButlerGoal, ButlerInsight, ButlerLogger, NewButlerGoal } from '../types.js';
+import type { GoalStore, InsightStore } from '../ports/storage.js';
 
 interface ButlerGoalServiceOptions {
-  goalRepo: ButlerGoalRepository;
-  insightRepo: ButlerInsightRepository;
+  goalRepo: GoalStore;
+  insightRepo: InsightStore;
   logger?: ButlerLogger;
 }
 
@@ -54,8 +49,8 @@ function filterInsights(insights: ButlerInsight[], scope?: Record<string, unknow
 }
 
 export class ButlerGoalService {
-  private readonly goalRepo: ButlerGoalRepository;
-  private readonly insightRepo: ButlerInsightRepository;
+  private readonly goalRepo: GoalStore;
+  private readonly insightRepo: InsightStore;
   private readonly logger?: ButlerLogger;
 
   constructor(options: ButlerGoalServiceOptions) {

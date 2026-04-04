@@ -167,6 +167,52 @@ export interface NewButlerTask {
   maxAttempts?: number;
 }
 
+// Butler feedback
+export type ButlerFeedbackAction = 'accepted' | 'rejected' | 'snoozed' | 'dismissed';
+
+export interface NewButlerFeedback {
+  insightId: string;
+  action: ButlerFeedbackAction;
+  snoozeUntil?: string;
+  reason?: string;
+}
+
+export interface ButlerFeedback {
+  id: string;
+  insightId: string;
+  action: ButlerFeedbackAction;
+  snoozeUntil?: string;
+  reason?: string;
+  createdAt: string;
+}
+
+// Butler goals
+export type GoalStatus = 'active' | 'paused' | 'completed' | 'abandoned';
+
+export interface NewButlerGoal {
+  title: string;
+  description?: string;
+  scope?: Record<string, unknown>;
+  priority?: number;
+  deadline?: string;
+  sourceInsightIds?: string[];
+}
+
+export interface ButlerGoal {
+  id: string;
+  title: string;
+  description?: string;
+  status: GoalStatus;
+  scopeJson?: string;
+  priority: number;
+  deadline?: string;
+  progressNotes?: string;
+  sourceInsightIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
 // Butler insights
 export interface ButlerInsight {
   id: string;

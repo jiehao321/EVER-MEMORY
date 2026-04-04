@@ -1,6 +1,5 @@
-import { ButlerFeedbackRepository } from '../../../storage/butlerFeedbackRepo.js';
 import type { ButlerInsight, ButlerLogger } from '../types.js';
-import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
+import type { FeedbackStore, InsightStore } from '../ports/storage.js';
 
 const SURFACE_COOLDOWN_MS = 30 * 60 * 1000;
 const MAX_FRESHNESS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -12,8 +11,8 @@ interface AttentionConfig {
 }
 
 interface AttentionServiceOptions {
-  insightRepo: ButlerInsightRepository;
-  feedbackRepo: ButlerFeedbackRepository;
+  insightRepo: InsightStore;
+  feedbackRepo: FeedbackStore;
   config: AttentionConfig;
   logger?: ButlerLogger;
 }
@@ -51,8 +50,8 @@ function combinedScore(insight: ButlerInsight, referenceMs: number): number {
 }
 
 export class AttentionService {
-  private readonly insightRepo: ButlerInsightRepository;
-  private readonly feedbackRepo: ButlerFeedbackRepository;
+  private readonly insightRepo: InsightStore;
+  private readonly feedbackRepo: FeedbackStore;
   private readonly config: AttentionConfig;
   private readonly logger?: ButlerLogger;
 

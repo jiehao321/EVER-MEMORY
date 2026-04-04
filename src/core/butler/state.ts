@@ -1,13 +1,19 @@
 import type { ButlerLogger, ButlerMode, ButlerPersistentState, WorkingMemoryEntry } from './types.js';
-import { ButlerStateRepository } from '../../storage/butlerStateRepo.js';
-import { nowIso } from '../../util/time.js';
+import type { ClockPort } from './ports/clock.js';
+import type { StateStore } from './ports/storage.js';
 
 const MAX_WORKING_MEMORY_ENTRIES = 20;
 
 interface ButlerStateManagerOptions {
-  stateRepo: ButlerStateRepository;
+  stateRepo: StateStore;
+  clock?: ClockPort;
   logger?: ButlerLogger;
 }
+
+const DEFAULT_CLOCK: ClockPort = {
+  now: () => Date.now(),
+  isoNow: () => new Date().toISOString(),
+};
 
 function isExpired(entry: WorkingMemoryEntry, now: number): boolean {
   if (!entry.expiresAt) {
@@ -27,12 +33,14 @@ function withWorkingMemory(
 }
 
 export class ButlerStateManager {
-  private readonly stateRepo: ButlerStateRepository;
+  private readonly stateRepo: StateStore;
+  private readonly clock: ClockPort;
   private readonly logger?: ButlerLogger;
   private currentState: ButlerPersistentState | null = null;
 
   constructor(options: ButlerStateManagerOptions) {
     this.stateRepo = options.stateRepo;
+    this.clock = options.clock ?? DEFAULT_CLOCK;
     this.logger = options.logger;
   }
 
@@ -69,7 +77,7 @@ export class ButlerStateManager {
   }
 
   createDefaultState(): ButlerPersistentState {
-    const timestamp = nowIso();
+    const timestamp = this.clock.isoNow();
     return {
       currentStrategyFrame: {
         currentMode: 'exploring',
@@ -105,7 +113,7 @@ export class ButlerStateManager {
   }
 
   pruneExpiredWorkingMemory(state: ButlerPersistentState): ButlerPersistentState {
-    const now = Date.now();
+    const now = this.clock.now();
     const workingMemory = state.workingMemory.filter((entry) => !isExpired(entry, now));
     return withWorkingMemory(state, workingMemory);
   }
@@ -115,9 +123,9 @@ export class ButlerStateManager {
     value: unknown,
     ttlMs?: number,
   ): WorkingMemoryEntry {
-    const createdAt = nowIso();
+    const createdAt = this.clock.isoNow();
     const expiresAt = typeof ttlMs === 'number' && ttlMs > 0
-      ? new Date(Date.now() + ttlMs).toISOString()
+      ? new Date(this.clock.now() + ttlMs).toISOString()
       : undefined;
 
     this.logger?.debug?.('ButlerStateManager adding working memory entry', { key });

@@ -1,5 +1,4 @@
 import type { ButlerLogger, LlmGateway, LlmMessage, LlmRequest, LlmResponse } from '../butler/types.js';
-import type { ProviderDirectLlmGateway } from '../../openclaw/llmGateway.js';
 
 interface ButlerLlmClientOptions {
   gateway?: LlmGateway;
@@ -22,6 +21,10 @@ function toLegacyBridgeResponse(content: string): LlmResponse {
     provider: 'legacy_bridge',
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
   };
+}
+
+function getGatewayMetadata(gateway: LlmGateway | undefined): Record<string, unknown> | undefined {
+  return gateway as Record<string, unknown> | undefined;
 }
 
 export class ButlerLlmClient {
@@ -49,10 +52,10 @@ export class ButlerLlmClient {
     if (!this.available) {
       return 'unavailable';
     }
-    if (this.gateway && 'authFailed' in this.gateway && 'authVerified' in this.gateway) {
-      const gw = this.gateway as ProviderDirectLlmGateway;
-      if (gw.authFailed) return 'unavailable';
-      if (gw.authVerified) return 'ready';
+    const gateway = getGatewayMetadata(this.gateway);
+    if (gateway && 'authFailed' in gateway && 'authVerified' in gateway) {
+      if (gateway.authFailed === true) return 'unavailable';
+      if (gateway.authVerified === true) return 'ready';
       return 'untested';
     }
     return 'ready';
@@ -60,16 +63,18 @@ export class ButlerLlmClient {
 
   getProvider(): string | undefined {
     if (!this.available) return undefined;
-    if (this.gateway && 'defaultProvider' in this.gateway) {
-      return (this.gateway as ProviderDirectLlmGateway).defaultProvider;
+    const gateway = getGatewayMetadata(this.gateway);
+    if (gateway && 'defaultProvider' in gateway && typeof gateway.defaultProvider === 'string') {
+      return gateway.defaultProvider;
     }
     return this.gateway ? 'unknown' : undefined;
   }
 
   getLastAuthError(): string | undefined {
     if (!this.available) return undefined;
-    if (this.gateway && 'lastAuthError' in this.gateway) {
-      return (this.gateway as ProviderDirectLlmGateway).lastAuthError;
+    const gateway = getGatewayMetadata(this.gateway);
+    if (gateway && 'lastAuthError' in gateway && typeof gateway.lastAuthError === 'string') {
+      return gateway.lastAuthError;
     }
     return undefined;
   }

@@ -6,29 +6,14 @@ import type {
   CognitiveTask,
   LlmRequest,
 } from '../butler/types.js';
-import { ButlerLlmClient } from './llmClient.js';
-import { nowIso } from '../../util/time.js';
-
-interface LlmInvocationRepo {
-  insert(invocation: {
-    taskType: string;
-    traceId?: string;
-    provider?: string;
-    model?: string;
-    promptTokens?: number;
-    completionTokens?: number;
-    latencyMs?: number;
-    cacheHit: boolean;
-    success: boolean;
-    createdAt: string;
-  }): string;
-  getDailyUsage(date?: string): { totalTokens: number; count: number };
-  getSessionUsage(sessionId: string): { totalTokens: number; count: number };
-}
+import type { ClockPort } from './ports/clock.js';
+import type { InvocationStore } from './ports/storage.js';
+import type { ButlerLlmClient } from './llmClient.js';
 
 interface CognitiveEngineOptions {
   llmClient: ButlerLlmClient;
-  invocationRepo: LlmInvocationRepo;
+  invocationRepo: InvocationStore;
+  clock?: ClockPort;
   config: ButlerConfig['cognition'];
   logger?: ButlerLogger;
 }
@@ -37,6 +22,11 @@ const TOKEN_ESTIMATES: Record<CognitiveTask['budgetClass'], number> = {
   cheap: 20,
   balanced: 25,
   strong: 40,
+};
+
+const DEFAULT_CLOCK: ClockPort = {
+  now: () => Date.now(),
+  isoNow: () => new Date().toISOString(),
 };
 
 function createFallbackResult<T>(): CognitiveResult<T> {
@@ -128,13 +118,15 @@ function getTotalTokens(totalTokens: number | undefined, inputTokens: number, ou
 export class CognitiveEngine {
   private sessionTokens = 0;
   private readonly llmClient: ButlerLlmClient;
-  private readonly invocationRepo: LlmInvocationRepo;
+  private readonly invocationRepo: InvocationStore;
+  private readonly clock: ClockPort;
   private readonly config: ButlerConfig['cognition'];
   private readonly logger?: ButlerLogger;
 
   constructor(options: CognitiveEngineOptions) {
     this.llmClient = options.llmClient;
     this.invocationRepo = options.invocationRepo;
+    this.clock = options.clock ?? DEFAULT_CLOCK;
     this.config = options.config;
     this.logger = options.logger;
   }
@@ -154,7 +146,7 @@ export class CognitiveEngine {
     dailyBudget: number;
     sessionBudget: number;
   } {
-    const dailyUsage = this.invocationRepo.getDailyUsage(nowIso().slice(0, 10));
+    const dailyUsage = this.invocationRepo.getDailyUsage(this.clock.isoNow().slice(0, 10));
     return {
       dailyTokens: dailyUsage.totalTokens,
       sessionTokens: this.sessionTokens,
@@ -224,7 +216,7 @@ export class CognitiveEngine {
       latencyMs: response.latencyMs,
       cacheHit: response.cacheHit ?? false,
       success,
-      createdAt: nowIso(),
+      createdAt: this.clock.isoNow(),
     });
   }
 }

@@ -1,8 +1,7 @@
 import type { CognitiveEngine } from '../cognition.js';
 import type { ButlerInsight, ButlerLogger, CognitiveTask, NewButlerInsight } from '../types.js';
-import type { MemoryItem, MemoryScope } from '../../../types.js';
-import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
-import { MemoryRepository } from '../../../storage/memoryRepo.js';
+import type { MemoryQueryPort, MemorySnapshot } from '../ports/memory.js';
+import type { InsightStore } from '../ports/storage.js';
 
 const COMMITMENT_KEYWORDS = [
   'promise',
@@ -32,8 +31,8 @@ interface CommitmentExtraction {
 }
 
 interface CommitmentWatcherOptions {
-  memoryRepo: MemoryRepository;
-  insightRepo: ButlerInsightRepository;
+  memoryRepo: MemoryQueryPort;
+  insightRepo: InsightStore;
   cognitiveEngine?: CognitiveEngine;
   logger?: ButlerLogger;
 }
@@ -46,14 +45,16 @@ function nowMs(): number {
   return Date.now();
 }
 
-function toScope(scope?: MemoryScope): MemoryScope | undefined {
+type CommitmentScope = { userId?: string; chatId?: string; project?: string };
+
+function toScope(scope?: CommitmentScope): CommitmentScope | undefined {
   if (!scope) {
     return undefined;
   }
   return { userId: scope.userId, chatId: scope.chatId, project: scope.project };
 }
 
-function toInsightScope(scope?: MemoryScope): Record<string, unknown> | undefined {
+function toInsightScope(scope?: CommitmentScope): Record<string, unknown> | undefined {
   const scoped = toScope(scope);
   return scoped ? { ...scoped } : undefined;
 }
@@ -83,7 +84,7 @@ function parseSourceRefs(value: string | undefined): string[] {
   }
 }
 
-function uniqueMemories(items: MemoryItem[]): MemoryItem[] {
+function uniqueMemories(items: MemorySnapshot[]): MemorySnapshot[] {
   const seen = new Set<string>();
   return items.filter((item) => {
     if (seen.has(item.id)) {
@@ -94,7 +95,7 @@ function uniqueMemories(items: MemoryItem[]): MemoryItem[] {
   });
 }
 
-function buildHeuristicInsight(memory: MemoryItem): NewButlerInsight {
+function buildHeuristicInsight(memory: MemorySnapshot): NewButlerInsight {
   return {
     kind: 'commitment',
     scope: toInsightScope(memory.scope),
@@ -107,7 +108,7 @@ function buildHeuristicInsight(memory: MemoryItem): NewButlerInsight {
   };
 }
 
-function buildLlmTask(memory: MemoryItem): CognitiveTask<CommitmentExtraction> {
+function buildLlmTask(memory: MemorySnapshot): CognitiveTask<CommitmentExtraction> {
   return {
     taskType: 'commitment-extraction',
     evidence: {
@@ -136,7 +137,7 @@ function buildLlmTask(memory: MemoryItem): CognitiveTask<CommitmentExtraction> {
   };
 }
 
-function buildLlmInsight(memory: MemoryItem, output: CommitmentExtraction): NewButlerInsight {
+function buildLlmInsight(memory: MemorySnapshot, output: CommitmentExtraction): NewButlerInsight {
   const parts = [output.summary];
   if (output.what) {
     parts.push(`What: ${output.what}`);
@@ -160,8 +161,8 @@ function buildLlmInsight(memory: MemoryItem, output: CommitmentExtraction): NewB
 }
 
 export class CommitmentWatcher {
-  private readonly memoryRepo: MemoryRepository;
-  private readonly insightRepo: ButlerInsightRepository;
+  private readonly memoryRepo: MemoryQueryPort;
+  private readonly insightRepo: InsightStore;
   private readonly cognitiveEngine?: CognitiveEngine;
   private readonly logger?: ButlerLogger;
 
@@ -172,7 +173,7 @@ export class CommitmentWatcher {
     this.logger = options.logger;
   }
 
-  async scanCommitments(scope?: MemoryScope, options?: ScanOptions): Promise<ButlerInsight[]> {
+  async scanCommitments(scope?: CommitmentScope, options?: ScanOptions): Promise<ButlerInsight[]> {
     const memories = this.findCandidateMemories(scope);
     const existingRefs = this.getExistingCommitmentRefs();
     const created: ButlerInsight[] = [];
@@ -194,7 +195,7 @@ export class CommitmentWatcher {
     return this.insightRepo.findByKind('commitment', 20);
   }
 
-  private findCandidateMemories(scope?: MemoryScope): MemoryItem[] {
+  private findCandidateMemories(scope?: CommitmentScope): MemorySnapshot[] {
     const scoped = toScope(scope);
     const typed = this.memoryRepo.search({
       scope: scoped,
@@ -218,7 +219,7 @@ export class CommitmentWatcher {
     return new Set(insights.flatMap((insight) => parseSourceRefs(insight.sourceRefsJson)));
   }
 
-  private async buildInsight(memory: MemoryItem, options?: ScanOptions): Promise<NewButlerInsight> {
+  private async buildInsight(memory: MemorySnapshot, options?: ScanOptions): Promise<NewButlerInsight> {
     if (options?.forceHeuristic) {
       return buildHeuristicInsight(memory);
     }

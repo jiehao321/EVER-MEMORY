@@ -1,11 +1,7 @@
 import type { AttentionService } from '../core/butler/attention/service.js';
-import { ButlerStateManager } from '../core/butler/state.js';
-import type { ButlerInsight } from '../core/butler/types.js';
-import {
-  ButlerFeedbackRepository,
-  type ButlerFeedbackAction,
-} from '../storage/butlerFeedbackRepo.js';
-import { ButlerInsightRepository } from '../storage/butlerInsightRepo.js';
+import type { FeedbackStore, InsightStore } from '../core/butler/ports/storage.js';
+import type { ButlerStateManager } from '../core/butler/state.js';
+import type { ButlerFeedbackAction, ButlerInsight } from '../core/butler/types.js';
 
 type ButlerReviewAction = 'list' | 'accept' | 'reject' | 'snooze' | 'dismiss';
 type ButlerReviewStatus = 'active' | 'snoozed' | 'dismissed';
@@ -27,7 +23,7 @@ export interface ButlerReviewResult {
 }
 
 function getInsightStatus(
-  feedbackRepo: ButlerFeedbackRepository,
+  feedbackRepo: FeedbackStore,
   insightId: string,
 ): ButlerReviewStatus {
   if (feedbackRepo.isDismissed(insightId)) {
@@ -40,7 +36,7 @@ function getInsightStatus(
 }
 
 function requireInsight(
-  insightRepo: ButlerInsightRepository,
+  insightRepo: InsightStore,
   insightId: string | undefined,
 ): ButlerInsight {
   if (!insightId) {
@@ -54,7 +50,7 @@ function requireInsight(
 }
 
 function toListedInsight(
-  feedbackRepo: ButlerFeedbackRepository,
+  feedbackRepo: FeedbackStore,
   insight: ButlerInsight,
 ): ButlerReviewListItem {
   return {
@@ -69,7 +65,7 @@ function toListedInsight(
 
 function maybeUpdateAcceptanceRate(
   action: ButlerReviewAction,
-  feedbackRepo: ButlerFeedbackRepository,
+  feedbackRepo: FeedbackStore,
   stateManager: ButlerStateManager,
 ): number | undefined {
   if (action !== 'accept' && action !== 'reject') {
@@ -113,8 +109,8 @@ function createSnoozeUntil(snoozeHours: number | undefined): string {
 
 function listInsights(
   attentionService: AttentionService,
-  feedbackRepo: ButlerFeedbackRepository,
-  insightRepo: ButlerInsightRepository,
+  feedbackRepo: FeedbackStore,
+  insightRepo: InsightStore,
 ): ButlerReviewResult {
   attentionService.pruneExpiredFeedback();
   const listed = attentionService
@@ -131,8 +127,8 @@ function listInsights(
 
 export async function butlerReview(input: {
   attentionService: AttentionService;
-  feedbackRepo: ButlerFeedbackRepository;
-  insightRepo: ButlerInsightRepository;
+  feedbackRepo: FeedbackStore;
+  insightRepo: InsightStore;
   stateManager: ButlerStateManager;
   action: ButlerReviewAction;
   insightId?: string;

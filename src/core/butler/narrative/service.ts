@@ -6,8 +6,8 @@ import type {
   NarrativePhase,
   NarrativeThread,
 } from '../types.js';
-import { NarrativeRepository } from '../../../storage/narrativeRepo.js';
-import { nowIso } from '../../../util/time.js';
+import type { ClockPort } from '../ports/clock.js';
+import type { NarrativeStore } from '../ports/storage.js';
 
 const PHASES = new Set<NarrativePhase>([
   'exploring',
@@ -36,8 +36,9 @@ function serializeScope(scope?: Record<string, unknown>): string | undefined {
 export class NarrativeThreadService {
   constructor(
     private readonly options: {
-      narrativeRepo: NarrativeRepository;
+      narrativeRepo: NarrativeStore;
       cognitiveEngine: CognitiveEngine;
+      clock?: ClockPort;
       logger?: ButlerLogger;
     },
   ) {}
@@ -65,7 +66,7 @@ export class NarrativeThreadService {
     objective: string;
     scope?: Record<string, unknown>;
   }): Promise<NarrativeThread> {
-    const timestamp = nowIso();
+    const timestamp = this.getClock().isoNow();
     const id = this.options.narrativeRepo.insert({
       theme: input.theme,
       objective: input.objective,
@@ -100,15 +101,16 @@ export class NarrativeThreadService {
     const existing = this.options.narrativeRepo.findActive(payload.scope);
     if (existing.length > 0) {
       const thread = existing[0];
+      const timestamp = this.getClock().isoNow();
       this.options.narrativeRepo.update(thread.id, {
         recentEvents: [
           ...thread.recentEvents.slice(-9),
-          `session:${new Date().toISOString()}`,
+          `session:${timestamp}`,
         ],
-        updatedAt: new Date().toISOString(),
+        updatedAt: timestamp,
       });
     } else {
-      const timestamp = nowIso();
+      const timestamp = this.getClock().isoNow();
       this.options.narrativeRepo.insert({
         theme: 'session-narrative',
         objective: 'Track cross-session work continuity',
@@ -164,4 +166,13 @@ export class NarrativeThreadService {
         : thread.likelyNextTurn,
     };
   }
+
+  private getClock(): ClockPort {
+    return this.options.clock ?? DEFAULT_CLOCK;
+  }
 }
+
+const DEFAULT_CLOCK: ClockPort = {
+  now: () => Date.now(),
+  isoNow: () => new Date().toISOString(),
+};

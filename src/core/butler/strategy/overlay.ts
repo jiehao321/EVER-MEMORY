@@ -7,7 +7,7 @@ import type {
   ProjectMode,
   StrategicOverlay,
 } from '../types.js';
-import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
+import type { InsightStore } from '../ports/storage.js';
 
 const OVERLAY_SCHEMA = {
   type: 'object',
@@ -95,7 +95,7 @@ export class StrategicOverlayGenerator {
   constructor(
     private readonly options: {
       cognitiveEngine: CognitiveEngine;
-      insightRepo: ButlerInsightRepository;
+      insightRepo: InsightStore;
       logger?: ButlerLogger;
     },
   ) {}

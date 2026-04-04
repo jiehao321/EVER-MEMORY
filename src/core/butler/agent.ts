@@ -1,14 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { ButlerGoalService } from './goals/service.js';
-import { ButlerInsightRepository } from '../../storage/butlerInsightRepo.js';
 import type { CognitiveEngine } from './cognition.js';
-import { ButlerStateManager } from './state.js';
-import { TaskQueueService } from './taskQueue.js';
+import type { ButlerStateManager } from './state.js';
+import type { TaskQueueService } from './taskQueue.js';
 import type { WorkerThreadPool } from './worker/pool.js';
 import type { NarrativeThreadService } from './narrative/service.js';
 import type { CommitmentWatcher } from './commitments/watcher.js';
-import type { MemoryScope } from '../../types/memory.js';
-import { nowIso } from '../../util/time.js';
+import type { ClockPort } from './ports/clock.js';
+import type { InsightStore } from './ports/storage.js';
 import type {
   ButlerCycleTrace,
   ButlerLogger,
@@ -22,7 +21,8 @@ interface ButlerAgentOptions {
   stateManager: ButlerStateManager;
   taskQueue: TaskQueueService;
   cognitiveEngine: CognitiveEngine;
-  insightRepo: ButlerInsightRepository;
+  insightRepo: InsightStore;
+  clock?: ClockPort;
   goalService?: ButlerGoalService;
   workerPool?: WorkerThreadPool;
   narrativeService?: NarrativeThreadService;
@@ -40,6 +40,10 @@ interface CyclePhaseResult {
 
 const MESSAGE_TTL_MS = 15 * 60 * 1000;
 const AGENT_NOTE_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_CLOCK: ClockPort = {
+  now: () => Date.now(),
+  isoNow: () => new Date().toISOString(),
+};
 
 function getCycleBudgetMs(trigger: ButlerTrigger['type']): number {
   switch (trigger) {
@@ -88,9 +92,12 @@ function parseTaskPayload(task: ButlerTask): Record<string, unknown> | undefined
   }
 }
 
+type ButlerScope = { userId?: string; chatId?: string; project?: string };
+
 function updateMetrics(
   state: ButlerPersistentState,
   durationMs: number,
+  clock: ClockPort,
 ): ButlerPersistentState['selfModel'] {
   const totalCycles = state.selfModel.totalCycles + 1;
   const previousTotal = state.selfModel.avgCycleLatencyMs * state.selfModel.totalCycles;
@@ -98,7 +105,7 @@ function updateMetrics(
     ...state.selfModel,
     totalCycles,
     avgCycleLatencyMs: totalCycles === 0 ? durationMs : (previousTotal + durationMs) / totalCycles,
-    lastEvaluatedAt: nowIso(),
+    lastEvaluatedAt: clock.isoNow(),
   };
 }
 
@@ -106,7 +113,8 @@ export class ButlerAgent {
   private readonly stateManager: ButlerStateManager;
   private readonly taskQueue: TaskQueueService;
   private readonly cognitiveEngine: CognitiveEngine;
-  private readonly insightRepo: ButlerInsightRepository;
+  private readonly insightRepo: InsightStore;
+  private readonly clock: ClockPort;
   private readonly goalService?: ButlerGoalService;
   private readonly workerPool?: WorkerThreadPool;
   private readonly narrativeService?: NarrativeThreadService;
@@ -119,6 +127,7 @@ export class ButlerAgent {
     this.taskQueue = options.taskQueue;
     this.cognitiveEngine = options.cognitiveEngine;
     this.insightRepo = options.insightRepo;
+    this.clock = options.clock ?? DEFAULT_CLOCK;
     this.goalService = options.goalService;
     this.workerPool = options.workerPool;
     this.narrativeService = options.narrativeService;
@@ -144,7 +153,7 @@ export class ButlerAgent {
     return {
       cycleId,
       hook: trigger.type,
-      observedAt: nowIso(),
+      observedAt: this.clock.isoNow(),
       observationSummary: executed.observationSummary,
       decisionsJson: toJson(executed.decisions),
       actionsJson: toJson(executed.actions),
@@ -386,7 +395,7 @@ export class ButlerAgent {
       if (this.commitmentWatcher) {
         const payload = parseTaskPayload(task);
         await this.commitmentWatcher.scanCommitments(
-          payload as MemoryScope | undefined,
+          payload as ButlerScope | undefined,
           { forceHeuristic: true },
         );
       }
@@ -455,8 +464,8 @@ export class ButlerAgent {
     const durationMs = Date.now() - startedAt;
     return {
       ...state,
-      selfModel: updateMetrics(state, durationMs),
-      lastCycleAt: nowIso(),
+      selfModel: updateMetrics(state, durationMs, this.clock),
+      lastCycleAt: this.clock.isoNow(),
       lastCycleVersion: state.lastCycleVersion + 1,
     };
   }

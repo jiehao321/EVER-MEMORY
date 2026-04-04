@@ -1,32 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import type {
+  ButlerGoal,
+  GoalStatus,
+  NewButlerGoal,
+} from '../core/butler/types.js';
 import { nowIso } from '../util/time.js';
-
-export type GoalStatus = 'active' | 'paused' | 'completed' | 'abandoned';
-
-export interface NewButlerGoal {
-  title: string;
-  description?: string;
-  scope?: Record<string, unknown>;
-  priority?: number;
-  deadline?: string;
-  sourceInsightIds?: string[];
-}
-
-export interface ButlerGoal {
-  id: string;
-  title: string;
-  description?: string;
-  status: GoalStatus;
-  scopeJson?: string;
-  priority: number;
-  deadline?: string;
-  progressNotes?: string;
-  sourceInsightIds: string[];
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
-}
+export type { ButlerGoal, GoalStatus, NewButlerGoal } from '../core/butler/types.js';
 
 interface ButlerGoalRow {
   id: string;

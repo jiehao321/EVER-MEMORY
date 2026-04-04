@@ -7,8 +7,7 @@ import type { StrategicOverlayGenerator } from '../core/butler/strategy/overlay.
 import type {
   ButlerAgent,
 } from '../core/butler/agent.js';
-import type { ButlerInsight, NarrativeThread, StrategicOverlay } from '../core/butler/types.js';
-import type { ButlerGoal } from '../storage/butlerGoalRepo.js';
+import type { ButlerGoal, ButlerInsight, NarrativeThread, StrategicOverlay } from '../core/butler/types.js';
 
 export interface ButlerBriefResult {
   overlayXml: string;
@@ -18,7 +17,13 @@ export interface ButlerBriefResult {
   goals?: ButlerGoal[];
 }
 
-function toScopedRecord(scope?: Record<string, unknown>): Record<string, unknown> | undefined {
+type ButlerScope = {
+  userId?: string;
+  chatId?: string;
+  project?: string;
+};
+
+function toScopedRecord(scope?: Record<string, unknown>): ButlerScope | undefined {
   if (!scope) {
     return undefined;
   }
@@ -30,7 +35,7 @@ function toScopedRecord(scope?: Record<string, unknown>): Record<string, unknown
   return Object.keys(scoped).length > 0 ? scoped : undefined;
 }
 
-async function ensureState(agent: ButlerAgent, scope?: Record<string, unknown>) {
+async function ensureState(agent: ButlerAgent, scope?: ButlerScope) {
   if (agent.getState()) {
     return agent.getState();
   }

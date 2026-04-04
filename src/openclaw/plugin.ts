@@ -12,6 +12,9 @@ import { StrategicOverlayGenerator } from '../core/butler/strategy/overlay.js';
 import { TaskQueueService } from '../core/butler/taskQueue.js';
 import type { ButlerMode } from '../core/butler/types.js';
 import { WorkerThreadPool } from '../core/butler/worker/pool.js';
+import { MemoryQueryAdapter } from '../butler-adapter/memoryAdapter.js';
+import { systemClock } from '../butler-adapter/clockAdapter.js';
+import { SqliteButlerStorage } from '../butler-adapter/sqliteStorage.js';
 import { ProviderDirectLlmGateway } from './llmGateway.js';
 import { PLUGIN_NAME, PLUGIN_VERSION } from '../constants.js';
 import { registerHooks } from './hooks/index.js';
@@ -52,8 +55,23 @@ export default definePluginEntry({
           const insightRepo = new ButlerInsightRepository(db);
           const feedbackRepo = new ButlerFeedbackRepository(db);
           const goalRepo = new ButlerGoalRepository(db);
+          const stateRepo = new ButlerStateRepository(db);
+          const taskRepo = new ButlerTaskRepository(db);
+          const narrativeRepo = new NarrativeRepository(db);
+          const invocationRepo = new LlmInvocationRepo(db);
+          const storage = new SqliteButlerStorage({
+            stateRepo,
+            taskRepo,
+            insightRepo,
+            feedbackRepo,
+            goalRepo,
+            narrativeRepo,
+            invocationRepo,
+          });
+          const memoryQuery = new MemoryQueryAdapter(context.evermemory.memoryRepo);
           const stateManager = new ButlerStateManager({
-            stateRepo: new ButlerStateRepository(db),
+            stateRepo: storage.state,
+            clock: systemClock,
             logger: api.logger,
           });
 
@@ -63,7 +81,7 @@ export default definePluginEntry({
           }
 
           const taskQueue = new TaskQueueService({
-            taskRepo: new ButlerTaskRepository(db),
+            taskRepo: storage.tasks,
             logger: api.logger,
           });
 
@@ -81,7 +99,8 @@ export default definePluginEntry({
 
           const cognitiveEngine = new CognitiveEngine({
             llmClient,
-            invocationRepo: new LlmInvocationRepo(db),
+            invocationRepo: storage.invocations,
+            clock: systemClock,
             config: butlerConfig.cognition,
             logger: api.logger,
           });
@@ -96,22 +115,23 @@ export default definePluginEntry({
             : undefined;
           const overlayGenerator = new StrategicOverlayGenerator({
             cognitiveEngine,
-            insightRepo,
+            insightRepo: storage.insights,
             logger: api.logger,
           });
           const goalService = new ButlerGoalService({
-            goalRepo,
-            insightRepo,
+            goalRepo: storage.goals,
+            insightRepo: storage.insights,
             logger: api.logger,
           });
           const narrativeService = new NarrativeThreadService({
-            narrativeRepo: new NarrativeRepository(db),
+            narrativeRepo: storage.narrative,
             cognitiveEngine,
+            clock: systemClock,
             logger: api.logger,
           });
           const commitmentWatcher = new CommitmentWatcher({
-            memoryRepo: context.evermemory.memoryRepo,
-            insightRepo,
+            memoryRepo: memoryQuery,
+            insightRepo: storage.insights,
             cognitiveEngine,
             logger: api.logger,
           });
@@ -120,7 +140,8 @@ export default definePluginEntry({
               stateManager,
               taskQueue,
               cognitiveEngine,
-              insightRepo,
+              insightRepo: storage.insights,
+              clock: systemClock,
               goalService,
               workerPool,
               narrativeService,
@@ -132,8 +153,8 @@ export default definePluginEntry({
             narrativeService,
             commitmentWatcher,
             attentionService: new AttentionService({
-              insightRepo,
-              feedbackRepo,
+              insightRepo: storage.insights,
+              feedbackRepo: storage.feedback,
               config: butlerConfig.attention,
               logger: api.logger,
             }),
