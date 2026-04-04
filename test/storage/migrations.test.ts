@@ -492,6 +492,23 @@ function seedSchemaAtVersion(
     ]);
   }
 
+  if (version >= 28) {
+    execAll(db, [
+      `CREATE TABLE butler_actions (
+        id TEXT PRIMARY KEY,
+        cycle_id TEXT,
+        action_type TEXT NOT NULL,
+        params_json TEXT,
+        result_json TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        rollback_json TEXT,
+        budget_cost_ms INTEGER,
+        created_at TEXT NOT NULL,
+        completed_at TEXT
+      )`,
+    ]);
+  }
+
   if (includeBehaviorOverrideColumns) {
     execAll(db, [
       'ALTER TABLE behavior_rules ADD COLUMN override_count INTEGER NOT NULL DEFAULT 0',
@@ -725,6 +742,28 @@ const versionCheckpoints: Array<{
       ]);
     },
   },
+  {
+    name: 'v29 creates butler_questions and butler_searches',
+    seedVersion: 28,
+    assertSchema: (db) => {
+      assertHasTables(db, ['butler_questions', 'butler_searches']);
+      assertHasColumns(db, 'butler_questions', [
+        'gap_type',
+        'question_text',
+        'status',
+        'memory_ids_json',
+        'asked_at',
+        'answered_at',
+      ]);
+      assertHasColumns(db, 'butler_searches', [
+        'query',
+        'gap_id',
+        'results_count',
+        'results_json',
+        'synthesized_json',
+      ]);
+    },
+  },
 ];
 
 describe('storage migrations', () => {
@@ -753,7 +792,7 @@ describe('storage migrations', () => {
 
     it('migrates an empty database to CURRENT_SCHEMA_VERSION', () => {
       assert.equal(getSchemaVersion(db), CURRENT_SCHEMA_VERSION);
-      assertHasTables(db, ['butler_actions']);
+      assertHasTables(db, ['butler_actions', 'butler_questions', 'butler_searches']);
     });
   });
 

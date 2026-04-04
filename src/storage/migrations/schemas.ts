@@ -351,3 +351,33 @@ export const CREATE_PHASE28_BUTLER_ACTIONS_SQL = [
   'CREATE INDEX IF NOT EXISTS idx_butler_actions_cycle ON butler_actions(cycle_id)',
   'CREATE INDEX IF NOT EXISTS idx_butler_actions_status ON butler_actions(status)',
 ] as const;
+
+export const CREATE_PHASE29_BUTLER_QUESTIONS_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_questions (
+    id TEXT PRIMARY KEY,
+    gap_type TEXT NOT NULL,
+    question_text TEXT NOT NULL,
+    context_json TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    answer_text TEXT,
+    memory_ids_json TEXT,
+    asked_at TEXT,
+    answered_at TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_questions_status ON butler_questions(status)',
+  'CREATE INDEX IF NOT EXISTS idx_butler_questions_gap_type ON butler_questions(gap_type)',
+] as const;
+
+export const CREATE_PHASE29_BUTLER_SEARCHES_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_searches (
+    id TEXT PRIMARY KEY,
+    query TEXT NOT NULL,
+    gap_id TEXT,
+    results_count INTEGER NOT NULL DEFAULT 0,
+    results_json TEXT,
+    synthesized_json TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_searches_created ON butler_searches(created_at)',
+] as const;

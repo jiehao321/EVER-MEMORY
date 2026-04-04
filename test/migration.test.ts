@@ -59,6 +59,12 @@ test('migrations are idempotent and preserve schema version', () => {
   const butlerActionsTableRow = db.connection.prepare(`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'butler_actions'
   `).get() as { name: string } | undefined;
+  const butlerQuestionsTableRow = db.connection.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'butler_questions'
+  `).get() as { name: string } | undefined;
+  const butlerSearchesTableRow = db.connection.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'butler_searches'
+  `).get() as { name: string } | undefined;
   const retrievalFeedbackColumns = db.connection.prepare(`
     SELECT name FROM pragma_table_info('retrieval_feedback')
   `).all() as Array<{ name: string }>;
@@ -79,6 +85,8 @@ test('migrations are idempotent and preserve schema version', () => {
   assert.equal(butlerInsightsTableRow?.name, 'butler_insights');
   assert.equal(llmInvocationsTableRow?.name, 'llm_invocations');
   assert.equal(butlerActionsTableRow?.name, 'butler_actions');
+  assert.equal(butlerQuestionsTableRow?.name, 'butler_questions');
+  assert.equal(butlerSearchesTableRow?.name, 'butler_searches');
   assert.ok(retrievalFeedbackColumns.some((column) => column.name === 'top_factors'));
 
   closeDatabase(db);

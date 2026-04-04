@@ -355,7 +355,7 @@ test('ButlerAgent runCycle for session_ended only enqueues', async () => {
     };
 
     assert.equal(trace.hook, 'session_ended');
-    assert.equal(taskQueue.getPendingCount(), 4);
+    assert.equal(taskQueue.getPendingCount(), 5);
     assert.deepEqual(decisions.orientation, {
       urgency: 'normal',
       recommendedAction: 'defer',
@@ -363,6 +363,7 @@ test('ButlerAgent runCycle for session_ended only enqueues', async () => {
     });
     assert.match(trace.actionsJson, /goal_derivation/);
     assert.match(trace.actionsJson, /commitment_scan/);
+    assert.match(trace.actionsJson, /knowledge_gap_scan/);
     assert.doesNotMatch(trace.actionsJson, /completed/i);
   } finally {
     ctx.cleanup();

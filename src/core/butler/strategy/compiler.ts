@@ -68,6 +68,18 @@ export function compileSessionWatchlist(
   return lines.join('\n');
 }
 
+export function compileQuestions(
+  questions: Array<{ id: string; questionText: string; gapType: string }>,
+): string {
+  if (questions.length === 0) {
+    return '';
+  }
+  const items = questions.map((question) => (
+    `  <question id="${escapeXml(question.id)}" gap="${escapeXml(question.gapType)}">${escapeXml(question.questionText)}</question>`
+  ));
+  return `<butler-questions>\n${items.join('\n')}\n</butler-questions>`;
+}
+
 export function compileOverlay(
   overlay: StrategicOverlay,
   insights: ButlerInsight[] = [],

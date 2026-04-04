@@ -8,6 +8,7 @@ import type { NarrativeThreadService } from './narrative/service.js';
 import type { CommitmentWatcher } from './commitments/watcher.js';
 import type { ClockPort } from './ports/clock.js';
 import type { InsightStore } from './ports/storage.js';
+import type { InsightProducerRegistry } from './producers/registry.js';
 import type {
   ButlerCycleTrace,
   ButlerLogger,
@@ -27,6 +28,7 @@ interface ButlerAgentOptions {
   workerPool?: WorkerThreadPool;
   narrativeService?: NarrativeThreadService;
   commitmentWatcher?: CommitmentWatcher;
+  producerRegistry?: InsightProducerRegistry;
   logger?: ButlerLogger;
 }
 
@@ -132,6 +134,7 @@ export class ButlerAgent {
   private readonly workerPool?: WorkerThreadPool;
   private readonly narrativeService?: NarrativeThreadService;
   private readonly commitmentWatcher?: CommitmentWatcher;
+  private readonly producerRegistry?: InsightProducerRegistry;
   private readonly logger?: ButlerLogger;
   private currentState: ButlerPersistentState | null = null;
 
@@ -145,6 +148,7 @@ export class ButlerAgent {
     this.workerPool = options.workerPool;
     this.narrativeService = options.narrativeService;
     this.commitmentWatcher = options.commitmentWatcher;
+    this.producerRegistry = options.producerRegistry;
     this.logger = options.logger;
   }
 
@@ -442,6 +446,10 @@ export class ButlerAgent {
     const drained = this.taskQueue.drain(buildDrainBudget(startedAt, maxTimeMs));
     const completedTaskTypes = await this.completeTasks(drained, cycleId);
     const surfacedInsights = this.surfaceFreshInsights();
+    if (this.producerRegistry) {
+      const produced = this.producerRegistry.runAll();
+      this.logger?.info('ButlerAgent produced insights', { count: produced.length });
+    }
 
     return {
       ...result,
@@ -501,6 +509,11 @@ export class ButlerAgent {
           { forceHeuristic: true },
         );
       }
+      return;
+    }
+
+    if (task.type === 'knowledge_gap_scan') {
+      this.logger?.info('ButlerAgent: knowledge_gap_scan task acknowledged');
       return;
     }
 
@@ -567,13 +580,27 @@ export class ButlerAgent {
         budgetClass: 'medium',
         idempotencyKey: `session-ended:goals:${sessionId}`,
       }),
+      this.taskQueue.enqueue({
+        type: 'knowledge_gap_scan',
+        priority: 6,
+        trigger: trigger.type,
+        payload: trigger.scope ?? {},
+        budgetClass: 'low',
+        idempotencyKey: `session-ended:gap-scan:${sessionId}`,
+      }),
     ];
 
     return {
       ...result,
       actions: {
         queuedTaskIds,
-        queuedTaskTypes: ['narrative_update', 'commitment_scan', 'insight_refresh', 'goal_derivation'],
+        queuedTaskTypes: [
+          'narrative_update',
+          'commitment_scan',
+          'insight_refresh',
+          'goal_derivation',
+          'knowledge_gap_scan',
+        ],
       },
     };
   }

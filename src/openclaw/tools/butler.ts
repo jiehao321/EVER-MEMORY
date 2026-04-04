@@ -10,6 +10,7 @@ import type { StrategicOverlayGenerator } from '../../core/butler/strategy/overl
 import type { TaskQueueService } from '../../core/butler/taskQueue.js';
 import type { ButlerLlmClient } from '../../core/butler/llmClient.js';
 import type { ButlerConfig } from '../../core/butler/types.js';
+import { executeButlerAsk } from '../../tools/butlerAsk.js';
 import { butlerBrief } from '../../tools/butlerBrief.js';
 import { butlerStatus } from '../../tools/butlerStatus.js';
 import { butlerTune } from '../../tools/butlerTune.js';
@@ -39,6 +40,7 @@ export interface ButlerRegistrationContext {
   llmClient?: ButlerLlmClient;
   llmProbe?: () => Promise<void>;
   config: ButlerConfig;
+  getActiveQuestions: () => Array<{ id: string; questionText: string; gapType: string; importance: number }>;
 }
 
 export function registerButlerTools(context: ButlerRegistrationContext): void {
@@ -147,5 +149,29 @@ export function registerButlerTools(context: ButlerRegistrationContext): void {
       },
     }),
     { name: 'butler_tune' },
+  );
+
+  context.api.registerTool(
+    () => ({
+      name: 'butler_ask',
+      label: 'Butler Ask',
+      description: "Get Butler's proactive questions about knowledge gaps",
+      parameters: Type.Object({}, { additionalProperties: false }),
+      execute: async () => {
+        const result = executeButlerAsk({
+          getActiveQuestions: context.getActiveQuestions,
+        });
+        return {
+          content: [{
+            type: 'text',
+            text: result.count === 0
+              ? 'No Butler questions pending.'
+              : `Butler has ${result.count} question${result.count === 1 ? '' : 's'} pending.`,
+          }],
+          details: result,
+        };
+      },
+    }),
+    { name: 'butler_ask' },
   );
 }

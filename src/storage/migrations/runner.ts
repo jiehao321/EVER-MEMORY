@@ -30,6 +30,8 @@ import {
   CREATE_PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SQL,
   CREATE_PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SQL,
   CREATE_PHASE28_BUTLER_ACTIONS_SQL,
+  CREATE_PHASE29_BUTLER_QUESTIONS_SQL,
+  CREATE_PHASE29_BUTLER_SEARCHES_SQL,
 } from './schemas.js';
 import {
   CURRENT_SCHEMA_VERSION,
@@ -61,6 +63,7 @@ import {
   PHASE24_RETRIEVAL_FEEDBACK_FACTORS_SCHEMA_VERSION,
   PHASE25_BEHAVIOR_OVERRIDE_LIFECYCLE_SCHEMA_VERSION,
   PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION,
+  PHASE29_BUTLER_INTELLIGENCE_SCHEMA_VERSION,
 } from './versions.js';
 
 function ensureSchemaVersionTable(db: Database.Database): void {
@@ -290,6 +293,15 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
       }
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION);
     });
+    const phase29ButlerIntelligenceTx = db.transaction(() => {
+      for (const sql of CREATE_PHASE29_BUTLER_QUESTIONS_SQL) {
+        db.prepare(sql).run();
+      }
+      for (const sql of CREATE_PHASE29_BUTLER_SEARCHES_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE29_BUTLER_INTELLIGENCE_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -419,6 +431,11 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
     if (currentVersion < PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION) {
       phase28ButlerActionsTx();
       currentVersion = PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION;
+    }
+
+    if (currentVersion < PHASE29_BUTLER_INTELLIGENCE_SCHEMA_VERSION) {
+      phase29ButlerIntelligenceTx();
+      currentVersion = PHASE29_BUTLER_INTELLIGENCE_SCHEMA_VERSION;
     }
 
     return currentVersion;

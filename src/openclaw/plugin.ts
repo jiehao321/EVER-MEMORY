@@ -8,6 +8,14 @@ import { ButlerGoalService } from '../core/butler/goals/service.js';
 import { ButlerLlmClient } from '../core/butler/llmClient.js';
 import { NarrativeThreadService } from '../core/butler/narrative/service.js';
 import type { HostPort } from '../core/butler/ports/host.js';
+import {
+  AnomalyDetector,
+  ContinuityAnalyzer,
+  InsightProducerRegistry,
+  OpenLoopTracker,
+  RecommendationEngine,
+  ThemeExtractor,
+} from '../core/butler/producers/index.js';
 import { ButlerScheduler } from '../core/butler/scheduler/service.js';
 import { ButlerStateManager } from '../core/butler/state.js';
 import { StrategicOverlayGenerator } from '../core/butler/strategy/overlay.js';
@@ -31,11 +39,29 @@ import { isFirstRun, runAutoSetup, writeWelcomeMemory } from '../core/setup/auto
 import { ButlerFeedbackRepository } from '../storage/butlerFeedbackRepo.js';
 import { ButlerGoalRepository } from '../storage/butlerGoalRepo.js';
 import { ButlerInsightRepository } from '../storage/butlerInsightRepo.js';
+import { ButlerQuestionRepository } from '../storage/butlerQuestionRepo.js';
 import { ButlerStateRepository } from '../storage/butlerStateRepo.js';
 import { ButlerTaskRepository } from '../storage/butlerTaskRepo.js';
 import { LlmInvocationRepo } from '../storage/llmInvocationRepo.js';
 import { NarrativeRepository } from '../storage/narrativeRepo.js';
 import { registerButlerReviewTool } from './tools/butlerReview.js';
+
+function getQuestionImportance(gapType: string): number {
+  switch (gapType) {
+    case 'unresolved_contradiction':
+      return 0.9;
+    case 'missing_preference':
+      return 0.8;
+    case 'incomplete':
+      return 0.7;
+    case 'stale':
+      return 0.6;
+    case 'isolated':
+      return 0.5;
+    default:
+      return 0.5;
+  }
+}
 
 export default definePluginEntry({
   id: PLUGIN_NAME,
@@ -57,6 +83,7 @@ export default definePluginEntry({
           const insightRepo = new ButlerInsightRepository(db);
           const feedbackRepo = new ButlerFeedbackRepository(db);
           const goalRepo = new ButlerGoalRepository(db);
+          const questionRepo = new ButlerQuestionRepository(db);
           const stateRepo = new ButlerStateRepository(db);
           const taskRepo = new ButlerTaskRepository(db);
           const narrativeRepo = new NarrativeRepository(db);
@@ -137,6 +164,12 @@ export default definePluginEntry({
             cognitiveEngine,
             logger: api.logger,
           });
+          const producerRegistry = new InsightProducerRegistry(storage.insights, api.logger);
+          producerRegistry.register(new ThemeExtractor(memoryQuery, systemClock));
+          producerRegistry.register(new AnomalyDetector(memoryQuery, systemClock));
+          producerRegistry.register(new OpenLoopTracker(storage.goals, systemClock));
+          producerRegistry.register(new RecommendationEngine(storage.goals, storage.insights, systemClock));
+          producerRegistry.register(new ContinuityAnalyzer(storage.narrative, systemClock));
           const hostPort = createPluginHostPort(api);
           const agent = new ButlerAgent({
             stateManager,
@@ -148,6 +181,7 @@ export default definePluginEntry({
             workerPool,
             narrativeService,
             commitmentWatcher,
+            producerRegistry,
             logger: api.logger,
           });
           const scheduler = new ButlerScheduler(
@@ -185,6 +219,12 @@ export default definePluginEntry({
             llmClient,
             llmGateway,
             config: butlerConfig,
+            getActiveQuestions: () => questionRepo.findByStatus('pending').map((question) => ({
+              id: question.id,
+              questionText: question.questionText,
+              gapType: question.gapType,
+              importance: getQuestionImportance(question.gapType),
+            })),
           };
         })()
       : undefined;
@@ -274,6 +314,7 @@ export default definePluginEntry({
         llmClient: butler.llmClient,
         llmProbe,
         config: butler.config,
+        getActiveQuestions: butler.getActiveQuestions,
       });
       registerButlerReviewTool({
         api,
@@ -322,6 +363,7 @@ export default definePluginEntry({
         butler_status: 'butler_status — Butler agent state, LLM readiness, and usage',
         butler_brief: 'butler_brief — executive briefing with strategic overlay',
         butler_tune: 'butler_tune — adjust Butler runtime config',
+        butler_ask: 'butler_ask — list Butler knowledge-gap follow-up questions',
         butler_review: 'butler_review — review and rate Butler suggestions',
       };
 

@@ -11,6 +11,8 @@ import type {
 import type { ActionRecord } from '../../src/core/butler/actions/types.js';
 import { ButlerActionRepository } from '../../src/storage/butlerActionRepo.js';
 import { ButlerInsightRepository } from '../../src/storage/butlerInsightRepo.js';
+import { ButlerQuestionRepository } from '../../src/storage/butlerQuestionRepo.js';
+import { ButlerSearchRepository } from '../../src/storage/butlerSearchRepo.js';
 import { ButlerStateRepository } from '../../src/storage/butlerStateRepo.js';
 import { ButlerTaskRepository } from '../../src/storage/butlerTaskRepo.js';
 import { LlmInvocationRepository } from '../../src/storage/llmInvocationRepo.js';
@@ -293,5 +295,74 @@ describe('Butler repositories', () => {
     assert.equal(cycleRows[1]?.completedAt, '2026-04-04T12:00:03.000Z');
     assert.equal(repo.getDailyCount('2026-04-04'), 2);
     assert.equal(repo.getDailyCount('2026-04-05'), 1);
+  });
+
+  it('stores butler questions, updates status, and counts asked rows by day', () => {
+    db = createInMemoryDb();
+    const repo = new ButlerQuestionRepository(db);
+
+    repo.insert({
+      id: 'question-1',
+      gapType: 'stale',
+      questionText: 'Is this still accurate?',
+      contextJson: JSON.stringify({ reason: 'stale memory' }),
+      status: 'pending',
+      answerText: undefined,
+      memoryIdsJson: JSON.stringify(['memory-1']),
+      askedAt: '2026-04-04T09:00:00.000Z',
+      answeredAt: undefined,
+      createdAt: '2026-04-04T08:55:00.000Z',
+    });
+    repo.insert({
+      id: 'question-2',
+      gapType: 'incomplete',
+      questionText: 'What is the status?',
+      contextJson: undefined,
+      status: 'pending',
+      answerText: undefined,
+      memoryIdsJson: undefined,
+      askedAt: '2026-04-05T09:00:00.000Z',
+      answeredAt: undefined,
+      createdAt: '2026-04-05T08:55:00.000Z',
+    });
+
+    repo.updateStatus('question-1', 'answered', {
+      answerText: 'Still valid.',
+      answeredAt: '2026-04-04T09:01:00.000Z',
+    });
+
+    assert.equal(repo.findById('question-1')?.status, 'answered');
+    assert.equal(repo.findById('question-1')?.answerText, 'Still valid.');
+    assert.equal(repo.findById('question-1')?.answeredAt, '2026-04-04T09:01:00.000Z');
+    assert.deepEqual(repo.findByStatus('pending').map((row) => row.id), ['question-2']);
+    assert.equal(repo.getDailyCount('2026-04-04'), 1);
+    assert.equal(repo.getDailyCount('2026-04-05'), 1);
+  });
+
+  it('stores butler searches and returns recent rows first', () => {
+    db = createInMemoryDb();
+    const repo = new ButlerSearchRepository(db);
+
+    repo.insert({
+      id: 'search-1',
+      query: 'phase 2 plan',
+      gapId: 'gap-1',
+      resultsCount: 2,
+      resultsJson: JSON.stringify([{ source: 'memory' }]),
+      synthesizedJson: JSON.stringify({ summary: 'phase 2 active' }),
+      createdAt: '2026-04-04T09:00:00.000Z',
+    });
+    repo.insert({
+      id: 'search-2',
+      query: 'open questions',
+      gapId: undefined,
+      resultsCount: 1,
+      resultsJson: JSON.stringify([{ source: 'docs' }]),
+      synthesizedJson: undefined,
+      createdAt: '2026-04-04T10:00:00.000Z',
+    });
+
+    assert.equal(repo.findById('search-1')?.gapId, 'gap-1');
+    assert.deepEqual(repo.findRecent(2).map((row) => row.id), ['search-2', 'search-1']);
   });
 });

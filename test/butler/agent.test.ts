@@ -98,8 +98,14 @@ describe('ButlerAgent', () => {
       queuedTaskIds?: string[];
     };
 
-    assert.deepEqual(endActions.queuedTaskTypes, ['narrative_update', 'commitment_scan', 'insight_refresh', 'goal_derivation']);
-    assert.equal(endActions.queuedTaskIds?.length, 4);
+    assert.deepEqual(endActions.queuedTaskTypes, [
+      'narrative_update',
+      'commitment_scan',
+      'insight_refresh',
+      'goal_derivation',
+      'knowledge_gap_scan',
+    ]);
+    assert.equal(endActions.queuedTaskIds?.length, 5);
     assert.deepEqual(startActions.drainedTaskTypes, ['narrative_update', 'commitment_scan', 'insight_refresh']);
     assert.deepEqual(startActions.surfacedInsightIds, [insightId]);
     assert.deepEqual(narrativeCalls, [{ project: 'evermemory', chatId: 'chat-1' }]);
@@ -177,9 +183,21 @@ describe('ButlerAgent', () => {
     const actions = JSON.parse(trace.actionsJson) as { queuedTaskIds?: string[]; queuedTaskTypes?: string[] };
     const drained = ctx.taskQueue.drain({ maxTasks: 5, maxTimeMs: 1_000, priorityFilter: 'all' });
 
-    assert.deepEqual(actions.queuedTaskTypes, ['narrative_update', 'commitment_scan', 'insight_refresh', 'goal_derivation']);
-    assert.equal(actions.queuedTaskIds?.length, 4);
-    assert.deepEqual(drained.map((task) => task.type), ['narrative_update', 'commitment_scan', 'insight_refresh', 'goal_derivation']);
+    assert.deepEqual(actions.queuedTaskTypes, [
+      'narrative_update',
+      'commitment_scan',
+      'insight_refresh',
+      'goal_derivation',
+      'knowledge_gap_scan',
+    ]);
+    assert.equal(actions.queuedTaskIds?.length, 5);
+    assert.deepEqual(drained.map((task) => task.type), [
+      'narrative_update',
+      'commitment_scan',
+      'insight_refresh',
+      'goal_derivation',
+      'knowledge_gap_scan',
+    ]);
     assert.equal((ctx.stateRepo.load() as ButlerPersistentState).lastCycleVersion, 1);
   });
 
