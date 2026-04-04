@@ -1,4 +1,5 @@
 import type { ButlerAgent } from '../agent.js';
+import type { EvolutionEngine } from '../evolution/engine.js';
 import type { ClockPort } from '../ports/clock.js';
 import type { ButlerLogger, ButlerTrigger } from '../types.js';
 import type { TriggerEvaluatorDeps, WakeUpTrigger } from './triggers.js';
@@ -36,6 +37,7 @@ export class ButlerScheduler {
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
   private lastTickAt = 0;
   private readonly config: SchedulerConfig;
+  private readonly evolutionEngine?: Pick<EvolutionEngine, 'canEvolve' | 'evolve'>;
 
   constructor(
     private readonly agent: ButlerAgent,
@@ -43,8 +45,10 @@ export class ButlerScheduler {
     private readonly clock: ClockPort,
     private readonly logger?: ButlerLogger,
     config?: Partial<SchedulerConfig>,
+    evolutionEngine?: Pick<EvolutionEngine, 'canEvolve' | 'evolve'>,
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.evolutionEngine = evolutionEngine;
   }
 
   start(): void {
@@ -90,6 +94,7 @@ export class ButlerScheduler {
     }
 
     await this.agent.runCycle(toAutonomousTrigger(triggers));
+    this.runEvolutionIfDue();
     return { triggers, cycleRan: true };
   }
 
@@ -99,5 +104,15 @@ export class ButlerScheduler {
 
   getLastTickAt(): number {
     return this.lastTickAt;
+  }
+
+  private runEvolutionIfDue(): void {
+    if (!this.evolutionEngine?.canEvolve()) {
+      return;
+    }
+    const state = this.agent.getState();
+    if (state) {
+      this.evolutionEngine.evolve(state);
+    }
   }
 }

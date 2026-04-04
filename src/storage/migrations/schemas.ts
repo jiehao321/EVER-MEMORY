@@ -381,3 +381,42 @@ export const CREATE_PHASE29_BUTLER_SEARCHES_SQL = [
   )`,
   'CREATE INDEX IF NOT EXISTS idx_butler_searches_created ON butler_searches(created_at)',
 ] as const;
+
+export const CREATE_PHASE30_BUTLER_EVOLUTION_SQL = [
+  `CREATE TABLE IF NOT EXISTS butler_evolution_log (
+    id TEXT PRIMARY KEY,
+    cycle_type TEXT NOT NULL,
+    parameter_key TEXT,
+    old_value_json TEXT,
+    new_value_json TEXT,
+    evidence_json TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_evolution_log_type ON butler_evolution_log(cycle_type)',
+  'CREATE INDEX IF NOT EXISTS idx_butler_evolution_log_status ON butler_evolution_log(status)',
+  `CREATE TABLE IF NOT EXISTS butler_prompt_variants (
+    id TEXT PRIMARY KEY,
+    task_type TEXT NOT NULL,
+    variant_text TEXT NOT NULL,
+    performance_json TEXT,
+    status TEXT NOT NULL DEFAULT 'candidate',
+    created_at TEXT NOT NULL
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_prompt_variants_type ON butler_prompt_variants(task_type)',
+  'CREATE INDEX IF NOT EXISTS idx_butler_prompt_variants_status ON butler_prompt_variants(status)',
+  `CREATE TABLE IF NOT EXISTS butler_experiments (
+    id TEXT PRIMARY KEY,
+    hypothesis TEXT NOT NULL,
+    parameter_key TEXT NOT NULL,
+    control_value_json TEXT,
+    treatment_value_json TEXT,
+    sample_size INTEGER NOT NULL DEFAULT 0,
+    results_json TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    started_at TEXT NOT NULL,
+    concluded_at TEXT
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_butler_experiments_status ON butler_experiments(status)',
+] as const;

@@ -3,6 +3,7 @@ import type { ButlerAgent } from '../../core/butler/agent.js';
 import type { AttentionService } from '../../core/butler/attention/service.js';
 import type { CommitmentWatcher } from '../../core/butler/commitments/watcher.js';
 import type { CognitiveEngine } from '../../core/butler/cognition.js';
+import type { ParameterTunerReader } from '../../tools/butlerTune.js';
 import type { ButlerGoalService } from '../../core/butler/goals/service.js';
 import type { NarrativeThreadService } from '../../core/butler/narrative/service.js';
 import type { ButlerStateManager } from '../../core/butler/state.js';
@@ -24,6 +25,7 @@ const TUNE_KEYS = [
   'cognition.sessionTokenBudget',
   'attention.maxInsightsPerBriefing',
   'attention.minConfidence',
+  'evolution.parameters',
 ] as const;
 
 export interface ButlerRegistrationContext {
@@ -40,6 +42,7 @@ export interface ButlerRegistrationContext {
   llmClient?: ButlerLlmClient;
   llmProbe?: () => Promise<void>;
   config: ButlerConfig;
+  parameterTuner?: ParameterTunerReader;
   getActiveQuestions: () => Array<{ id: string; questionText: string; gapType: string; importance: number }>;
 }
 
@@ -136,12 +139,15 @@ export function registerButlerTools(context: ButlerRegistrationContext): void {
           action: asOptionalEnum(params.action, TUNE_ACTIONS) ?? 'get',
           key: asOptionalString(params.key),
           value: params.value,
+          parameterTuner: context.parameterTuner,
         });
         return {
           content: [{
             type: 'text',
             text: result.updated
               ? `Butler updated ${result.updated.key}.`
+              : result.parameters
+                ? `Butler evolution parameters retrieved: ${result.parameters.length}`
               : `Butler config retrieved: mode=${result.config.mode}`,
           }],
           details: result,

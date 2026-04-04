@@ -4,6 +4,10 @@ import { ButlerAgent } from '../core/butler/agent.js';
 import { AttentionService } from '../core/butler/attention/service.js';
 import { CommitmentWatcher } from '../core/butler/commitments/watcher.js';
 import { CognitiveEngine } from '../core/butler/cognition.js';
+import { EvolutionEngine } from '../core/butler/evolution/engine.js';
+import { FeedbackLoop } from '../core/butler/evolution/feedbackLoop.js';
+import { MetricsCollector } from '../core/butler/evolution/metrics.js';
+import { ParameterTuner } from '../core/butler/evolution/parameterTuner.js';
 import { ButlerGoalService } from '../core/butler/goals/service.js';
 import { ButlerLlmClient } from '../core/butler/llmClient.js';
 import { NarrativeThreadService } from '../core/butler/narrative/service.js';
@@ -113,6 +117,14 @@ export default definePluginEntry({
             taskRepo: storage.tasks,
             logger: api.logger,
           });
+          const parameterTuner = new ParameterTuner(systemClock, api.logger);
+          const evolutionEngine = new EvolutionEngine(
+            new MetricsCollector(storage.feedback, storage.insights, systemClock),
+            parameterTuner,
+            new FeedbackLoop(api.logger),
+            systemClock,
+            api.logger,
+          );
 
           // Build LLM gateway using pi-ai complete() with auth from runtime.modelAuth
           const runtimeModelAuth = api.runtime?.modelAuth;
@@ -195,6 +207,7 @@ export default definePluginEntry({
             systemClock,
             api.logger,
             { enabled: true, tickIntervalMs: 60_000 },
+            evolutionEngine,
           );
           return {
             agent,
@@ -218,6 +231,7 @@ export default definePluginEntry({
             cognitiveEngine,
             llmClient,
             llmGateway,
+            parameterTuner,
             config: butlerConfig,
             getActiveQuestions: () => questionRepo.findByStatus('pending').map((question) => ({
               id: question.id,
@@ -314,6 +328,7 @@ export default definePluginEntry({
         llmClient: butler.llmClient,
         llmProbe,
         config: butler.config,
+        parameterTuner: butler.parameterTuner,
         getActiveQuestions: butler.getActiveQuestions,
       });
       registerButlerReviewTool({

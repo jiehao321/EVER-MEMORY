@@ -1,5 +1,6 @@
 import type { ButlerStateManager } from '../core/butler/state.js';
 import type { ButlerConfig, ButlerMode } from '../core/butler/types.js';
+import type { TunableParameter } from '../core/butler/evolution/types.js';
 
 const SETTABLE_KEYS = new Set([
   'mode',
@@ -9,10 +10,15 @@ const SETTABLE_KEYS = new Set([
   'attention.minConfidence',
 ]);
 
+export interface ParameterTunerReader {
+  getAllParameters(): TunableParameter[];
+}
+
 export interface ButlerTuneResult {
   action: 'get' | 'set';
   config: ButlerConfig;
   updated?: { key: string; value: unknown };
+  parameters?: TunableParameter[];
 }
 
 function cloneConfig(config: ButlerConfig): ButlerConfig {
@@ -79,8 +85,16 @@ export function butlerTune(input: {
   action: 'get' | 'set';
   key?: string;
   value?: unknown;
+  parameterTuner?: ParameterTunerReader;
 }): ButlerTuneResult {
   if (input.action === 'get') {
+    if (input.key === 'evolution.parameters') {
+      return {
+        action: 'get',
+        config: cloneConfig(input.config),
+        parameters: input.parameterTuner?.getAllParameters() ?? [],
+      };
+    }
     return { action: 'get', config: cloneConfig(input.config) };
   }
   if (!input.key || !SETTABLE_KEYS.has(input.key)) {
