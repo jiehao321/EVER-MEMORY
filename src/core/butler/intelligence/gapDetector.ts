@@ -15,14 +15,15 @@ export class KnowledgeGapDetector {
   ) {}
 
   detectGaps(scope?: Record<string, unknown>): KnowledgeGap[] {
-    const gaps: KnowledgeGap[] = [];
-    this.detectStaleMemories(gaps, scope);
-    this.detectIncompleteCommitments(gaps);
-    this.detectUnresolvedContradictions(gaps, scope);
-    return gaps.sort((a, b) => b.importance - a.importance);
+    return [
+      ...this.detectStaleMemories(scope),
+      ...this.detectIncompleteCommitments(scope),
+      ...this.detectUnresolvedContradictions(scope),
+    ].sort((a, b) => b.importance - a.importance);
   }
 
-  private detectStaleMemories(gaps: KnowledgeGap[], scope?: Record<string, unknown>): void {
+  detectStaleMemories(scope?: Record<string, unknown>): KnowledgeGap[] {
+    const gaps: KnowledgeGap[] = [];
     const memories = this.memory.search({
       scope: scope as MemorySearchQuery['scope'],
       activeOnly: true,
@@ -44,9 +45,11 @@ export class KnowledgeGapDetector {
         memoryIds: [memory.id],
       });
     }
+    return gaps;
   }
 
-  private detectIncompleteCommitments(gaps: KnowledgeGap[]): void {
+  detectIncompleteCommitments(_scope?: Record<string, unknown>): KnowledgeGap[] {
+    const gaps: KnowledgeGap[] = [];
     const commitments = this.insights.findByKind('commitment', 20);
     for (const insight of commitments) {
       if (insight.importance < 0.5) {
@@ -63,9 +66,11 @@ export class KnowledgeGapDetector {
         importance: insight.importance * 0.7,
       });
     }
+    return gaps;
   }
 
-  private detectUnresolvedContradictions(gaps: KnowledgeGap[], scope?: Record<string, unknown>): void {
+  detectUnresolvedContradictions(scope?: Record<string, unknown>): KnowledgeGap[] {
+    const gaps: KnowledgeGap[] = [];
     const contradictions = this.memory.search({
       scope: scope as MemorySearchQuery['scope'],
       query: 'contradiction_pending',
@@ -85,5 +90,6 @@ export class KnowledgeGapDetector {
         memoryIds: [memory.id],
       });
     }
+    return gaps;
   }
 }

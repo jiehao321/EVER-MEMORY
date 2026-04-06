@@ -9,6 +9,7 @@ import { FeedbackLoop } from '../core/butler/evolution/feedbackLoop.js';
 import { MetricsCollector } from '../core/butler/evolution/metrics.js';
 import { ParameterTuner } from '../core/butler/evolution/parameterTuner.js';
 import { ButlerGoalService } from '../core/butler/goals/service.js';
+import { KnowledgeGapDetector, QuestionPlanner } from '../core/butler/intelligence/index.js';
 import { ButlerLlmClient } from '../core/butler/llmClient.js';
 import { NarrativeThreadService } from '../core/butler/narrative/service.js';
 import type { HostPort } from '../core/butler/ports/host.js';
@@ -187,6 +188,18 @@ export default definePluginEntry({
           producerRegistry.register(new RecommendationEngine(storage.goals, storage.insights, systemClock));
           producerRegistry.register(new ContinuityAnalyzer(storage.narrative, systemClock));
           const hostPort = createPluginHostPort(api);
+          const gapDetector = new KnowledgeGapDetector(
+            memoryQuery,
+            storage.insights,
+            storage.goals,
+            systemClock,
+          );
+          const questionPlanner = new QuestionPlanner(
+            gapDetector,
+            hostPort,
+            systemClock,
+            api.logger,
+          );
           const agent = new ButlerAgent({
             stateManager,
             taskQueue,
@@ -194,6 +207,8 @@ export default definePluginEntry({
             insightRepo: storage.insights,
             clock: systemClock,
             goalService,
+            gapDetector,
+            questionPlanner,
             workerPool,
             narrativeService,
             commitmentWatcher,

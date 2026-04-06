@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { ButlerGoalService } from './goals/service.js';
 import type { CognitiveEngine } from './cognition.js';
+import type { KnowledgeGapDetector } from './intelligence/gapDetector.js';
+import type { QuestionPlanner } from './intelligence/questionPlanner.js';
 import type { ButlerStateManager } from './state.js';
 import type { TaskQueueService } from './taskQueue.js';
 import type { WorkerThreadPool } from './worker/pool.js';
@@ -25,6 +27,8 @@ interface ButlerAgentOptions {
   insightRepo: InsightStore;
   clock?: ClockPort;
   goalService?: ButlerGoalService;
+  gapDetector?: KnowledgeGapDetector;
+  questionPlanner?: QuestionPlanner;
   workerPool?: WorkerThreadPool;
   narrativeService?: NarrativeThreadService;
   commitmentWatcher?: CommitmentWatcher;
@@ -131,6 +135,8 @@ export class ButlerAgent {
   private readonly insightRepo: InsightStore;
   private readonly clock: ClockPort;
   private readonly goalService?: ButlerGoalService;
+  private readonly gapDetector?: KnowledgeGapDetector;
+  private readonly questionPlanner?: QuestionPlanner;
   private readonly workerPool?: WorkerThreadPool;
   private readonly narrativeService?: NarrativeThreadService;
   private readonly commitmentWatcher?: CommitmentWatcher;
@@ -145,6 +151,8 @@ export class ButlerAgent {
     this.insightRepo = options.insightRepo;
     this.clock = options.clock ?? DEFAULT_CLOCK;
     this.goalService = options.goalService;
+    this.gapDetector = options.gapDetector;
+    this.questionPlanner = options.questionPlanner;
     this.workerPool = options.workerPool;
     this.narrativeService = options.narrativeService;
     this.commitmentWatcher = options.commitmentWatcher;
@@ -444,7 +452,7 @@ export class ButlerAgent {
     }
 
     const drained = this.taskQueue.drain(buildDrainBudget(startedAt, maxTimeMs));
-    const completedTaskTypes = await this.completeTasks(drained, cycleId);
+    const completed = await this.completeTasks(drained, cycleId, result.state);
     const surfacedInsights = this.surfaceFreshInsights();
     if (this.producerRegistry) {
       const produced = this.producerRegistry.runAll();
@@ -453,18 +461,24 @@ export class ButlerAgent {
 
     return {
       ...result,
+      state: completed.state,
       actions: {
-        drainedTaskTypes: completedTaskTypes,
+        drainedTaskTypes: completed.completedTaskTypes,
         surfacedInsightIds: surfacedInsights,
       },
     };
   }
 
-  private async completeTasks(tasks: ButlerTask[], cycleId: string): Promise<string[]> {
+  private async completeTasks(
+    tasks: ButlerTask[],
+    cycleId: string,
+    initialState: ButlerPersistentState,
+  ): Promise<{ completedTaskTypes: string[]; state: ButlerPersistentState }> {
     const completedTaskTypes: string[] = [];
+    let state = initialState;
     for (const task of tasks) {
       try {
-        await this.runDeferredTask(task);
+        state = await this.runDeferredTask(task, state);
         this.taskQueue.complete(task.id, { completedBy: 'butler-agent', cycleId });
         completedTaskTypes.push(task.type);
       } catch (error) {
@@ -472,15 +486,15 @@ export class ButlerAgent {
         this.taskQueue.fail(task.id, error instanceof Error ? error.message : String(error));
       }
     }
-    return completedTaskTypes;
+    return { completedTaskTypes, state };
   }
 
-  private async runDeferredTask(task: ButlerTask): Promise<void> {
+  private async runDeferredTask(task: ButlerTask, state: ButlerPersistentState): Promise<ButlerPersistentState> {
     if (task.type === 'narrative_update') {
       if (this.narrativeService) {
         this.narrativeService.updateOrCreateForSession(parseTaskPayload(task) ?? {});
       }
-      return;
+      return state;
     }
 
     if (task.type === 'insight_refresh') {
@@ -491,14 +505,14 @@ export class ButlerAgent {
           { forceHeuristic: true },
         );
       }
-      return;
+      return state;
     }
 
     if (task.type === 'goal_derivation') {
       if (this.goalService) {
         this.goalService.deriveGoalsFromInsights(parseTaskPayload(task));
       }
-      return;
+      return state;
     }
 
     if (task.type === 'commitment_scan') {
@@ -509,28 +523,101 @@ export class ButlerAgent {
           { forceHeuristic: true },
         );
       }
-      return;
+      return state;
     }
 
     if (task.type === 'knowledge_gap_scan') {
-      this.logger?.info('ButlerAgent: knowledge_gap_scan task acknowledged');
-      return;
+      if (!this.gapDetector) {
+        this.logger?.info('ButlerAgent: knowledge_gap_scan task acknowledged');
+        return state;
+      }
+      const scope = parseTaskPayload(task);
+      const stale = this.gapDetector.detectStaleMemories(scope);
+      const incomplete = this.gapDetector.detectIncompleteCommitments(scope);
+      const contradictions = this.gapDetector.detectUnresolvedContradictions(scope);
+      const gaps = [...stale, ...incomplete, ...contradictions];
+
+      for (const gap of gaps.slice(0, 5)) {
+        this.insightRepo.insert({
+          kind: gap.type === 'unresolved_contradiction' ? 'anomaly' : 'open_loop',
+          title: `Knowledge gap: ${gap.type}`,
+          summary: gap.description ?? `${gap.type} gap detected`,
+          confidence: 0.6,
+          importance: gap.importance ?? 0.5,
+          sourceRefs: gap.memoryIds,
+        });
+      }
+
+      this.logger?.info('knowledge_gap_scan completed', { gapsFound: gaps.length });
+      return state;
     }
 
     if (task.type === 'strategy_review') {
-      this.logger?.info('ButlerAgent: strategy_review task acknowledged (implementation deferred)');
-      return;
+      const frameUpdatedAt = Date.parse(state.currentStrategyFrame.lastUpdatedAt);
+      if (Number.isNaN(frameUpdatedAt)) {
+        this.logger?.warn('strategy_review skipped due to invalid strategy timestamp');
+        return state;
+      }
+      const frameAge = this.clock.now() - frameUpdatedAt;
+      const staleThresholdMs = 2 * 60 * 60 * 1000;
+      if (frameAge <= staleThresholdMs) {
+        this.logger?.info('strategy_review: frame is fresh', { ageMs: frameAge });
+        return state;
+      }
+
+      const nextState = this.upsertWorkingMemoryEntry(
+        state,
+        'strategy_stale',
+        { ageMs: frameAge, lastMode: state.currentStrategyFrame.currentMode },
+        30 * 60 * 1000,
+      );
+      this.logger?.info('strategy_review: frame is stale', { ageMs: frameAge });
+      return nextState;
     }
 
     if (task.type === 'contradiction_check') {
-      this.logger?.info('ButlerAgent: contradiction_check task acknowledged (implementation deferred)');
-      return;
+      const anomalies = this.insightRepo.findByKind('anomaly', 10);
+      const unresolvedCount = anomalies.filter((insight) => insight.summary.toLowerCase().includes('contradiction')).length;
+      if (unresolvedCount === 0) {
+        this.logger?.info('contradiction_check: no unresolved contradictions found');
+        return state;
+      }
+
+      const nextState = this.upsertWorkingMemoryEntry(
+        state,
+        'pending_contradictions',
+        { count: unresolvedCount },
+        60 * 60 * 1000,
+      );
+      this.logger?.info('contradiction_check: unresolved contradictions found', { count: unresolvedCount });
+      return nextState;
     }
 
     if (task.type === 'memory_consolidation') {
-      this.logger?.info('ButlerAgent: memory_consolidation task acknowledged (implementation deferred)');
-      return;
+      const freshInsights = this.insightRepo.findFresh(50);
+      const expiredDeleted = this.insightRepo.deleteExpired();
+      this.logger?.info('memory_consolidation completed', {
+        freshInsights: freshInsights.length,
+        expiredDeleted,
+      });
+      return state;
     }
+
+    return state;
+  }
+
+  private upsertWorkingMemoryEntry(
+    state: ButlerPersistentState,
+    key: string,
+    value: unknown,
+    ttlMs: number,
+  ): ButlerPersistentState {
+    const pruned = this.stateManager.pruneExpiredWorkingMemory(state);
+    const withoutKey = {
+      ...pruned,
+      workingMemory: pruned.workingMemory.filter((entry) => entry.key !== key),
+    };
+    return this.stateManager.addWorkingMemoryEntry(withoutKey, key, value, ttlMs);
   }
 
   private surfaceFreshInsights(): string[] {

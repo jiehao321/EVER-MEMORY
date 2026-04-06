@@ -151,7 +151,7 @@ test('InsightProducerRegistry persists producer output and isolates producer fai
       summary: 'Project memories are recurring.',
       confidence: 0.75,
       importance: 0.6,
-      freshUntil: '2026-04-06T12:00:00.000Z',
+      freshUntil: '2099-04-06T12:00:00.000Z',
     }],
   });
   registry.register({

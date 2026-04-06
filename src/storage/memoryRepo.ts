@@ -184,6 +184,20 @@ function resolveSearchLimit(limit: number | undefined): number {
   return Math.min(limit, MAX_ALLOWED_LIMIT);
 }
 
+function buildSafeFtsQuery(query: string): string | null {
+  const tokens = query
+    .toLowerCase()
+    .split(/[^a-z0-9_\u4e00-\u9fff]+/gi)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (tokens.length === 0) {
+    return null;
+  }
+  return tokens
+    .map((token) => `"${token.replace(/"/g, '""')}"`)
+    .join(' AND ');
+}
+
 export class MemoryRepository {
   constructor(private readonly db: Database.Database) {}
 
@@ -372,6 +386,39 @@ export class MemoryRepository {
           limit,
           typeCount: filters.types?.length ?? 0,
           lifecycleCount: filters.lifecycles?.length ?? 0,
+        },
+        cause: error,
+      });
+    }
+  }
+
+  searchFts(query: string, limit: number): MemoryItem[] {
+    const resolvedLimit = resolveSearchLimit(limit);
+    const safeQuery = buildSafeFtsQuery(query);
+    if (!safeQuery) {
+      return [];
+    }
+
+    try {
+      const rows = this.db.prepare(`
+        SELECT m.*
+        FROM memory_items m
+        INNER JOIN memory_items_fts fts ON m.rowid = fts.rowid
+        WHERE memory_items_fts MATCH ?
+        ORDER BY rank
+        LIMIT ?
+      `).all(safeQuery, resolvedLimit) as MemoryItemRow[];
+
+      return rows.map(toMemoryItem);
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw new StorageError('Failed to run FTS memory search.', {
+        code: 'STORAGE_MEMORY_FTS_SEARCH_FAILED',
+        context: {
+          query,
+          limit: resolvedLimit,
         },
         cause: error,
       });

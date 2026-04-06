@@ -2,6 +2,7 @@ import type { SemanticRepository } from '../../storage/semanticRepo.js';
 import type { RelationRepository } from '../../storage/relationRepo.js';
 import type { RecallRequest, RetrievalHybridWeights, RetrievalKeywordWeights } from '../../types.js';
 import { embeddingManager } from '../../embedding/manager.js';
+import { enhanceWithGraphBoost } from './graphBoost.js';
 import { rankKeywordRecall } from './keyword.js';
 import type { RankedStrategyResult, RecallExecutionMeta, ScoredRecallItem } from './support.js';
 import { RetrievalStrategySupport } from './policy.js';
@@ -141,7 +142,7 @@ export class HybridRetrievalStrategy {
     });
 
     return {
-      ranked,
+      ranked: this.enhanceWithGraph(ranked),
       candidates: context.candidates,
       semanticHitCount: semanticScoreById.size,
       candidatePolicy: context.candidateResult.stats,
@@ -239,50 +240,12 @@ export class HybridRetrievalStrategy {
     if (!this.relationRepo || ranked.length === 0) {
       return ranked;
     }
-
-    const existingIds = new Set(ranked.map((item) => item.memory.id));
-    const boostMap = new Map<string, number>();
-
-    for (const item of ranked.slice(0, 5)) {
-      const connected = this.relationRepo.findConnected(item.memory.id, {
-        maxDepth: 2,
-        types: ['supports', 'causes', 'depends_on'],
-        limit: 10,
-        minWeight: 0.3,
-      });
-
-      for (const node of connected) {
-        if (!existingIds.has(node.memoryId)) {
-          continue;
-        }
-
-        const currentBoost = boostMap.get(node.memoryId) ?? 0;
-        boostMap.set(node.memoryId, currentBoost + 0.05 * (node.weight ?? 1));
-      }
-    }
-
-    if (boostMap.size === 0) {
-      return ranked;
-    }
-
-    return ranked
-      .map((item) => {
-        const boost = boostMap.get(item.memory.id);
-        if (!boost) {
-          return item;
-        }
-
-        return {
-          ...item,
-          score: item.score + boost,
-        };
-      })
-      .sort((left, right) => {
-        if (right.score !== left.score) {
-          return right.score - left.score;
-        }
-        return right.memory.timestamps.updatedAt.localeCompare(left.memory.timestamps.updatedAt);
-      });
+    return enhanceWithGraphBoost(
+      ranked,
+      this.relationRepo,
+      this.support.getMemoryRepo(),
+      { scanTop: 10, maxDepth: 2 },
+    );
   }
 }
 

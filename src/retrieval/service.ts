@@ -148,7 +148,7 @@ export class RetrievalService {
       semanticEnabled,
       semanticRepo,
     );
-    this.keywordStrategy = new KeywordRetrievalStrategy(support, this.keywordWeights);
+    this.keywordStrategy = new KeywordRetrievalStrategy(support, this.keywordWeights, options.relationRepo);
     this.hybridStrategy = new HybridRetrievalStrategy(
       support,
       semanticRepo,

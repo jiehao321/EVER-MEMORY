@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CognitiveEngine } from '../../src/core/butler/cognition.js';
+import type { ClockPort } from '../../src/core/butler/ports/clock.js';
+import type { KnowledgeGapDetector } from '../../src/core/butler/intelligence/gapDetector.js';
+import type { KnowledgeGap } from '../../src/core/butler/intelligence/types.js';
 import type { ButlerInsight, ButlerPersistentState } from '../../src/core/butler/types.js';
 import { ButlerAgent } from '../../src/core/butler/agent.js';
 import { ButlerStateManager } from '../../src/core/butler/state.js';
@@ -19,14 +22,25 @@ function createLogger() {
   };
 }
 
-function createStateManager() {
+function createClock(initialNow: number): ClockPort & { set(now: number): void } {
+  let now = initialNow;
+  return {
+    now: () => now,
+    isoNow: () => new Date(now).toISOString(),
+    set(value: number) {
+      now = value;
+    },
+  };
+}
+
+function createStateManager(clock?: ClockPort) {
   const db = createInMemoryDb();
   const stateRepo = new ButlerStateRepository(db);
   const taskRepo = new ButlerTaskRepository(db);
   const insightRepo = new ButlerInsightRepository(db);
   return {
     db,
-    stateManager: new ButlerStateManager({ stateRepo, logger: createLogger() }),
+    stateManager: new ButlerStateManager({ stateRepo, clock, logger: createLogger() }),
     taskQueue: new TaskQueueService({ taskRepo, logger: createLogger() }),
     insightRepo,
     stateRepo,
@@ -271,5 +285,197 @@ describe('ButlerAgent', () => {
     });
     assert.equal(savedState.lastCycleVersion, 1);
     assert.deepEqual(savedState.workingMemory.at(-1)?.value, { text: 'test message' });
+  });
+
+  it('knowledge_gap_scan converts detected gaps into anomaly/open-loop insights', async () => {
+    const ctx = createStateManager();
+    ctx.stateManager.save({
+      ...ctx.stateManager.load(),
+      mode: 'steward',
+    });
+    const gapsByType: Record<string, KnowledgeGap[]> = {
+      stale: [
+        {
+          type: 'stale',
+          description: 'Release note is stale.',
+          importance: 0.9,
+          memoryIds: ['memory-stale-1'],
+        },
+        {
+          type: 'stale',
+          description: 'Owner note is stale.',
+          importance: 0.8,
+          memoryIds: ['memory-stale-2'],
+        },
+      ],
+      incomplete: [
+        {
+          type: 'incomplete',
+          description: 'Commitment is unresolved.',
+          importance: 0.7,
+          memoryIds: ['memory-incomplete-1'],
+        },
+      ],
+      unresolved_contradiction: [
+        {
+          type: 'unresolved_contradiction',
+          description: 'Contradiction still needs resolution.',
+          importance: 0.85,
+          memoryIds: ['memory-contradiction-1'],
+        },
+        {
+          type: 'unresolved_contradiction',
+          description: 'Another contradiction still needs resolution.',
+          importance: 0.75,
+          memoryIds: ['memory-contradiction-2'],
+        },
+      ],
+    };
+    const gapDetector = {
+      detectGaps: () => [],
+      detectStaleMemories: () => gapsByType.stale,
+      detectIncompleteCommitments: () => gapsByType.incomplete,
+      detectUnresolvedContradictions: () => gapsByType.unresolved_contradiction,
+    } as unknown as KnowledgeGapDetector;
+    const agent = new ButlerAgent({
+      stateManager: ctx.stateManager,
+      taskQueue: ctx.taskQueue,
+      cognitiveEngine: createCognitiveStub(false),
+      insightRepo: ctx.insightRepo,
+      gapDetector,
+      logger: createLogger(),
+    });
+    ctx.taskQueue.enqueue({
+      type: 'knowledge_gap_scan',
+      priority: 2,
+      payload: { project: 'evermemory' },
+    });
+
+    await agent.runCycle({ type: 'session_started', sessionId: 'session-gap' });
+
+    const openLoops = ctx.insightRepo.findByKind('open_loop', 10);
+    const anomalies = ctx.insightRepo.findByKind('anomaly', 10);
+
+    assert.equal(openLoops.length, 3);
+    assert.equal(anomalies.length, 2);
+    assert.equal(openLoops[0]?.title, 'Knowledge gap: stale');
+    assert.equal(anomalies[0]?.title, 'Knowledge gap: unresolved_contradiction');
+    assert.match(anomalies[0]?.summary ?? '', /Contradiction still needs resolution/);
+  });
+
+  it('strategy_review adds strategy_stale working memory when the frame is older than two hours', async () => {
+    const clock = createClock(Date.parse('2026-04-06T12:00:00.000Z'));
+    const ctx = createStateManager(clock);
+    const initial = ctx.stateManager.load();
+    ctx.stateManager.save({
+      ...initial,
+      mode: 'steward',
+      currentStrategyFrame: {
+        ...initial.currentStrategyFrame,
+        currentMode: 'planning',
+        lastUpdatedAt: '2026-04-06T08:30:00.000Z',
+      },
+    });
+    const agent = new ButlerAgent({
+      stateManager: ctx.stateManager,
+      taskQueue: ctx.taskQueue,
+      cognitiveEngine: createCognitiveStub(false),
+      insightRepo: ctx.insightRepo,
+      clock,
+      logger: createLogger(),
+    });
+    ctx.taskQueue.enqueue({ type: 'strategy_review', priority: 2 });
+
+    await agent.runCycle({ type: 'session_started', sessionId: 'session-strategy' });
+
+    const savedState = ctx.stateRepo.load() as ButlerPersistentState;
+    const strategyEntry = savedState.workingMemory.find((entry) => entry.key === 'strategy_stale');
+
+    assert.ok(strategyEntry);
+    assert.deepEqual(strategyEntry?.value, {
+      ageMs: 12_600_000,
+      lastMode: 'planning',
+    });
+    assert.equal(savedState.workingMemory.some((entry) => entry.key === 'session_started'), true);
+  });
+
+  it('contradiction_check records unresolved contradiction count in working memory', async () => {
+    const clock = createClock(Date.parse('2026-04-06T12:00:00.000Z'));
+    const ctx = createStateManager(clock);
+    ctx.stateManager.save({
+      ...ctx.stateManager.load(),
+      mode: 'steward',
+    });
+    ctx.insightRepo.insert({
+      kind: 'anomaly',
+      title: 'Plan mismatch',
+      summary: 'contradiction detected between runtime and test expectations',
+      importance: 0.8,
+    });
+    ctx.insightRepo.insert({
+      kind: 'anomaly',
+      title: 'Scope mismatch',
+      summary: 'contradiction remains unresolved in current plan',
+      importance: 0.7,
+    });
+    ctx.insightRepo.insert({
+      kind: 'anomaly',
+      title: 'Fresh anomaly',
+      summary: 'unrelated issue',
+      importance: 0.6,
+    });
+    const agent = new ButlerAgent({
+      stateManager: ctx.stateManager,
+      taskQueue: ctx.taskQueue,
+      cognitiveEngine: createCognitiveStub(false),
+      insightRepo: ctx.insightRepo,
+      clock,
+      logger: createLogger(),
+    });
+    ctx.taskQueue.enqueue({ type: 'contradiction_check', priority: 2 });
+
+    await agent.runCycle({ type: 'session_started', sessionId: 'session-contradictions' });
+
+    const savedState = ctx.stateRepo.load() as ButlerPersistentState;
+    const pendingEntry = savedState.workingMemory.find((entry) => entry.key === 'pending_contradictions');
+
+    assert.ok(pendingEntry);
+    assert.deepEqual(pendingEntry?.value, { count: 2 });
+    assert.equal(pendingEntry?.createdAt, '2026-04-06T12:00:00.000Z');
+  });
+
+  it('memory_consolidation deletes expired insights while preserving fresh ones', async () => {
+    const ctx = createStateManager();
+    ctx.stateManager.save({
+      ...ctx.stateManager.load(),
+      mode: 'steward',
+    });
+    const expiredId = ctx.insightRepo.insert({
+      kind: 'open_loop',
+      title: 'Expired loop',
+      summary: 'Should be removed.',
+      importance: 0.5,
+      freshUntil: '2000-01-01T00:00:00.000Z',
+    });
+    const freshId = ctx.insightRepo.insert({
+      kind: 'continuity',
+      title: 'Fresh continuity',
+      summary: 'Should remain.',
+      importance: 0.6,
+      freshUntil: '2099-01-01T00:00:00.000Z',
+    });
+    const agent = new ButlerAgent({
+      stateManager: ctx.stateManager,
+      taskQueue: ctx.taskQueue,
+      cognitiveEngine: createCognitiveStub(false),
+      insightRepo: ctx.insightRepo,
+      logger: createLogger(),
+    });
+    ctx.taskQueue.enqueue({ type: 'memory_consolidation', priority: 2 });
+
+    await agent.runCycle({ type: 'session_started', sessionId: 'session-memory' });
+
+    assert.equal(ctx.insightRepo.findById(expiredId), null);
+    assert.equal(ctx.insightRepo.findById(freshId)?.title, 'Fresh continuity');
   });
 });

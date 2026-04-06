@@ -213,7 +213,7 @@ describe('ActionExecutor', () => {
     assert.equal(result.stepResults[0]?.error, 'requires user confirmation');
     assert.equal(result.stepResults[1]?.error, 'requires user confirmation');
     assert.equal(result.stepResults[2]?.error, 'Host does not support tool invocation');
-    assert.match(result.stepResults[3]?.error ?? '', /goal updates are not supported/i);
+    assert.match(result.stepResults[3]?.error ?? '', /goal store not available/i);
   });
 
   it('stops when the plan budget is exhausted', async () => {

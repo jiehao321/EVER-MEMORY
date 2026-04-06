@@ -33,6 +33,7 @@ import {
   CREATE_PHASE29_BUTLER_QUESTIONS_SQL,
   CREATE_PHASE29_BUTLER_SEARCHES_SQL,
   CREATE_PHASE30_BUTLER_EVOLUTION_SQL,
+  CREATE_PHASE31_FTS5_SQL,
 } from './schemas.js';
 import {
   CURRENT_SCHEMA_VERSION,
@@ -66,6 +67,7 @@ import {
   PHASE28_BUTLER_ACTIONS_SCHEMA_VERSION,
   PHASE29_BUTLER_INTELLIGENCE_SCHEMA_VERSION,
   PHASE30_BUTLER_EVOLUTION_SCHEMA_VERSION,
+  PHASE31_FTS5_SCHEMA_VERSION,
 } from './versions.js';
 
 function ensureSchemaVersionTable(db: Database.Database): void {
@@ -310,6 +312,12 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
       }
       db.prepare('UPDATE schema_version SET version = ?').run(PHASE30_BUTLER_EVOLUTION_SCHEMA_VERSION);
     });
+    const phase31Fts5Tx = db.transaction(() => {
+      for (const sql of CREATE_PHASE31_FTS5_SQL) {
+        db.prepare(sql).run();
+      }
+      db.prepare('UPDATE schema_version SET version = ?').run(PHASE31_FTS5_SCHEMA_VERSION);
+    });
 
     if (currentVersion < PHASE1_SCHEMA_VERSION) {
       phase1Tx();
@@ -449,6 +457,10 @@ export function runMigrations(db: Database.Database, dbPath?: string): number {
     if (currentVersion < PHASE30_BUTLER_EVOLUTION_SCHEMA_VERSION) {
       phase30ButlerEvolutionTx();
       currentVersion = PHASE30_BUTLER_EVOLUTION_SCHEMA_VERSION;
+    }
+    if (currentVersion < PHASE31_FTS5_SCHEMA_VERSION) {
+      phase31Fts5Tx();
+      currentVersion = PHASE31_FTS5_SCHEMA_VERSION;
     }
 
     return currentVersion;

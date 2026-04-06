@@ -64,6 +64,7 @@ export interface ScoredRecallItem {
   dataQuality: number;
   recallReason?: string;
   dataClass: MemoryDataClass;
+  graphInjected?: boolean;
 }
 
 export interface RankedStrategyResult {

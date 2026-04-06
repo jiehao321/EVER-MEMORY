@@ -1,4 +1,5 @@
 import { DEFAULT_RETRIEVAL_KEYWORD_WEIGHTS } from '../../constants.js';
+import type { RelationRepository } from '../../storage/relationRepo.js';
 import {
   KEYWORD_EMPTY_QUERY_SCORE,
   KEYWORD_PHRASE_IN_CONTENT_SCORE,
@@ -13,6 +14,7 @@ import {
   KEYWORD_TOKEN_COVERAGE_WEIGHT,
 } from '../../tuning.js';
 import type { MemoryItem, RecallRequest, RetrievalKeywordWeights } from '../../types.js';
+import { enhanceWithGraphBoost } from './graphBoost.js';
 import type { RankedStrategyResult, RecallExecutionMeta, ScoredRecallItem } from './support.js';
 import { RetrievalStrategySupport } from './policy.js';
 
@@ -34,6 +36,7 @@ export interface RankedRecallItem {
 
 interface RankKeywordRecallOptions {
   weights?: RetrievalKeywordWeights;
+  keywordScoreOverrides?: Map<string, number>;
 }
 
 function normalize(text: string): string {
@@ -159,8 +162,17 @@ function scoreMemory(
   normalizedQuery: string,
   queryTokens: string[],
   weights: RetrievalKeywordWeights,
+  options: RankKeywordRecallOptions,
 ): RankedRecallItem {
-  const keyword = keywordFactors(memory, normalizedQuery, queryTokens);
+  const overrideKeywordScore = options.keywordScoreOverrides?.get(memory.id);
+  const baseKeyword = keywordFactors(memory, normalizedQuery, queryTokens);
+  const keyword = overrideKeywordScore === undefined
+    ? baseKeyword
+    : {
+        score: overrideKeywordScore,
+        matchedTokens: baseKeyword.matchedTokens.length > 0 ? baseKeyword.matchedTokens : queryTokens,
+        matched: true,
+      };
   const factors: RankedRecallItem['factors'] = {
     keyword: keyword.score,
     recency: recencyScore(memory.timestamps.updatedAt),
@@ -217,8 +229,11 @@ export function rankKeywordRecall(
   const normalizedQuery = normalize(request.query);
   const queryTokens = tokenizeQuery(normalizedQuery);
   const ranked = memories
-    .filter((memory) => keywordFactors(memory, normalizedQuery, queryTokens).matched)
-    .map((memory) => scoreMemory(memory, request, normalizedQuery, queryTokens, weights));
+    .filter((memory) => (
+      options.keywordScoreOverrides?.has(memory.id)
+      || keywordFactors(memory, normalizedQuery, queryTokens).matched
+    ))
+    .map((memory) => scoreMemory(memory, request, normalizedQuery, queryTokens, weights, options));
 
   ranked.sort((left, right) => {
     if (right.score !== left.score) {
@@ -242,22 +257,111 @@ export class KeywordRetrievalStrategy {
   constructor(
     private readonly support: RetrievalStrategySupport,
     private readonly keywordWeights: RetrievalKeywordWeights,
+    private readonly relationRepo?: RelationRepository,
   ) {}
+
+  private buildFtsQuery(query: string): string | null {
+    const tokens = tokenizeQuery(normalize(query))
+      .filter((token) => token.length > 0);
+    if (tokens.length < 2) {
+      return null;
+    }
+    return query;
+  }
+
+  private matchesRequestFilters(memory: MemoryItem, request: RecallRequest): boolean {
+    if (request.scope?.userId && memory.scope.userId !== request.scope.userId) {
+      return false;
+    }
+    if (request.scope?.chatId && memory.scope.chatId !== request.scope.chatId) {
+      return false;
+    }
+    if (request.scope?.project && memory.scope.project !== request.scope.project) {
+      return false;
+    }
+    if (request.scope?.global !== undefined && memory.scope.global !== request.scope.global) {
+      return false;
+    }
+    if (request.types && request.types.length > 0 && !request.types.includes(memory.type)) {
+      return false;
+    }
+    if (request.lifecycles && request.lifecycles.length > 0 && !request.lifecycles.includes(memory.lifecycle)) {
+      return false;
+    }
+    if (request.createdAfter && memory.timestamps.createdAt < request.createdAfter) {
+      return false;
+    }
+    if (request.createdBefore && memory.timestamps.createdAt > request.createdBefore) {
+      return false;
+    }
+    if (!memory.state.active || memory.state.archived) {
+      return false;
+    }
+    return true;
+  }
+
+  private loadCandidates(
+    request: RecallRequest,
+    limit: number,
+    meta: RecallExecutionMeta,
+  ): { candidates: MemoryItem[]; ftsHits: Set<string> } {
+    const lexicalCandidates = this.support.loadCandidates(request, limit, true, meta);
+    const ftsQuery = this.buildFtsQuery(request.query);
+    if (!ftsQuery) {
+      return {
+        candidates: lexicalCandidates,
+        ftsHits: new Set(),
+      };
+    }
+
+    const candidateLimit = Math.max(limit * 5, limit);
+    const ftsMatches = this.support.getMemoryRepo()
+      .searchFts(ftsQuery, candidateLimit)
+      .filter((memory) => this.matchesRequestFilters(memory, request));
+    if (ftsMatches.length === 0) {
+      return {
+        candidates: lexicalCandidates,
+        ftsHits: new Set(),
+      };
+    }
+
+    const combinedCandidates = new Map<string, MemoryItem>();
+    for (const memory of ftsMatches) {
+      combinedCandidates.set(memory.id, memory);
+    }
+    for (const memory of lexicalCandidates) {
+      if (!combinedCandidates.has(memory.id)) {
+        combinedCandidates.set(memory.id, memory);
+      }
+    }
+
+    return {
+      candidates: [...combinedCandidates.values()],
+      ftsHits: new Set(ftsMatches.map((memory) => memory.id)),
+    };
+  }
 
   rank(
     request: RecallRequest,
     limit: number,
     meta: RecallExecutionMeta,
   ): RankedStrategyResult {
-    const loaded = this.support.loadCandidates(request, limit, true, meta);
-    const candidateResult = this.support.applyCandidatePolicy(loaded, limit, meta);
+    const loaded = this.loadCandidates(request, limit, meta);
+    const candidateResult = this.support.applyCandidatePolicy(loaded.candidates, limit, meta);
     const effectiveWeights = meta.weightOverrides
       ? { ...this.keywordWeights, ...meta.weightOverrides }
       : this.keywordWeights;
+    const ranked = rankKeywordRecall(candidateResult.candidates, request, {
+      weights: effectiveWeights,
+      keywordScoreOverrides: loaded.ftsHits.size > 0
+        ? new Map([...loaded.ftsHits].map((id) => [id, 1]))
+        : undefined,
+    }).map((entry) => toStrategyItem(entry, this.support, meta));
+
     return {
-      ranked: rankKeywordRecall(candidateResult.candidates, request, {
-        weights: effectiveWeights,
-      }).map((entry) => toStrategyItem(entry, this.support, meta)),
+      ranked: this.relationRepo
+        ? enhanceWithGraphBoost(ranked, this.relationRepo, this.support.getMemoryRepo())
+        : ranked,
       candidates: candidateResult.candidates,
       semanticHitCount: 0,
       candidatePolicy: candidateResult.stats,

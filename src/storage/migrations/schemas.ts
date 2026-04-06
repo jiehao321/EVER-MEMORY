@@ -420,3 +420,32 @@ export const CREATE_PHASE30_BUTLER_EVOLUTION_SQL = [
   )`,
   'CREATE INDEX IF NOT EXISTS idx_butler_experiments_status ON butler_experiments(status)',
 ] as const;
+
+export const CREATE_PHASE31_FTS5_SQL = [
+  `CREATE VIRTUAL TABLE IF NOT EXISTS memory_items_fts USING fts5(
+    content,
+    tags,
+    content_rowid='rowid',
+    tokenize='unicode61'
+  )`,
+  `CREATE TRIGGER IF NOT EXISTS memory_items_fts_insert
+   AFTER INSERT ON memory_items
+   BEGIN
+     INSERT INTO memory_items_fts(rowid, content, tags)
+     VALUES (NEW.rowid, NEW.content, NEW.tags_json);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS memory_items_fts_update
+   AFTER UPDATE OF content, tags_json ON memory_items
+   BEGIN
+     UPDATE memory_items_fts
+     SET content = NEW.content, tags = NEW.tags_json
+     WHERE rowid = NEW.rowid;
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS memory_items_fts_delete
+   AFTER DELETE ON memory_items
+   BEGIN
+     DELETE FROM memory_items_fts WHERE rowid = OLD.rowid;
+   END`,
+  `INSERT OR IGNORE INTO memory_items_fts(rowid, content, tags)
+   SELECT rowid, content, tags_json FROM memory_items`,
+] as const;

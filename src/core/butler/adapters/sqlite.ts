@@ -9,6 +9,7 @@ import { ButlerStateRepository } from '../../../storage/butlerStateRepo.js';
 import { ButlerTaskRepository } from '../../../storage/butlerTaskRepo.js';
 import { LlmInvocationRepository } from '../../../storage/llmInvocationRepo.js';
 import {
+  CREATE_PHASE1_SCHEMA_SQL,
   CREATE_PHASE17_BUTLER_STATE_SQL,
   CREATE_PHASE18_BUTLER_TASKS_SQL,
   CREATE_PHASE19_NARRATIVE_THREADS_SQL,
@@ -20,10 +21,12 @@ import {
   CREATE_PHASE29_BUTLER_QUESTIONS_SQL,
   CREATE_PHASE29_BUTLER_SEARCHES_SQL,
   CREATE_PHASE30_BUTLER_EVOLUTION_SQL,
+  CREATE_PHASE31_FTS5_SQL,
 } from '../../../storage/migrations/schemas.js';
 import { NarrativeRepository } from '../../../storage/narrativeRepo.js';
 
 const BUTLER_SCHEMA_SQL = [
+  CREATE_PHASE1_SCHEMA_SQL[1],
   ...CREATE_PHASE17_BUTLER_STATE_SQL,
   ...CREATE_PHASE18_BUTLER_TASKS_SQL,
   ...CREATE_PHASE19_NARRATIVE_THREADS_SQL,
@@ -35,6 +38,7 @@ const BUTLER_SCHEMA_SQL = [
   ...CREATE_PHASE29_BUTLER_QUESTIONS_SQL,
   ...CREATE_PHASE29_BUTLER_SEARCHES_SQL,
   ...CREATE_PHASE30_BUTLER_EVOLUTION_SQL,
+  ...CREATE_PHASE31_FTS5_SQL,
 ];
 
 export function createStandaloneStorage(dbPath: string): {

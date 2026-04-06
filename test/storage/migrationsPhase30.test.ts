@@ -12,17 +12,18 @@ function tableExists(db: Database.Database, tableName: string): boolean {
   return row?.name === tableName;
 }
 
-test('phase 30 migrations add Butler evolution tables', () => {
+test('phase 31 migrations add FTS5 support on top of Butler evolution tables', () => {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   try {
     const version = runMigrations(db);
 
-    assert.equal(version, 30);
-    assert.equal(CURRENT_SCHEMA_VERSION, 30);
+    assert.equal(version, 31);
+    assert.equal(CURRENT_SCHEMA_VERSION, 31);
     assert.equal(tableExists(db, 'butler_evolution_log'), true);
     assert.equal(tableExists(db, 'butler_prompt_variants'), true);
     assert.equal(tableExists(db, 'butler_experiments'), true);
+    assert.equal(tableExists(db, 'memory_items_fts'), true);
   } finally {
     db.close();
   }

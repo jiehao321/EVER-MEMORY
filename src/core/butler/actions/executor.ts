@@ -1,5 +1,7 @@
 import type { ClockPort } from '../ports/clock.js';
 import type { HostPort } from '../ports/host.js';
+import type { GoalStore } from '../ports/storage.js';
+import type { ButlerGoal } from '../types.js';
 import type { ButlerLogger } from '../types.js';
 import { ActionPolicy } from './policy.js';
 import type { ActionPlan, ActionResult, ActionStep } from './types.js';
@@ -10,6 +12,7 @@ export class ActionExecutor {
     private readonly policy: ActionPolicy,
     private readonly clock: ClockPort,
     private readonly logger?: ButlerLogger,
+    private readonly goalStore?: GoalStore,
   ) {}
 
   async execute(plan: ActionPlan): Promise<ActionResult> {
@@ -77,7 +80,10 @@ export class ActionExecutor {
           relationType: step.relationType,
         });
       case 'update_goal':
-        throw new Error('Goal updates are not supported yet.');
+        if (!this.goalStore) {
+          throw new Error('Goal store not available');
+        }
+        return this.goalStore.update(step.goalId, this.toGoalUpdatePatch(step.patch));
       case 'ask_user':
         if (!this.host.askUser) {
           throw new Error('Host does not support asking the user');
@@ -104,5 +110,27 @@ export class ActionExecutor {
       throw new Error('Host does not support tool invocation');
     }
     return this.host.invokeTool(toolName, params);
+  }
+
+  private toGoalUpdatePatch(
+    patch: Record<string, unknown>,
+  ): Partial<Pick<ButlerGoal, 'title' | 'description' | 'priority' | 'deadline' | 'progressNotes'>> {
+    const nextPatch: Partial<Pick<ButlerGoal, 'title' | 'description' | 'priority' | 'deadline' | 'progressNotes'>> = {};
+    if (typeof patch.title === 'string') {
+      nextPatch.title = patch.title;
+    }
+    if (typeof patch.description === 'string') {
+      nextPatch.description = patch.description;
+    }
+    if (typeof patch.priority === 'number') {
+      nextPatch.priority = patch.priority;
+    }
+    if (typeof patch.deadline === 'string') {
+      nextPatch.deadline = patch.deadline;
+    }
+    if (typeof patch.progressNotes === 'string') {
+      nextPatch.progressNotes = patch.progressNotes;
+    }
+    return nextPatch;
   }
 }

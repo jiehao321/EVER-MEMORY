@@ -63,6 +63,10 @@ export class RetrievalStrategySupport {
     private readonly semanticCandidateLimit: number,
   ) {}
 
+  getMemoryRepo(): MemoryRepository {
+    return this.memoryRepo;
+  }
+
   applyRecallPolicyScore(
     memory: MemoryItem,
     baseScore: number,
