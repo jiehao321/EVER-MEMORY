@@ -28,6 +28,10 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "butler": "./dist/core/butler/cli.js",
+    "evermemory": "./scripts/setup.mjs"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -43,9 +47,6 @@
     "better-sqlite3",
     "sharp"
   ],
-  "bin": {
-    "evermemory": "./scripts/setup.mjs"
-  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

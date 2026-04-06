@@ -2,6 +2,7 @@
 
 import { parseArgs } from 'node:util';
 import { createStandaloneStorage } from './adapters/sqlite.js';
+import { OpenAiLlmGateway } from './adapters/openaiGateway.js';
 import { ButlerRuntime } from './runtime/standalone.js';
 import { HttpTransport } from './transports/http.js';
 import { StdioTransport } from './transports/stdio.js';
@@ -22,6 +23,7 @@ function main(): void {
       transport: { type: 'string', default: 'stdio' },
       port: { type: 'string', default: '3100' },
       host: { type: 'string', default: '127.0.0.1' },
+      'auth-file': { type: 'string', default: '' },
       help: { type: 'boolean', short: 'h', default: false },
     },
     strict: true,
@@ -37,12 +39,13 @@ Options:
   --transport <type>    Transport type: stdio | http (default: stdio)
   --port <number>       HTTP port (default: 3100)
   --host <address>      HTTP host (default: 127.0.0.1)
+  --auth-file <path>    OpenAI auth.json path (default: ~/.codex/auth.json)
   -h, --help            Show this help message
 `);
     process.exit(0);
   }
 
-  const { storage } = createStandaloneStorage(values.db ?? './butler.db');
+  const { storage, evolutionRepo } = createStandaloneStorage(values.db ?? './butler.db');
 
   const clock = {
     now: () => Date.now(),
@@ -62,10 +65,16 @@ Options:
     transport = new StdioTransport(process.stdin, process.stdout, logger);
   }
 
+  const llmGateway = new OpenAiLlmGateway({
+    authFile: values['auth-file'] || undefined,
+  }, logger);
+
   const runtime = new ButlerRuntime({
     storage,
     clock,
     transport,
+    llm: llmGateway,
+    evolutionLog: evolutionRepo,
     logger,
   });
 

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { SqliteButlerStorage } from '../../../butler-adapter/sqliteStorage.js';
 import type { ButlerStoragePort } from '../ports/storage.js';
 import { ButlerFeedbackRepository } from '../../../storage/butlerFeedbackRepo.js';
+import { ButlerEvolutionRepository } from '../../../storage/butlerEvolutionRepo.js';
 import { ButlerGoalRepository } from '../../../storage/butlerGoalRepo.js';
 import { ButlerInsightRepository } from '../../../storage/butlerInsightRepo.js';
 import { ButlerStateRepository } from '../../../storage/butlerStateRepo.js';
@@ -38,6 +39,7 @@ const BUTLER_SCHEMA_SQL = [
 
 export function createStandaloneStorage(dbPath: string): {
   storage: ButlerStoragePort;
+  evolutionRepo: ButlerEvolutionRepository;
   db: Database.Database;
 } {
   const db = new Database(dbPath);
@@ -57,6 +59,7 @@ export function createStandaloneStorage(dbPath: string): {
     narrativeRepo: new NarrativeRepository(db),
     invocationRepo: new LlmInvocationRepository(db),
   });
+  const evolutionRepo = new ButlerEvolutionRepository(db);
 
-  return { storage, db };
+  return { storage, evolutionRepo, db };
 }

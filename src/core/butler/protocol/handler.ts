@@ -17,10 +17,25 @@ export interface ProtocolHandlerOptions {
   storage: ButlerStoragePort;
   clock: ClockPort;
   logger?: ButlerLogger;
+  onOutbound?: (message: ButlerMessage) => void;
 }
 
 export class ProtocolHandler {
   private readonly startedAt: number;
+  private readonly pendingQuestions = new Map<
+    string,
+    {
+      resolve: (answer: string | null) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+  private readonly pendingActions = new Map<
+    string,
+    {
+      resolve: (result: { success: boolean; result?: unknown; error?: string }) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
 
   constructor(private readonly options: ProtocolHandlerOptions) {
     this.startedAt = options.clock.now();
@@ -34,15 +49,18 @@ export class ProtocolHandler {
         this.options.logger?.debug?.('ProtocolHandler received answer message', {
           questionId: message.questionId,
         });
+        this.resolveQuestion(message.questionId, message.answer);
         return null;
       case 'action_result':
         this.options.logger?.debug?.('ProtocolHandler received action result', {
           actionId: message.actionId,
           success: message.success,
         });
+        this.resolveAction(message.actionId, this.toActionResolution(message));
         return null;
       case 'shutdown':
         this.options.scheduler.stop();
+        this.clearPending();
         return {
           type: 'status',
           id: randomUUID(),
@@ -51,6 +69,60 @@ export class ProtocolHandler {
       default:
         return null;
     }
+  }
+
+  askUser(question: string, options?: { context?: string; timeoutMs?: number }): Promise<string | null> {
+    const id = randomUUID();
+    const timeoutMs = options?.timeoutMs ?? 30_000;
+
+    return new Promise<string | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingQuestions.delete(id);
+        resolve(null);
+      }, timeoutMs);
+
+      this.pendingQuestions.set(id, { resolve, timer });
+
+      this.emit({
+        type: 'question',
+        id,
+        questionText: question,
+        context: options?.context,
+        importance: 0.5,
+      });
+    });
+  }
+
+  requestActionConfirmation(
+    action: { type: string; params: Record<string, unknown> },
+    options?: { timeoutMs?: number },
+  ): Promise<{ success: boolean; result?: unknown; error?: string }> {
+    const id = randomUUID();
+    const timeoutMs = options?.timeoutMs ?? 30_000;
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingActions.delete(id);
+        resolve({ success: false, error: 'Confirmation timeout' });
+      }, timeoutMs);
+
+      this.pendingActions.set(id, { resolve, timer });
+
+      this.emit({
+        type: 'action',
+        id,
+        action,
+        tier: 'confirm',
+      });
+    });
+  }
+
+  emitEvent(event: ButlerEvent): void {
+    this.emit({
+      type: 'event',
+      id: randomUUID(),
+      event,
+    });
   }
 
   private async handleEvent(requestId: string, event: ButlerEvent): Promise<ButlerMessage> {
@@ -122,7 +194,69 @@ export class ProtocolHandler {
     }
   }
 
-  private async getStatus(): Promise<ButlerStatusPayload> {
+  private emit(message: ButlerMessage): void {
+    this.options.onOutbound?.(message);
+  }
+
+  private resolveQuestion(questionId: string, answer: string): void {
+    const pending = this.pendingQuestions.get(questionId);
+    if (!pending) {
+      return;
+    }
+
+    clearTimeout(pending.timer);
+    this.pendingQuestions.delete(questionId);
+    pending.resolve(answer);
+  }
+
+  private resolveAction(
+    actionId: string,
+    result: { success: boolean; result?: unknown; error?: string },
+  ): void {
+    const pending = this.pendingActions.get(actionId);
+    if (!pending) {
+      return;
+    }
+
+    clearTimeout(pending.timer);
+    this.pendingActions.delete(actionId);
+    pending.resolve(result);
+  }
+
+  private clearPending(): void {
+    for (const [id, pending] of this.pendingQuestions) {
+      clearTimeout(pending.timer);
+      pending.resolve(null);
+      this.pendingQuestions.delete(id);
+    }
+
+    for (const [id, pending] of this.pendingActions) {
+      clearTimeout(pending.timer);
+      pending.resolve({ success: false, error: 'Shutdown' });
+      this.pendingActions.delete(id);
+    }
+  }
+
+  private toActionResolution(message: {
+    success: boolean;
+    result?: unknown;
+    error?: string;
+  }): { success: boolean; result?: unknown; error?: string } {
+    const resolution: { success: boolean; result?: unknown; error?: string } = {
+      success: message.success,
+    };
+
+    if (message.result !== undefined) {
+      resolution.result = message.result;
+    }
+    if (message.error !== undefined) {
+      resolution.error = message.error;
+    }
+
+    return resolution;
+  }
+
+  private getStatusSync(): ButlerStatusPayload {
     const state = this.options.agent.getState();
     return {
       mode: state?.mode ?? 'reduced',
@@ -132,5 +266,9 @@ export class ProtocolHandler {
       activeGoals: this.options.storage.goals.findActive().length,
       activeInsights: this.options.storage.insights.findFresh().length,
     };
+  }
+
+  private async getStatus(): Promise<ButlerStatusPayload> {
+    return this.getStatusSync();
   }
 }

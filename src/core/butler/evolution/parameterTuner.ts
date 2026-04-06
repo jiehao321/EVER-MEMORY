@@ -1,6 +1,6 @@
 import type { ClockPort } from '../ports/clock.js';
 import type { ButlerLogger } from '../types.js';
-import type { EvolutionMetrics, ParameterChange, TunableParameter } from './types.js';
+import type { EvolutionLogEntry, EvolutionMetrics, ParameterChange, TunableParameter } from './types.js';
 
 const EMA_ALPHA = 0.3;
 
@@ -15,6 +15,7 @@ const DEFAULT_PARAMETERS: TunableParameter[] = [
 ];
 
 export class ParameterTuner {
+  private readonly baseParameters: Map<string, TunableParameter>;
   private readonly parameters: Map<string, TunableParameter>;
   private readonly history: ParameterChange[] = [];
 
@@ -23,7 +24,8 @@ export class ParameterTuner {
     private readonly logger?: ButlerLogger,
     initialParams?: TunableParameter[],
   ) {
-    this.parameters = new Map((initialParams ?? DEFAULT_PARAMETERS).map((parameter) => [parameter.key, { ...parameter }]));
+    this.baseParameters = new Map((initialParams ?? DEFAULT_PARAMETERS).map((parameter) => [parameter.key, { ...parameter }]));
+    this.parameters = new Map([...this.baseParameters.entries()].map(([key, parameter]) => [key, { ...parameter }]));
   }
 
   tune(metrics: EvolutionMetrics): ParameterChange[] {
@@ -61,6 +63,39 @@ export class ParameterTuner {
 
   getHistory(): ParameterChange[] {
     return [...this.history];
+  }
+
+  /**
+   * Restore parameter values from persisted evolution log entries.
+   * Applies only active entries, with the most recent entry winning per parameter key.
+   */
+  restoreFromEntries(entries: EvolutionLogEntry[]): void {
+    this.parameters.clear();
+    for (const [key, parameter] of this.baseParameters.entries()) {
+      this.parameters.set(key, { ...parameter });
+    }
+
+    const applied = new Set<string>();
+    for (const entry of entries) {
+      if (entry.status !== 'active' || !entry.parameterKey || applied.has(entry.parameterKey)) {
+        continue;
+      }
+
+      const parameter = this.parameters.get(entry.parameterKey);
+      if (!parameter || entry.newValueJson === undefined) {
+        continue;
+      }
+
+      try {
+        const newValue = JSON.parse(entry.newValueJson) as number;
+        if (typeof newValue === 'number' && newValue >= parameter.minValue && newValue <= parameter.maxValue) {
+          this.parameters.set(entry.parameterKey, { ...parameter, currentValue: newValue });
+          applied.add(entry.parameterKey);
+        }
+      } catch {
+        // Ignore invalid persisted values and keep the baseline value.
+      }
+    }
   }
 
   private adjustParameter(key: string, factor: number, reason: string): ParameterChange | null {

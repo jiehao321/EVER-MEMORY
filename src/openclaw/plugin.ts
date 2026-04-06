@@ -41,6 +41,7 @@ import { registerProfileTools } from './tools/profile.js';
 import { embeddingManager, type EmbeddingConfig } from '../embedding/manager.js';
 import { isFirstRun, runAutoSetup, writeWelcomeMemory } from '../core/setup/autoSetup.js';
 import { ButlerFeedbackRepository } from '../storage/butlerFeedbackRepo.js';
+import { ButlerEvolutionRepository } from '../storage/butlerEvolutionRepo.js';
 import { ButlerGoalRepository } from '../storage/butlerGoalRepo.js';
 import { ButlerInsightRepository } from '../storage/butlerInsightRepo.js';
 import { ButlerQuestionRepository } from '../storage/butlerQuestionRepo.js';
@@ -86,6 +87,7 @@ export default definePluginEntry({
         ? (() => {
           const insightRepo = new ButlerInsightRepository(db);
           const feedbackRepo = new ButlerFeedbackRepository(db);
+          const evolutionRepo = new ButlerEvolutionRepository(db);
           const goalRepo = new ButlerGoalRepository(db);
           const questionRepo = new ButlerQuestionRepository(db);
           const stateRepo = new ButlerStateRepository(db);
@@ -124,7 +126,9 @@ export default definePluginEntry({
             new FeedbackLoop(api.logger),
             systemClock,
             api.logger,
+            evolutionRepo,
           );
+          evolutionEngine.restoreFromLog();
 
           // Build LLM gateway using pi-ai complete() with auth from runtime.modelAuth
           const runtimeModelAuth = api.runtime?.modelAuth;

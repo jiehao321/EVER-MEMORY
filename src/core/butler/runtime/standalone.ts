@@ -1,9 +1,14 @@
+import { ProtocolHostAdapter } from '../adapters/protocolHost.js';
 import type { HostPort } from '../ports/host.js';
 import type { ButlerStoragePort } from '../ports/storage.js';
 import type { ClockPort } from '../ports/clock.js';
 import type { ButlerConfig, ButlerLogger, LlmGateway } from '../types.js';
 import { ButlerAgent } from '../agent.js';
 import { CognitiveEngine } from '../cognition.js';
+import { EvolutionEngine, type EvolutionLogStore } from '../evolution/engine.js';
+import { FeedbackLoop } from '../evolution/feedbackLoop.js';
+import { MetricsCollector } from '../evolution/metrics.js';
+import { ParameterTuner } from '../evolution/parameterTuner.js';
 import { ButlerLlmClient } from '../llmClient.js';
 import { ProtocolHandler } from '../protocol/handler.js';
 import type { ButlerMessage } from '../protocol/types.js';
@@ -18,6 +23,7 @@ export interface ButlerRuntimeConfig {
   clock: ClockPort;
   host?: HostPort;
   transport: ButlerTransport;
+  evolutionLog?: EvolutionLogStore;
   scheduler?: {
     enabled?: boolean;
     tickIntervalMs?: number;
@@ -81,6 +87,7 @@ export class ButlerRuntime {
   private readonly agent: ButlerAgent;
   private readonly scheduler: ButlerScheduler;
   private readonly handler: ProtocolHandler;
+  private readonly protocolHost?: ProtocolHostAdapter;
   private readonly transport: ButlerTransport;
   private running = false;
 
@@ -111,6 +118,16 @@ export class ButlerRuntime {
       config: butlerConfig.cognition,
       logger,
     });
+    const parameterTuner = new ParameterTuner(clock, logger);
+    const evolutionEngine = new EvolutionEngine(
+      new MetricsCollector(storage.feedback, storage.insights, clock),
+      parameterTuner,
+      new FeedbackLoop(logger),
+      clock,
+      logger,
+      runtimeConfig.evolutionLog,
+    );
+    evolutionEngine.restoreFromLog();
 
     this.agent = new ButlerAgent({
       stateManager,
@@ -120,6 +137,13 @@ export class ButlerRuntime {
       clock,
       logger,
     });
+
+    if (runtimeConfig.llm) {
+      const readiness = runtimeConfig.llm.getReadiness?.() ?? 'untested';
+      if (readiness !== 'unavailable') {
+        stateManager.setMode('steward');
+      }
+    }
 
     this.scheduler = new ButlerScheduler(
       this.agent,
@@ -138,6 +162,7 @@ export class ButlerRuntime {
         idleThrottleMs: runtimeConfig.scheduler?.idleThrottleMs ?? 300_000,
         maxTickBudgetMs: runtimeConfig.scheduler?.maxTickBudgetMs ?? 5_000,
       },
+      evolutionEngine,
     );
 
     this.handler = new ProtocolHandler({
@@ -146,9 +171,14 @@ export class ButlerRuntime {
       storage,
       clock,
       logger,
+      onOutbound: (message: ButlerMessage) => this.transport.send(message),
     });
 
     this.transport = runtimeConfig.transport;
+
+    if (!runtimeConfig.host) {
+      this.protocolHost = new ProtocolHostAdapter(this.handler, logger);
+    }
   }
 
   start(): void {
@@ -177,5 +207,9 @@ export class ButlerRuntime {
 
   getAgent(): ButlerAgent {
     return this.agent;
+  }
+
+  getHost(): HostPort | undefined {
+    return this.runtimeConfig.host ?? this.protocolHost;
   }
 }
